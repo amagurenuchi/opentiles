@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Raining Tiles - Piano Tiles 2 Clone</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom CSS for fonts and animations -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Prevent default touch actions like double-tap to zoom or scrolling on mobile game board */
+    #game-board {
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="h-full flex items-center justify-center select-none bg-[#f3f4f6]">
+
+  <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
+  <div class="relative h-screen w-[50vh] max-w-full glass-dark shadow-2xl border-x border-gray-250 overflow-hidden flex flex-col justify-between">
+    
+    <!-- Columns (4 columns) -->
+    <div id="game-board" class="absolute inset-0 flex z-0">
+      <div data-col="0" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+      <div data-col="1" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+      <div data-col="2" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+      <div data-col="3" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+    </div>
+
+    <!-- Live Tiles Container -->
+    <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10"></div>
+
+    <!-- Hit effect ripples -->
+    <div id="hit-effects" class="absolute inset-0 pointer-events-none z-[15] overflow-hidden"></div>
+
+    <!-- Floating HUD near the top of the board (TPS & Stars) -->
+    <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
+      <div class="flex items-center gap-3">
+        <span id="tps-display" class="font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0.000</span>
+      </div>
+      <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
+    </div>
+
+    <!-- Keybind Hints Overlay (Desktop only, hidden on mobile) -->
+    <div class="absolute bottom-4 left-0 right-0 flex pointer-events-none justify-around sm:opacity-50 opacity-0 z-10">
+      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">D</span></div>
+      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">F</span></div>
+      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">J</span></div>
+      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">K</span></div>
+    </div>
+
+    <!-- Screens overlay (Start Screen, Settings Modal, Game Over) -->
+    
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 transition-all duration-300">
+      <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game">
+        RAINING TILES
+      </h1>
+      <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs">Tap the black tiles in order. Don't touch any white space!</p>
+
+      <!-- High Score Info -->
+      <div class="mb-6 flex gap-4 text-xs text-gray-500">
+        <span>Best: <strong id="best-display" class="text-gray-800">0.000 t/s</strong></span>
+      </div>
+
+      <!-- Play Button -->
+      <div class="w-full max-w-xs mb-8 flex flex-col gap-2.5">
+        <button id="play-btn" class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+            <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
+          </svg>
+          Play Game
+        </button>
+      </div>
+
+      <div class="flex gap-4">
+        <button id="settings-btn" class="p-3 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-600 transition-all active:scale-95">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.43l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-screen" class="absolute inset-0 flex flex-col items-center p-6 bg-white/95 backdrop-blur-md z-50 hidden transition-all duration-300 overflow-y-auto">
+      <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6 mt-4">Settings</h2>
+      
+      <!-- Scrollable container -->
+      <div class="w-full max-w-xs flex flex-col gap-6 mb-8">
+        
+        <!-- Section: Keybinds -->
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Keybinds</h3>
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+              <span class="text-xs font-medium text-gray-700">Col 1</span>
+              <button data-col-idx="0" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">D</button>
+            </div>
+            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+              <span class="text-xs font-medium text-gray-700">Col 2</span>
+              <button data-col-idx="1" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">F</button>
+            </div>
+            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+              <span class="text-xs font-medium text-gray-700">Col 3</span>
+              <button data-col-idx="2" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">J</button>
+            </div>
+            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+              <span class="text-xs font-medium text-gray-700">Col 4</span>
+              <button data-col-idx="3" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">K</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Speed Customize -->
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Customize Speed</h3>
+          <div class="flex flex-col gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+            <div class="flex flex-col gap-1">
+              <label for="settings-start-speed" class="text-[10px] font-bold text-gray-500 uppercase">Starting Speed (TPS)</label>
+              <input type="number" id="settings-start-speed" step="0.1" min="0" max="25" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white" value="3.3">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="settings-accel" class="text-[10px] font-bold text-gray-500 uppercase">Speed Increase Rate (TPS/s)</label>
+              <input type="number" id="settings-accel" step="0.01" min="0" max="5" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white" value="0.07">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Customizable Patterns -->
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Patterns</h3>
+          <div class="flex flex-col gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+            <div class="flex flex-col gap-1">
+              <label for="settings-pattern-preset" class="text-[10px] font-bold text-gray-500 uppercase">Preset</label>
+              <select id="settings-pattern-preset" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white">
+                <option value="single">Pure Single Tiles</option>
+                <option value="long">Only Long Tiles</option>
+                <option value="double">Double Tiles Only</option>
+                <option value="custom">Custom Pattern</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="settings-custom-pattern" class="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
+                <span>Pattern Format</span>
+                <span class="text-gray-400 normal-case font-normal text-[9px]">1=single, D=double, L3=hold, C3=combo</span>
+              </label>
+              <textarea id="settings-custom-pattern" rows="5" class="px-2.5 py-1.5 rounded-lg border border-gray-300 font-mono text-xs text-gray-800 outline-none focus:border-indigo-500 bg-white resize-y" placeholder="1&#10;1&#10;D&#10;L3&#10;C3"></textarea>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <button id="save-settings-btn" class="w-full max-w-xs py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98] mb-6">
+        Save & Close
+      </button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
+      <h2 class="text-4xl font-black text-rose-600 tracking-tight mb-2 font-game">GAME OVER</h2>
+      <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center">Better luck next time!</p>
+      
+      <div class="w-full max-w-xs bg-gray-50 border border-gray-200 p-4 rounded-2xl mb-8 flex flex-col items-center">
+        <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Max Speed (TPS)</span>
+        <div class="flex items-center gap-2 mb-2">
+          <span id="final-tps" class="font-game text-5xl font-black text-[#ff6b6b]">0.000</span>
+          <span id="final-grade" class="font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow">E</span>
+        </div>
+        <div id="final-stars" class="text-2xl mb-4 select-none"></div>
+        
+        <div class="w-full border-t border-gray-200 pt-3 flex justify-between text-xs text-gray-500">
+          <span>Start TPS: <strong id="final-start-tps" class="text-gray-850">0.000</strong></span>
+          <span>Accel: <strong id="final-accel" class="text-gray-850">0.07</strong></span>
+        </div>
+      </div>
+
+      <div class="w-full max-w-xs flex flex-col gap-2">
+        <button id="restart-btn" class="w-full py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98]">
+          Play Again
+        </button>
+        <button id="home-btn" class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
+          Main Menu
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Game Logic Script -->
+  <script src="game.js"></script>
+</body>
+</html>

@@ -4,6 +4,41 @@ const PATTERN_PRESETS = {
   double: `D\nD\nD\nD`
 };
 
+const PT2_DURATION_WEIGHTS = {
+  P: 0.03125,
+  O: 0.0625,
+  N: 0.125,
+  M: 0.25,
+  L: 0.5,
+  K: 1,
+  J: 2,
+  I: 4,
+  H: 8
+};
+
+const PT2_SPACE_WEIGHTS = {
+  Y: 0.03125,
+  X: 0.0625,
+  W: 0.125,
+  V: 0.25,
+  U: 0.5,
+  T: 1,
+  S: 2,
+  R: 4,
+  Q: 8
+};
+
+const PT2_SPECIAL_TILE_MAP = {
+  2: 'single',
+  3: 'combo',
+  5: 'double',
+  6: 'long',
+  7: 'long',
+  8: 'long',
+  9: 'long',
+  10: 'long'
+};
+
 const GRADE_COLORS = {
   "E": "#2318cf",
   "D": "#0073ff",
@@ -38,6 +73,12 @@ let keybinds = JSON.parse(localStorage.getItem('rainingtiles_keybinds') || '["Ke
 let tiles = [];
 let nextTileId = 0;
 let lastTime = 0;
+let songStartTime = 0;
+let audioContext = null;
+let audioGainNode = null;
+let scheduledAudioNodes = [];
+let soundfontInstrument = null;
+let soundfontInstrumentPromise = null;
 
 let parsedPattern = [];
 let currentPatternIndex = 0;
@@ -45,6 +86,32 @@ let activeKeys = { 0: false, 1: false, 2: false, 3: false };
 let lastSpawnY = 50;
 let lastSpawnedCols = [];
 let frozenSpeed = null;
+let importedSong = null;
+let importedSongs = [];
+let selectedImportedSongIndex = 0;
+let importedSongLabel = '';
+let importedSongStatus = '';
+let importedSongTitle = '';
+let importedSongDurationSeconds = 0;
+let importedSongSpawnCursor = 0;
+let importedSongTiles = [];
+let importedSongAudioEvents = [];
+let importedSongBaseSpeed = null;
+let importedSongSpeedLocked = false;
+let importedSongSpeedSchedule = [];
+let importedSongElapsedSeconds = 0;
+let importedSongRawText = '';
+
+let debugCurrentSectionId = null;
+let debugLastPlayedTileId = null;
+let debugLastPlayedEventKey = null;
+let debugLastPlayedNoteNames = [];
+let debugLastScrolledSectionId = null;
+let debugLastScrolledEventKey = null;
+let debugRawEventMap = new Map();
+let debugParsedSectionMap = new Map();
+let debugParsedEventMap = new Map();
+let debugParsedNoteMap = new Map();
 
 // DOM Elements
 const boardEl = document.getElementById('game-board');
@@ -66,6 +133,13 @@ const inputStartSpeed = document.getElementById('settings-start-speed');
 const inputAccel = document.getElementById('settings-accel');
 const selectPatternPreset = document.getElementById('settings-pattern-preset');
 const textareaCustomPattern = document.getElementById('settings-custom-pattern');
+const pt2JsonInput = document.getElementById('pt2-json-input');
+const pt2MusicSelect = document.getElementById('pt2-music-select');
+const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
+const clearSongBtn = document.getElementById('clear-song-btn');
+const songStatusEl = document.getElementById('song-status');
+const debugRawPanel = document.getElementById('debug-raw-panel');
+const debugParsedPanel = document.getElementById('debug-parsed-panel');
 
 // Initialize settings from localStorage or defaults
 function loadSettings() {
@@ -92,10 +166,1453 @@ function getStartSpeed() {
   return isNaN(val) ? 3.3 : val;
 }
 
+function setSongStatus(message) {
+  importedSongStatus = message;
+  if (songStatusEl) {
+    songStatusEl.textContent = message;
+  }
+}
+
+function getImportedEventKey(event) {
+  if (!event) return '';
+  const sectionId = event.musicId !== undefined && event.musicId !== null
+    ? event.musicId
+    : (event.songIndex !== undefined && event.songIndex !== null ? event.songIndex : '');
+  const startSeconds = Number.isFinite(event.startSeconds) ? event.startSeconds.toFixed(3) : '0.000';
+  const trackIndices = Array.isArray(event.trackIndices)
+    ? event.trackIndices.join(',')
+    : (Number.isFinite(event.trackIndex) ? String(event.trackIndex) : '');
+  const raw = String(event.raw || '').trim();
+  return `${sectionId}|${startSeconds}|${trackIndices}|${raw}`;
+}
+
+function getImportedEventNoteNames(event) {
+  if (!event || !Array.isArray(event.notes)) return [];
+  return event.notes.map((note) => note && note.name).filter(Boolean);
+}
+
+function getImportedSectionIdForElapsedSeconds(elapsedSeconds) {
+  const section = getImportedSongSectionAt(elapsedSeconds);
+  return section ? section.id : null;
+}
+
+function clearDebugPanels() {
+  if (debugRawPanel) debugRawPanel.innerHTML = '';
+  if (debugParsedPanel) debugParsedPanel.innerHTML = '';
+  debugCurrentSectionId = null;
+  debugLastPlayedTileId = null;
+  debugLastPlayedEventKey = null;
+  debugLastPlayedNoteNames = [];
+  debugLastScrolledSectionId = null;
+  debugLastScrolledEventKey = null;
+  debugRawEventMap = new Map();
+  debugParsedSectionMap = new Map();
+  debugParsedEventMap = new Map();
+  debugParsedNoteMap = new Map();
+}
+
+function scrollDebugPanels() {
+  if (!importedSong) return;
+
+  const sectionId = debugCurrentSectionId;
+  if (sectionId !== null && sectionId !== debugLastScrolledSectionId) {
+    const sectionKey = String(sectionId);
+    const rawSectionEl = debugRawPanel
+      ? debugRawPanel.querySelector(`[data-debug-section-id="${sectionKey}"]`)
+      : null;
+    const parsedSectionEl = debugParsedSectionMap.get(sectionKey) || null;
+
+    if (rawSectionEl) {
+      rawSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+    if (parsedSectionEl) {
+      parsedSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+
+    debugLastScrolledSectionId = sectionId;
+  }
+
+  const eventKey = debugLastPlayedEventKey;
+  if (!eventKey || eventKey === debugLastScrolledEventKey) return;
+
+  const rawEventEl = debugRawEventMap.get(eventKey) || null;
+  const parsedEventEl = debugParsedEventMap.get(eventKey) || null;
+
+  if (rawEventEl) {
+    rawEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  }
+  if (parsedEventEl) {
+    parsedEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  }
+
+  debugLastScrolledEventKey = eventKey;
+}
+
+function updateDebugCurrentSection() {
+  const sectionId = importedSong ? getImportedSectionIdForElapsedSeconds(importedSongElapsedSeconds) : null;
+  debugCurrentSectionId = sectionId;
+
+  debugParsedSectionMap.forEach((sectionEl, key) => {
+    if (!sectionEl) return;
+    const isCurrent = sectionId !== null && String(key) === String(sectionId);
+    sectionEl.classList.toggle('debug-current-section', isCurrent);
+    const badge = sectionEl.querySelector('[data-debug-current-badge="1"]');
+    if (badge) {
+      badge.classList.toggle('bg-amber-100', isCurrent);
+      badge.classList.toggle('text-amber-800', isCurrent);
+      badge.classList.toggle('bg-gray-100', !isCurrent);
+      badge.classList.toggle('text-gray-600', !isCurrent);
+    }
+  });
+
+  debugRawPanel && debugRawPanel.querySelectorAll('[data-debug-section-id]').forEach((sectionEl) => {
+    const isCurrent = sectionId !== null && String(sectionEl.dataset.debugSectionId) === String(sectionId);
+    sectionEl.classList.toggle('debug-current-section', isCurrent);
+  });
+
+  scrollDebugPanels();
+}
+
+function updateDebugLastPlayedState(tile) {
+  if (!tile || !importedSong) return;
+
+  debugLastPlayedTileId = tile.id;
+  debugLastPlayedEventKey = tile.sourceEventKey || '';
+  debugLastPlayedNoteNames = Array.isArray(tile.notes) ? tile.notes.map((note) => note && note.name).filter(Boolean) : [];
+
+  debugRawEventMap.forEach((eventEl, key) => {
+    if (!eventEl) return;
+    eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
+  });
+
+  debugParsedEventMap.forEach((eventEl, key) => {
+    if (!eventEl) return;
+    eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
+  });
+
+  debugParsedNoteMap.forEach((noteNodes, eventKey) => {
+    const isActiveEvent = eventKey === debugLastPlayedEventKey;
+    (Array.isArray(noteNodes) ? noteNodes : []).forEach((noteEl) => {
+      if (!noteEl) return;
+      const noteName = noteEl.dataset.debugNoteName;
+      const isMatch = isActiveEvent && debugLastPlayedNoteNames.includes(noteName);
+      noteEl.classList.toggle('debug-last-played-note', isMatch);
+    });
+  });
+
+  scrollDebugPanels();
+}
+
+function buildDebugPanels(song) {
+  clearDebugPanels();
+
+  if (!song || !Array.isArray(song.entries) || !song.entries.length) {
+    if (debugRawPanel) {
+      debugRawPanel.innerHTML = '<div class="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500">Load a PT2 song to inspect raw tile data.</div>';
+    }
+    if (debugParsedPanel) {
+      debugParsedPanel.innerHTML = '<div class="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500">Load a PT2 song to inspect parsed engine data.</div>';
+    }
+    return;
+  }
+
+  const playableEvents = Array.isArray(song.playableEvents) ? song.playableEvents : [];
+  const rawEventsBySection = new Map();
+  playableEvents.forEach((event) => {
+    const sectionId = event.musicId !== undefined && event.musicId !== null
+      ? event.musicId
+      : (event.songIndex !== undefined && event.songIndex !== null ? event.songIndex + 1 : 'unknown');
+    const key = String(sectionId);
+    if (!rawEventsBySection.has(key)) rawEventsBySection.set(key, []);
+    rawEventsBySection.get(key).push(event);
+  });
+
+  const parsedEventsBySection = new Map();
+  playableEvents.forEach((event) => {
+    const sectionId = event.musicId !== undefined && event.musicId !== null
+      ? event.musicId
+      : (event.songIndex !== undefined && event.songIndex !== null ? event.songIndex + 1 : 'unknown');
+    const key = String(sectionId);
+    if (!parsedEventsBySection.has(key)) parsedEventsBySection.set(key, []);
+    parsedEventsBySection.get(key).push(event);
+  });
+
+  if (debugRawPanel) {
+    debugRawPanel.innerHTML = '';
+  }
+  if (debugParsedPanel) {
+    debugParsedPanel.innerHTML = '';
+  }
+
+  const sectionEntries = Array.isArray(song.entries) ? song.entries : [];
+  sectionEntries.forEach((entry) => {
+    const sectionKey = String(entry.id);
+    const sectionEvents = rawEventsBySection.get(sectionKey) || [];
+    const sectionParsedEvents = parsedEventsBySection.get(sectionKey) || [];
+
+    if (debugRawPanel) {
+      const sectionCard = document.createElement('section');
+      sectionCard.dataset.debugSectionId = sectionKey;
+      sectionCard.className = 'rounded-2xl border border-gray-200 bg-gray-50/90 p-3';
+
+      const header = document.createElement('div');
+      header.className = 'flex items-start justify-between gap-3 mb-3';
+      header.innerHTML = `
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black text-gray-900">Section ${entry.id}</span>
+            <span class="text-[10px] uppercase tracking-[0.2em] text-gray-400">raw</span>
+          </div>
+          <div class="text-[11px] text-gray-500 mt-1">${entry.bpm} BPM · ${entry.baseBeats} bb · ${entry.speed.toFixed(3)} t/s</div>
+        </div>
+      `;
+      sectionCard.appendChild(header);
+
+      const tokenWrap = document.createElement('div');
+      tokenWrap.className = 'space-y-2';
+
+      sectionEvents.forEach((event) => {
+        const eventKey = getImportedEventKey(event);
+        const row = document.createElement('div');
+        row.dataset.eventKey = eventKey;
+        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 transition-colors';
+        row.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-[11px] leading-snug break-all">${event.raw || '(rest)'}</span>
+            <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">${event.tileType || 'single'}</span>
+          </div>
+          <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-400">
+            <span>start ${Number.isFinite(event.startSeconds) ? event.startSeconds.toFixed(2) : '0.00'}s</span>
+            <span>tracks ${(Array.isArray(event.trackIndices) ? event.trackIndices : [event.trackIndex]).join(',') || '-'}</span>
+          </div>
+        `;
+        debugRawEventMap.set(eventKey, row);
+        tokenWrap.appendChild(row);
+      });
+
+      sectionCard.appendChild(tokenWrap);
+      debugRawPanel.appendChild(sectionCard);
+    }
+
+    if (debugParsedPanel) {
+      const sectionCard = document.createElement('section');
+      sectionCard.dataset.debugSectionId = sectionKey;
+      sectionCard.className = 'rounded-2xl border border-gray-200 bg-gray-50/90 p-3';
+
+      const header = document.createElement('div');
+      header.className = 'flex items-start justify-between gap-3 mb-3';
+      header.innerHTML = `
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black text-gray-900">Section ${entry.id}</span>
+            <span data-debug-current-badge="1" class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-600">current</span>
+          </div>
+          <div class="text-[11px] text-gray-500 mt-1">id ${entry.id} · ${entry.bpm} BPM · ${entry.baseBeats} bb · ${entry.speed.toFixed(3)} t/s</div>
+        </div>
+      `;
+      sectionCard.appendChild(header);
+
+      const eventList = document.createElement('div');
+      eventList.className = 'space-y-2';
+
+      sectionParsedEvents.forEach((event) => {
+        const eventKey = getImportedEventKey(event);
+        const row = document.createElement('div');
+        row.dataset.eventKey = eventKey;
+        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 transition-colors';
+
+        const noteNames = getImportedEventNoteNames(event);
+        const notesHtml = noteNames.length
+          ? noteNames.map((noteName) => `<span data-debug-note-name="${noteName}" class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-gray-600">${noteName}</span>`).join(' ')
+          : '<span class="text-gray-400">rest</span>';
+        row.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-[11px] leading-snug break-all">${event.raw || '(rest)'}</span>
+            <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">${event.tileType || 'single'}</span>
+          </div>
+          <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-400">
+            <span>${Number.isFinite(event.durationBeats) ? event.durationBeats.toFixed(3) : '0.000'} beats</span>
+            <span>${Number.isFinite(event.durationSeconds) ? event.durationSeconds.toFixed(2) : '0.00'}s</span>
+            <span>note${noteNames.length === 1 ? '' : 's'} ${noteNames.length}</span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-1">${notesHtml}</div>
+        `;
+
+        debugParsedNoteMap.set(eventKey, Array.from(row.querySelectorAll('[data-debug-note-name]')));
+
+        debugParsedEventMap.set(eventKey, row);
+        eventList.appendChild(row);
+      });
+
+      sectionCard.appendChild(eventList);
+      debugParsedSectionMap.set(sectionKey, sectionCard);
+      debugParsedPanel.appendChild(sectionCard);
+    }
+  });
+
+  updateDebugCurrentSection();
+  if (debugLastPlayedEventKey) {
+    debugRawEventMap.forEach((eventEl, key) => {
+      if (eventEl) eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
+    });
+    debugParsedEventMap.forEach((eventEl, key) => {
+      if (eventEl) eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
+    });
+    debugParsedNoteMap.forEach((noteNodes, eventKey) => {
+      const isActiveEvent = eventKey === debugLastPlayedEventKey;
+      (Array.isArray(noteNodes) ? noteNodes : []).forEach((noteEl) => {
+        if (!noteEl) return;
+        const noteName = noteEl.dataset.debugNoteName;
+        noteEl.classList.toggle('debug-last-played-note', isActiveEvent && debugLastPlayedNoteNames.includes(noteName));
+      });
+    });
+  }
+}
+
+function clearImportedSong() {
+  importedSong = null;
+  importedSongs = [];
+  selectedImportedSongIndex = 0;
+  importedSongRawText = '';
+  importedSongLabel = '';
+  importedSongTitle = '';
+  importedSongDurationSeconds = 0;
+  importedSongSpawnCursor = 0;
+  importedSongTiles = [];
+  importedSongAudioEvents = [];
+  importedSongBaseSpeed = null;
+  importedSongSpeedLocked = false;
+  importedSongSpeedSchedule = [];
+  importedSongElapsedSeconds = 0;
+  buildDebugPanels(null);
+  if (pt2MusicSelect) {
+    pt2MusicSelect.innerHTML = '<option value="">Load a PT2 JSON first</option>';
+    pt2MusicSelect.disabled = true;
+  }
+  scheduledAudioNodes.forEach(node => {
+    try {
+      if (node && typeof node.stop === 'function') {
+        node.stop();
+      }
+    } catch (err) {}
+  });
+  scheduledAudioNodes = [];
+  setSongStatus('No PT2 file loaded. Pattern mode is active.');
+}
+
+function decodePT2DurationTag(tag) {
+  if (!tag) return 1;
+  let total = 0;
+  for (const char of tag.toUpperCase()) {
+    total += PT2_DURATION_WEIGHTS[char] || 0;
+  }
+  return total > 0 ? total : 1;
+}
+
+function splitPT2TopLevel(input) {
+  const tokens = [];
+  let current = '';
+  const stack = [];
+  const closing = { '(': ')', '[': ']', '{': '}', '<': '>' };
+  const opening = new Set(Object.keys(closing));
+  const isTopLevelSeparator = (char) => (char === ',' || char === ';') && stack.length === 0;
+
+  for (const char of input) {
+    if (isTopLevelSeparator(char)) {
+      const trimmed = current.trim();
+      if (trimmed) tokens.push(trimmed);
+      current = '';
+      continue;
+    }
+
+    if (opening.has(char)) {
+      stack.push(closing[char]);
+    } else if (stack.length > 0 && char === stack[stack.length - 1]) {
+      stack.pop();
+    }
+
+    current += char;
+  }
+
+  const trimmed = current.trim();
+  if (trimmed) tokens.push(trimmed);
+  return tokens;
+}
+
+function stripOuterPair(input, openChar, closeChar) {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith(openChar) || !trimmed.endsWith(closeChar)) {
+    return trimmed;
+  }
+
+  let depth = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (char === openChar) depth++;
+    if (char === closeChar) depth--;
+    if (depth === 0 && i < trimmed.length - 1) {
+      return trimmed;
+    }
+  }
+
+  return trimmed.slice(1, -1).trim();
+}
+
+function parsePT2NoteGroup(rawGroup) {
+  const cleaned = stripOuterPair(rawGroup, '(', ')').trim();
+  if (!cleaned) return [];
+
+  return cleaned.split(/[.,~]/).map(note => note.trim()).filter(Boolean).map(note => {
+    const durationMatch = note.match(/\[([^\]]+)\]\s*$/);
+    const effectMatch = note.match(/\{([^}]+)\}\s*$/);
+    const bareNote = note
+      .replace(/\{[^}]+\}\s*$/, '')
+      .replace(/\[[^\]]+\]\s*$/, '')
+      .trim();
+
+    return {
+      raw: note,
+      name: bareNote,
+      durationTag: durationMatch ? durationMatch[1].trim() : '',
+      effect: effectMatch ? effectMatch[1].trim() : ''
+    };
+  });
+}
+
+function parsePT2Block(rawBlock) {
+  let block = String(rawBlock || '').trim();
+  if (!block) return null;
+
+  if (!block.includes('[') && !block.includes('(') && !block.includes('<') && PT2_SPACE_WEIGHTS[block] !== undefined) {
+    return {
+      isRest: true,
+      durationRatio: PT2_SPACE_WEIGHTS[block],
+      durationTag: block,
+      effect: '',
+      notes: [],
+      noteCount: 0
+    };
+  }
+
+  const effectMatch = block.match(/\{([^}]+)\}\s*$/);
+  const effect = effectMatch ? effectMatch[1].trim() : '';
+  if (effectMatch) {
+    block = block.slice(0, effectMatch.index).trim();
+  }
+
+  const durationMatch = block.match(/\[([^\]]+)\]\s*$/);
+  const durationTag = durationMatch ? durationMatch[1].trim() : '';
+  const body = durationMatch ? block.slice(0, durationMatch.index).trim() : block;
+  const noteSource = body.startsWith('(') ? body : (body ? `(${body})` : '');
+  const notes = noteSource ? parsePT2NoteGroup(noteSource) : [];
+
+  return {
+    isRest: notes.length === 0,
+    durationRatio: decodePT2DurationTag(durationTag),
+    durationTag,
+    effect,
+    notes,
+    noteCount: notes.length
+  };
+}
+
+function parsePT2NoteGroupToken(rawToken) {
+  const token = String(rawToken || '').trim();
+  if (!token) return null;
+
+  const specialMatch = token.match(/^(\d+)<([\s\S]+)>$/);
+  if (specialMatch) {
+    const specialId = parseInt(specialMatch[1], 10);
+    const specialType = PT2_SPECIAL_TILE_MAP[specialId] || 'long';
+    const innerBlocks = splitPT2TopLevel(specialMatch[2].trim());
+    let durationRatio = 0;
+    const notes = [];
+
+    innerBlocks.forEach((innerBlock) => {
+      const parsedBlock = parsePT2Block(innerBlock);
+      if (!parsedBlock) return;
+      durationRatio += parsedBlock.durationRatio;
+      if (!parsedBlock.isRest) {
+        notes.push(...parsedBlock.notes);
+      }
+    });
+
+    return {
+      specialId,
+      specialType,
+      durationRatio: durationRatio > 0 ? durationRatio : 1,
+      notes,
+      noteCount: Math.max(notes.length, innerBlocks.filter(Boolean).length)
+    };
+  }
+
+  const parsedBlock = parsePT2Block(token);
+  if (!parsedBlock) return null;
+
+  return {
+    specialId: 0,
+    specialType: '',
+    durationRatio: parsedBlock.durationRatio,
+    notes: parsedBlock.notes,
+    noteCount: parsedBlock.isRest ? 0 : Math.max(parsedBlock.noteCount, 1)
+  };
+}
+
+function classifyPT2Tile(noteCount, durationRatio, specialType) {
+  if (specialType) return specialType;
+  // Unmarked PT2 blocks with duration ratio > 1 render as hold/long tiles.
+  if (durationRatio > 1) return 'long';
+  return 'single';
+}
+
+function pickColumnsForImportedTile(tileType, noteCount) {
+  if (tileType === 'combo') {
+    return [1, 2];
+  }
+
+  if (tileType === 'double') {
+    const optAValid = !lastSpawnedCols.includes(0) && !lastSpawnedCols.includes(2);
+    const optBValid = !lastSpawnedCols.includes(1) && !lastSpawnedCols.includes(3);
+    let chosenSet;
+
+    if (optAValid && optBValid) {
+      chosenSet = Math.random() < 0.5 ? [0, 2] : [1, 3];
+    } else if (optAValid) {
+      chosenSet = [0, 2];
+    } else if (optBValid) {
+      chosenSet = [1, 3];
+    } else {
+      chosenSet = Math.random() < 0.5 ? [0, 2] : [1, 3];
+    }
+
+    return Math.random() < 0.5 ? [chosenSet[0], chosenSet[1]] : [chosenSet[1], chosenSet[0]];
+  }
+
+  const available = [0, 1, 2, 3].filter(col => !lastSpawnedCols.includes(col));
+  const colsToPick = available.length > 0 ? available : [0, 1, 2, 3];
+  return [colsToPick[Math.floor(Math.random() * colsToPick.length)]];
+}
+
+function getPT2TileDurationRatio(note) {
+  const tag = note.durationTag || '';
+  return decodePT2DurationTag(tag);
+}
+
+function getImportedTileLengthRows(event, forceMinForLong) {
+  const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
+  const durationBeats = event && event.durationBeats ? event.durationBeats : baseBeats;
+  const ratio = durationBeats / baseBeats;
+  const length = Math.max(1, Math.ceil(ratio));
+  // Long tiles must be at least 2 rows to be visually/mechanically meaningful
+  if (forceMinForLong && length < 2) return 2;
+  return length;
+}
+
+function resolvePT2SectionBpm(music, fallbackBpm) {
+  const sectionBpm = parseFloat(music && music.bpm);
+  if (Number.isFinite(sectionBpm) && sectionBpm > 0) {
+    return sectionBpm;
+  }
+
+  const fallback = parseFloat(fallbackBpm);
+  if (Number.isFinite(fallback) && fallback > 0) {
+    return fallback;
+  }
+
+  return 120;
+}
+
+function resolvePT2SectionBaseBeats(music, fallbackBaseBeats = 1) {
+  const sectionBaseBeats = parseFloat(music && music.baseBeats);
+  if (Number.isFinite(sectionBaseBeats) && sectionBaseBeats > 0) {
+    return sectionBaseBeats;
+  }
+
+  const fallback = parseFloat(fallbackBaseBeats);
+  if (Number.isFinite(fallback) && fallback > 0) {
+    return fallback;
+  }
+
+  return 1;
+}
+
+function computePT2TilesPerSecond(bpm, baseBeats) {
+  const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
+  const safeBaseBeats = Number.isFinite(baseBeats) && baseBeats > 0 ? baseBeats : 1;
+  return safeBpm / (60 * safeBaseBeats);
+}
+
+function sortPT2MusicsById(musics) {
+  return [...musics].map((music, sourceIndex) => ({ music, sourceIndex })).sort((a, b) => {
+    const idA = parseInt(a.music && a.music.id, 10);
+    const idB = parseInt(b.music && b.music.id, 10);
+    const safeA = Number.isFinite(idA) ? idA : Number.MAX_SAFE_INTEGER;
+    const safeB = Number.isFinite(idB) ? idB : Number.MAX_SAFE_INTEGER;
+    if (safeA !== safeB) return safeA - safeB;
+    return a.sourceIndex - b.sourceIndex;
+  }).map((entry) => entry.music);
+}
+
+function buildImportedSongSpeedSchedule(song) {
+  const schedule = [];
+  let cursorSeconds = 0;
+
+  (Array.isArray(song.entries) ? song.entries : []).forEach((entry, index) => {
+    const bpm = resolvePT2SectionBpm(entry, song.baseBpm || song.bpm || 120);
+    const baseBeats = resolvePT2SectionBaseBeats(entry, song.baseBeats || 1);
+    const durationSeconds = parseFloat(entry && entry.durationSeconds ? entry.durationSeconds : 0) || 0;
+    const speed = computePT2TilesPerSecond(bpm, baseBeats);
+
+    schedule.push({
+      index,
+      id: entry.id,
+      startSeconds: cursorSeconds,
+      endSeconds: cursorSeconds + durationSeconds,
+      durationSeconds,
+      bpm,
+      baseBeats,
+      speed
+    });
+
+    cursorSeconds += durationSeconds;
+  });
+
+  return schedule;
+}
+
+function getImportedSongSectionAt(elapsedSeconds) {
+  if (!importedSongSpeedSchedule.length) {
+    return null;
+  }
+
+  const elapsed = Math.max(0, elapsedSeconds);
+  for (let i = importedSongSpeedSchedule.length - 1; i >= 0; i--) {
+    const section = importedSongSpeedSchedule[i];
+    if (elapsed >= section.startSeconds) {
+      return section;
+    }
+  }
+
+  return importedSongSpeedSchedule[0];
+}
+
+function getImportedSongSpeedAt(elapsedSeconds) {
+  const section = getImportedSongSectionAt(elapsedSeconds);
+  if (section) {
+    return section.speed;
+  }
+
+  return importedSongBaseSpeed || getStartSpeed();
+}
+
+function noteTokenToMidi(noteName) {
+  if (!noteName) return null;
+  const normalized = String(noteName).trim();
+  const cleaned = normalized
+    .replace(/^[\s(<\[]+/g, '')
+    .replace(/[\s>)\]]+$/g, '')
+    .replace(/\{[^}]*\}\s*$/g, '')
+    .replace(/\[[^\]]*\]\s*$/g, '')
+    .replace(/[>]+$/g, '')
+    .trim();
+
+  if (!cleaned || cleaned === 'mute' || cleaned === 'empty' || cleaned === 'chuanshao') {
+    return null;
+  }
+
+  const pitchMatch = cleaned.match(/([#b]?)([a-gA-G])(-?\d+)?/);
+  if (!pitchMatch) return null;
+
+  const accidental = pitchMatch[1];
+  const letter = pitchMatch[2].toLowerCase();
+  const octavePart = pitchMatch[3];
+  const semitoneOffsets = {
+    c: 0,
+    d: 2,
+    e: 4,
+    f: 5,
+    g: 7,
+    a: 9,
+    b: 11
+  };
+
+  // PT2 uses c/c1/c2 and A-3/A-1 style names; map them to scientific pitch via +3.
+  const scientificOctave = octavePart === undefined ? 3 : parseInt(octavePart, 10) + 3;
+  let midi = (scientificOctave + 1) * 12 + semitoneOffsets[letter];
+  if (accidental === '#') midi += 1;
+  if (accidental === 'b') midi -= 1;
+  return midi;
+}
+
+function noteTokenToFrequency(noteName) {
+  const midi = noteTokenToMidi(noteName);
+  if (midi === null) return null;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function getAudioVoiceFromInstrument(instrumentName) {
+  const normalized = (instrumentName || '').toLowerCase();
+  if (normalized.includes('bass')) return { type: 'square', detune: -12 };
+  if (normalized.includes('pluck')) return { type: 'triangle', detune: 0 };
+  if (normalized.includes('lead')) return { type: 'sawtooth', detune: 0 };
+  if (normalized.includes('drum') || normalized.includes('kick') || normalized.includes('snare') || normalized.includes('hat')) {
+    return { type: 'noise', detune: 0 };
+  }
+  return { type: 'triangle', detune: 0 };
+}
+
+function ensureAudioEngine() {
+  if (!audioContext) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return null;
+    audioContext = new AudioContextCtor();
+    audioGainNode = audioContext.createGain();
+    audioGainNode.gain.value = 1.0;
+    audioGainNode.connect(audioContext.destination);
+  }
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+  return audioContext;
+}
+
+function ensureSoundfontInstrument() {
+  if (soundfontInstrument) {
+    return Promise.resolve(soundfontInstrument);
+  }
+  if (soundfontInstrumentPromise) {
+    return soundfontInstrumentPromise;
+  }
+
+  const ctx = ensureAudioEngine();
+  const SoundFontCtor = window.SoundFont;
+  if (!ctx || typeof SoundFontCtor !== 'function') {
+    return Promise.resolve(null);
+  }
+
+  const soundfont = new SoundFontCtor();
+
+  const pickProgramId = () => {
+    const programs = Array.isArray(soundfont.programs) ? soundfont.programs : [];
+    const preferred = programs.find((program) => {
+      const name = String(program && (program.name || program.text || program.title || '')).toLowerCase();
+      return name.includes('piano') || name.includes('steinway') || name.includes('grand');
+    });
+    return (preferred || programs[0] || {}).id;
+  };
+
+  const pickBankId = () => {
+    const banks = Array.isArray(soundfont.banks) ? soundfont.banks : [];
+    return (banks[0] || {}).id;
+  };
+
+  soundfontInstrumentPromise = soundfont.loadSoundFontFromURL('./akai_steinway.sf2').then(() => {
+    const bankId = pickBankId();
+    const programId = pickProgramId();
+    if (bankId !== undefined) {
+      soundfont.bank = bankId;
+    }
+    if (programId !== undefined) {
+      soundfont.program = programId;
+    }
+
+    soundfontInstrument = {
+      play(midi, startTime, options = {}) {
+        if (typeof midi !== 'number' || Number.isNaN(midi)) return null;
+
+        const duration = Math.max(0.05, Number(options.duration) || 0.25);
+        const startDelayMs = Math.max(0, (startTime - (performance.now() / 1000)) * 1000);
+        const endDelayMs = startDelayMs + duration * 1000;
+
+        let active = true;
+        let noteStarted = false;
+        let startTimer = null;
+        let stopTimer = null;
+
+        const noteOff = () => {
+          if (!active) return;
+          active = false;
+          try {
+            soundfont.noteOff(midi);
+          } catch (err) {}
+        };
+
+        startTimer = window.setTimeout(() => {
+          if (!active) return;
+          noteStarted = true;
+          try {
+            soundfont.noteOn(midi);
+          } catch (err) {}
+        }, startDelayMs);
+
+        stopTimer = window.setTimeout(() => {
+          if (noteStarted) {
+            noteOff();
+          } else {
+            active = false;
+          }
+        }, endDelayMs);
+
+        return {
+          stop() {
+            active = false;
+            if (startTimer !== null) {
+              clearTimeout(startTimer);
+            }
+            if (stopTimer !== null) {
+              clearTimeout(stopTimer);
+            }
+            if (noteStarted) {
+              try {
+                soundfont.noteOff(midi);
+              } catch (err) {}
+            }
+          }
+        };
+      }
+    };
+
+    return soundfontInstrument;
+  }).catch((err) => {
+    console.warn('Unable to load akai_steinway.sf2; using synth fallback.', err);
+    return null;
+  }).finally(() => {
+    soundfontInstrumentPromise = null;
+  });
+
+  return soundfontInstrumentPromise;
+}
+
+function playSynthNote({ frequency, startTime, duration, instrumentName, velocity = 1 }) {
+  if (!audioContext || !frequency) return;
+
+  const voice = getAudioVoiceFromInstrument(instrumentName);
+  const osc = audioContext.createOscillator();
+  const amp = audioContext.createGain();
+  const endTime = startTime + Math.max(0.05, duration);
+  const attack = Math.min(0.02, duration * 0.2);
+  const release = Math.min(0.08, duration * 0.35);
+  const sustainLevel = voice.type === 'noise' ? 0.5 : 0.7;
+
+  if (voice.type === 'noise') {
+    const bufferSize = Math.max(1, Math.floor(audioContext.sampleRate * duration));
+    const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.35;
+    }
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(amp);
+    amp.connect(audioGainNode);
+    amp.gain.setValueAtTime(0.0001, startTime);
+    amp.gain.linearRampToValueAtTime(sustainLevel * velocity, startTime + attack);
+    amp.gain.setValueAtTime(sustainLevel * velocity, Math.max(startTime + attack, endTime - release));
+    amp.gain.linearRampToValueAtTime(0.0001, endTime);
+    source.start(startTime);
+    source.stop(endTime + 0.02);
+    scheduledAudioNodes.push(source);
+    return;
+  }
+
+  osc.type = voice.type;
+  osc.frequency.setValueAtTime(frequency, startTime);
+  if (voice.detune) {
+    osc.detune.setValueAtTime(voice.detune, startTime);
+  }
+  osc.connect(amp);
+  amp.connect(audioGainNode);
+  amp.gain.setValueAtTime(0.0001, startTime);
+  amp.gain.linearRampToValueAtTime(0.32 * velocity, startTime + attack);
+  amp.gain.setValueAtTime(0.32 * velocity, Math.max(startTime + attack, endTime - release));
+  amp.gain.linearRampToValueAtTime(0.0001, endTime);
+  osc.start(startTime);
+  osc.stop(endTime + 0.03);
+  scheduledAudioNodes.push(osc);
+}
+
+function buildPT2AudioEvents(parsedEvent, instrumentName) {
+  const notes = parsedEvent.notes.length > 0 ? parsedEvent.notes : [{ name: parsedEvent.name }];
+  return notes
+    .map(note => ({
+      midi: noteTokenToMidi(note.name),
+      frequency: noteTokenToFrequency(note.name),
+      name: note.name,
+      durationSeconds: parsedEvent.durationSeconds,
+      instrumentName,
+      velocity: note.effect && String(note.effect).toUpperCase().includes('V') ? 1.15 : 1
+    }))
+    .filter(event => event.frequency !== null || event.midi !== null);
+}
+
+function playImportedTileAudio(tile) {
+  if (!importedSong || !tile || tile.audioPlayed) return;
+  const ctx = ensureAudioEngine();
+  if (!ctx || !audioGainNode) return;
+
+  const audioEvents = buildPT2AudioEvents(
+    {
+      notes: tile.notes || [],
+      durationSeconds: tile.durationSeconds || 0.25
+    },
+    tile.trackInstrument
+  );
+
+  const startAt = ctx.currentTime + 0.01;
+  if (soundfontInstrument) {
+    audioEvents.forEach((audioEvent) => {
+      const node = soundfontInstrument.play(audioEvent.midi, startAt, {
+        duration: Math.max(0.08, Math.min(1.2, audioEvent.durationSeconds)),
+        gain: Math.min(1, 0.98 * audioEvent.velocity)
+      });
+      if (node) {
+        scheduledAudioNodes.push(node);
+      }
+    });
+  } else {
+    ensureSoundfontInstrument();
+    audioEvents.forEach((audioEvent) => {
+      playSynthNote({
+        frequency: audioEvent.frequency,
+        startTime: startAt,
+        duration: Math.max(0.08, Math.min(0.8, audioEvent.durationSeconds)),
+        instrumentName: audioEvent.instrumentName,
+        velocity: audioEvent.velocity
+      });
+    });
+  }
+
+  tile.audioPlayed = true;
+}
+
+function mergePT2Events(events) {
+  const mergedByTime = new Map();
+  const epsilon = 0.001;
+  const TILE_TYPE_PRIORITY = { combo: 4, long: 3, double: 2, single: 1 };
+
+  const applyLeadTrackTileFields = (target, source) => {
+    target.raw = source.raw;
+    target.durationSeconds = source.durationSeconds;
+    target.durationBeats = source.durationBeats;
+    target.tileType = source.tileType;
+    target.specialType = source.specialType;
+    target.baseBeats = source.baseBeats;
+    target.leadTrackIndex = source.trackIndex;
+    target.songIndex = source.songIndex;
+    target.musicId = source.musicId;
+  };
+
+  const shouldPreferLeadTile = (existing, event) => {
+    if (event.trackIndex === 0 && existing.leadTrackIndex !== 0) return true;
+    if (existing.leadTrackIndex === 0 && event.trackIndex !== 0) return false;
+    return (TILE_TYPE_PRIORITY[event.tileType] || 0) > (TILE_TYPE_PRIORITY[existing.tileType] || 0);
+  };
+
+  events.forEach((event) => {
+    const bucketKey = Math.round(event.startSeconds / epsilon) * epsilon;
+    const existing = mergedByTime.get(bucketKey);
+    const notes = event.notes && event.notes.length ? event.notes : [{ name: event.raw || '' }];
+
+    if (!existing) {
+      mergedByTime.set(bucketKey, {
+        raw: event.raw,
+        startSeconds: event.startSeconds,
+        durationSeconds: event.durationSeconds,
+        durationBeats: event.durationBeats,
+        trackIndices: [event.trackIndex],
+        trackInstrument: event.trackInstrument,
+        notes: [...notes],
+        noteCount: notes.length,
+        tileType: event.tileType,
+        specialType: event.specialType,
+        baseBeats: event.baseBeats,
+        leadTrackIndex: event.trackIndex,
+        songIndex: event.songIndex,
+        musicId: event.musicId
+      });
+      return;
+    }
+
+    existing.trackIndices.push(event.trackIndex);
+    existing.notes.push(...notes);
+    existing.noteCount = existing.notes.length;
+    existing.trackInstrument = existing.trackInstrument || event.trackInstrument;
+
+    if (shouldPreferLeadTile(existing, event)) {
+      applyLeadTrackTileFields(existing, event);
+    } else {
+      existing.durationSeconds = Math.max(existing.durationSeconds, event.durationSeconds);
+      existing.durationBeats = Math.max(existing.durationBeats, event.durationBeats);
+      existing.specialType = existing.specialType || event.specialType;
+      existing.baseBeats = existing.baseBeats || event.baseBeats;
+    }
+  });
+
+  return Array.from(mergedByTime.values()).sort((a, b) => a.startSeconds - b.startSeconds);
+}
+
+function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
+  const fallbackBpm = sectionMeta && sectionMeta.fallbackBpm;
+  const fallbackBaseBeats = sectionMeta && sectionMeta.fallbackBaseBeats;
+  const bpm = resolvePT2SectionBpm(music, fallbackBpm);
+  const baseBeats = resolvePT2SectionBaseBeats(music, fallbackBaseBeats);
+  const musicId = sectionMeta && sectionMeta.id;
+  const songIndex = sectionMeta && sectionMeta.songIndex;
+  const scores = Array.isArray(music.scores) ? music.scores : [];
+  const instruments = Array.isArray(music.instruments) ? music.instruments : [];
+  const alternatives = Array.isArray(music.alternatives) ? music.alternatives : [];
+  const events = [];
+  let songEndBeats = 0;
+
+  scores.forEach((score, trackIndex) => {
+    const tokens = splitPT2TopLevel(String(score || ''));
+    let cursorBeats = 0;
+    const trackInstrument = instruments[trackIndex] || alternatives[trackIndex] || instruments[0] || 'piano';
+
+    tokens.forEach((rawToken) => {
+      const token = rawToken.trim();
+      if (!token) return;
+
+      // Detect PT2 space/rest tokens: bare uppercase letters Q-Y without brackets
+      if (!token.includes('[') && !token.includes('<') && !token.includes('(') && PT2_SPACE_WEIGHTS[token] !== undefined) {
+        const spaceBeats = baseBeats * PT2_SPACE_WEIGHTS[token];
+        cursorBeats += spaceBeats;
+        if (cursorBeats > songEndBeats) songEndBeats = cursorBeats;
+        return;
+      }
+
+      const parsedToken = parsePT2NoteGroupToken(token);
+      if (!parsedToken) return;
+
+      const durationRatio = parsedToken.durationRatio;
+      const noteGroups = parsedToken.notes;
+      const isRest = parsedToken.noteCount === 0 && noteGroups.length === 0;
+      const specialType = parsedToken.specialType;
+      const durationBeats = baseBeats * durationRatio;
+      const durationSeconds = durationBeats * (60 / bpm);
+      const noteCount = parsedToken.noteCount || noteGroups.length || 1;
+      const tileType = classifyPT2Tile(noteCount, durationRatio, specialType);
+
+      if (!isRest) {
+        events.push({
+          raw: token,
+          musicId,
+          songIndex,
+          trackIndex,
+          trackInstrument,
+          startBeats: cursorBeats,
+          startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)),
+          durationBeats,
+          durationSeconds,
+          noteCount,
+          tileType,
+          specialId: parsedToken.specialId,
+          notes: noteGroups,
+          specialType,
+          bpm,
+          baseBeats
+        });
+      }
+
+      cursorBeats += durationBeats;
+      if (cursorBeats > songEndBeats) {
+        songEndBeats = cursorBeats;
+      }
+    });
+  });
+
+  return {
+    id: musicId,
+    songIndex,
+    bpm,
+    baseBeats,
+    events,
+    durationSeconds: songEndBeats * (60 / bpm),
+    instruments,
+    alternatives
+  };
+}
+
+function parsePT2SongData(jsonData) {
+  if (!jsonData || typeof jsonData !== 'object') {
+    throw new Error('PT2 JSON must be an object.');
+  }
+
+  const musics = Array.isArray(jsonData.musics) ? jsonData.musics : [];
+  if (!musics.length) {
+    throw new Error('PT2 JSON is missing a musics array.');
+  }
+
+  const rootBaseBpm = parseFloat(jsonData.baseBpm);
+  const sortedMusics = sortPT2MusicsById(musics);
+  const events = [];
+  const entries = [];
+  let songOffsetSeconds = 0;
+
+  sortedMusics.forEach((music, songIndex) => {
+    const parsedId = parseInt(music && music.id, 10);
+    const sectionId = Number.isFinite(parsedId) ? parsedId : songIndex + 1;
+    const parsedMusic = parsePT2MusicEntry(music, {
+      id: sectionId,
+      songIndex,
+      fallbackBpm: rootBaseBpm,
+      fallbackBaseBeats: sortedMusics[0] ? resolvePT2SectionBaseBeats(sortedMusics[0], 1) : 1
+    }, songOffsetSeconds);
+
+    entries.push({
+      id: sectionId,
+      songIndex,
+      bpm: parsedMusic.bpm,
+      baseBeats: parsedMusic.baseBeats,
+      speed: computePT2TilesPerSecond(parsedMusic.bpm, parsedMusic.baseBeats),
+      startSeconds: songOffsetSeconds,
+      instruments: parsedMusic.instruments,
+      alternatives: parsedMusic.alternatives,
+      durationSeconds: parsedMusic.durationSeconds,
+      scores: Array.isArray(music.scores) ? [...music.scores] : []
+    });
+    events.push(...parsedMusic.events);
+    songOffsetSeconds += parsedMusic.durationSeconds;
+  });
+
+  entries.forEach((entry, index) => {
+    entry.endSeconds = entry.startSeconds + entry.durationSeconds;
+    entry.index = index;
+  });
+
+  events.sort((a, b) => {
+    if (a.startSeconds !== b.startSeconds) return a.startSeconds - b.startSeconds;
+    if (a.songIndex !== b.songIndex) return a.songIndex - b.songIndex;
+    if (a.trackIndex !== b.trackIndex) return a.trackIndex - b.trackIndex;
+    return a.startBeats - b.startBeats;
+  });
+
+  const playableEvents = mergePT2Events(events);
+  const totalDurationSeconds = entries.reduce((sum, entry) => sum + entry.durationSeconds, 0);
+  const firstEntry = entries[0] || null;
+
+  const song = {
+    title: sortedMusics.length === 1 && sortedMusics[0].id ? `Music ${sortedMusics[0].id}` : 'Imported PT2 song',
+    bpm: firstEntry ? firstEntry.bpm : resolvePT2SectionBpm(null, rootBaseBpm),
+    baseBeats: firstEntry ? firstEntry.baseBeats : 1,
+    trackCount: entries.reduce((sum, entry) => sum + (entry.instruments ? entry.instruments.length : 0), 0),
+    musicCount: sortedMusics.length,
+    entries,
+    events,
+    playableEvents,
+    durationSeconds: totalDurationSeconds,
+    instruments: firstEntry ? firstEntry.instruments : [],
+    alternatives: firstEntry ? firstEntry.alternatives : [],
+    baseBpm: Number.isFinite(rootBaseBpm) && rootBaseBpm > 0 ? rootBaseBpm : (firstEntry ? firstEntry.bpm : 120)
+  };
+
+  song.speedSchedule = buildImportedSongSpeedSchedule(song);
+  return song;
+}
+
+function buildImportedSongSection(song, selectedIndex = 0) {
+  if (!song || !Array.isArray(song.entries) || !song.entries.length) {
+    return null;
+  }
+
+  const safeIndex = Math.min(Math.max(0, selectedIndex | 0), song.entries.length - 1);
+  const sourceEntry = song.entries[safeIndex];
+  if (!sourceEntry) {
+    return null;
+  }
+
+  const sectionStartSeconds = Number.isFinite(sourceEntry.startSeconds) ? sourceEntry.startSeconds : 0;
+  const sectionEvents = (Array.isArray(song.events) ? song.events : [])
+    .filter((event) => event.songIndex === sourceEntry.songIndex)
+    .map((event) => ({
+      ...event,
+      songIndex: 0,
+      startSeconds: Math.max(0, event.startSeconds - sectionStartSeconds)
+    }))
+    .sort((a, b) => {
+      if (a.startSeconds !== b.startSeconds) return a.startSeconds - b.startSeconds;
+      if (a.trackIndex !== b.trackIndex) return a.trackIndex - b.trackIndex;
+      return a.startBeats - b.startBeats;
+    });
+
+  const sectionEntry = {
+    ...sourceEntry,
+    songIndex: 0,
+    startSeconds: 0,
+    endSeconds: sourceEntry.durationSeconds,
+    index: 0,
+    scores: Array.isArray(sourceEntry.scores) ? [...sourceEntry.scores] : []
+  };
+
+  const sectionSong = {
+    title: sourceEntry.id ? `Music ${sourceEntry.id}` : 'Imported PT2 song',
+    bpm: sourceEntry.bpm,
+    baseBeats: sourceEntry.baseBeats,
+    trackCount: sourceEntry.instruments ? sourceEntry.instruments.length : 0,
+    musicCount: 1,
+    entries: [sectionEntry],
+    events: sectionEvents,
+    playableEvents: mergePT2Events(sectionEvents),
+    durationSeconds: sourceEntry.durationSeconds,
+    instruments: sourceEntry.instruments || [],
+    alternatives: sourceEntry.alternatives || [],
+    baseBpm: Number.isFinite(song.baseBpm) && song.baseBpm > 0 ? song.baseBpm : sourceEntry.bpm
+  };
+
+  sectionSong.speedSchedule = buildImportedSongSpeedSchedule(sectionSong);
+  return sectionSong;
+}
+
+function buildImportedSongTiles(song) {
+  const playableEvents = Array.isArray(song.playableEvents) ? song.playableEvents : song.events;
+  const builtTiles = [];
+  let currentY = 50;
+  lastSpawnedCols = [];
+
+  builtTiles.push({
+    id: nextTileId++,
+    col: 1,
+    y: currentY,
+    type: 'single',
+    clicked: false,
+    isStart: true,
+    fromImportedSong: true,
+    startSeconds: 0,
+    durationSeconds: 0,
+    notes: [],
+    trackInstrument: 'piano',
+    audioPlayed: false
+  });
+
+  currentY -= 25;
+  playableEvents.forEach((event) => {
+    const tileType = event.tileType || 'single';
+    const isLong = tileType === 'long';
+    const isCombo = tileType === 'combo';
+    const isDouble = tileType === 'double';
+    const tileLength = isLong
+      ? getImportedTileLengthRows(event, true)
+      : (isCombo ? 2 : 1);
+    const chosenCols = pickColumnsForImportedTile(tileType, event.noteCount || 1);
+    const sourceEventKey = getImportedEventKey(event);
+    const sourceNoteNames = getImportedEventNoteNames(event);
+
+    if (isDouble) {
+      // Double tiles: spawn two single tiles at the same Y in different columns
+      chosenCols.forEach((col) => {
+        builtTiles.push({
+          id: nextTileId++,
+          col: col,
+          y: currentY,
+          type: 'single',
+          clicked: false,
+          isStart: false,
+          fromImportedSong: true,
+          startSeconds: event.startSeconds,
+          durationSeconds: event.durationSeconds,
+          durationBeats: event.durationBeats,
+          notes: event.notes,
+          trackInstrument: event.trackInstrument,
+          chordSize: event.notes.length,
+          sourceEventKey,
+          sourceSectionId: event.musicId,
+          sourceRaw: event.raw,
+          sourceNoteNames,
+          audioPlayed: false
+        });
+      });
+      lastSpawnedCols = chosenCols;
+      currentY -= 25;
+    } else if (isCombo) {
+      // Combo tiles: span two columns, require multiple taps
+      const comboTaps = Math.max(2, event.noteCount || event.notes.length || 3);
+      builtTiles.push({
+        id: nextTileId++,
+        col: 1,
+        y: currentY - (tileLength - 1) * 25,
+        type: 'combo',
+        clicked: false,
+        isStart: false,
+        fromImportedSong: true,
+        startSeconds: event.startSeconds,
+        durationSeconds: event.durationSeconds,
+        durationBeats: event.durationBeats,
+        notes: event.notes,
+        trackInstrument: event.trackInstrument,
+        chordSize: event.notes.length,
+        sourceEventKey,
+        sourceSectionId: event.musicId,
+        sourceRaw: event.raw,
+        sourceNoteNames,
+        audioPlayed: false,
+        taps: comboTaps,
+        remainingTaps: comboTaps,
+        spanCols: [1, 2]
+      });
+      lastSpawnedCols = [1, 2];
+      currentY -= tileLength * 25;
+    } else if (isLong) {
+      // Long/hold tiles
+      const chosenCol = chosenCols[0];
+      builtTiles.push({
+        id: nextTileId++,
+        col: chosenCol,
+        y: currentY - (tileLength - 1) * 25,
+        type: 'long',
+        clicked: false,
+        isStart: false,
+        fromImportedSong: true,
+        startSeconds: event.startSeconds,
+        durationSeconds: event.durationSeconds,
+        durationBeats: event.durationBeats,
+        notes: event.notes,
+        trackInstrument: event.trackInstrument,
+        chordSize: event.notes.length,
+        sourceEventKey,
+        sourceSectionId: event.musicId,
+        sourceRaw: event.raw,
+        sourceNoteNames,
+        audioPlayed: false,
+        length: tileLength,
+        held: false,
+        holdProgress: 0,
+        holdCompleted: false,
+        tapped: false,
+        pressY: undefined
+      });
+      lastSpawnedCols = [chosenCol];
+      currentY -= tileLength * 25;
+    } else {
+      // Single tiles (default)
+      const chosenCol = chosenCols[0];
+      builtTiles.push({
+        id: nextTileId++,
+        col: chosenCol,
+        y: currentY,
+        type: 'single',
+        clicked: false,
+        isStart: false,
+        fromImportedSong: true,
+        startSeconds: event.startSeconds,
+        durationSeconds: event.durationSeconds,
+        durationBeats: event.durationBeats,
+        notes: event.notes,
+        trackInstrument: event.trackInstrument,
+        chordSize: event.notes.length,
+        sourceEventKey,
+        sourceSectionId: event.musicId,
+        sourceRaw: event.raw,
+        sourceNoteNames,
+        audioPlayed: false
+      });
+      lastSpawnedCols = [chosenCol];
+      currentY -= 25;
+    }
+  });
+
+  return builtTiles;
+}
+
+function formatPT2SectionSpeedSummary(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => `id ${entry.id}: ${entry.bpm} BPM / ${entry.baseBeats} bb = ${entry.speed.toFixed(3)} t/s`)
+    .join(' · ');
+}
+
+function loadImportedSongFromJsonText(text, label = 'Imported PT2 file') {
+  const parsed = JSON.parse(text);
+  const song = parsePT2SongData(parsed);
+  importedSongRawText = text;
+  importedSong = song;
+  importedSongs = Array.isArray(song.entries) ? song.entries : [];
+  selectedImportedSongIndex = 0;
+  importedSongLabel = label;
+  importedSongTitle = song.title;
+  importedSongDurationSeconds = song.durationSeconds;
+  importedSongSpeedSchedule = song.speedSchedule || buildImportedSongSpeedSchedule(song);
+  importedSongBaseSpeed = importedSongSpeedSchedule[0]
+    ? importedSongSpeedSchedule[0].speed
+    : computePT2TilesPerSecond(song.bpm, song.baseBeats);
+  importedSongSpeedLocked = true;
+  importedSongElapsedSeconds = 0;
+  importedSongTiles = [];
+  importedSongAudioEvents = [];
+  if (pt2MusicSelect) {
+    pt2MusicSelect.innerHTML = '';
+    importedSongs.forEach((entry, idx) => {
+      const option = document.createElement('option');
+      option.value = String(idx);
+      option.textContent = `id ${entry.id} · ${entry.bpm} BPM · ${entry.baseBeats} bb · ${entry.speed.toFixed(3)} t/s · ${entry.durationSeconds.toFixed(1)}s`;
+      pt2MusicSelect.appendChild(option);
+    });
+    pt2MusicSelect.disabled = importedSongs.length <= 1;
+    pt2MusicSelect.value = '0';
+  }
+  setSongStatus(`Loaded ${label}: ${importedSongs.length} section(s) by id — ${formatPT2SectionSpeedSummary(importedSongs)}.`);
+  buildDebugPanels(song);
+  scheduleImportedSongAudio(song);
+  return song;
+}
+
+function scheduleImportedSongAudio(song) {
+  ensureAudioEngine();
+  ensureSoundfontInstrument();
+}
+
 // Initial load updates
 loadSettings();
 updateKeybindHints();
 updateBestScoreDisplay();
+clearImportedSong();
+
+if (pt2JsonInput) {
+  pt2JsonInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      loadImportedSongFromJsonText(text, file.name);
+    } catch (err) {
+      clearImportedSong();
+      setSongStatus(`Failed to load ${file.name}: ${err.message}`);
+    }
+  });
+}
+
+if (loadSampleJsonBtn) {
+  loadSampleJsonBtn.addEventListener('click', async () => {
+    try {
+      const response = await fetch('Horseman.json', { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const text = await response.text();
+      loadImportedSongFromJsonText(text, 'Horseman.json');
+    } catch (err) {
+      setSongStatus(`Could not load Horseman.json automatically: ${err.message}`);
+    }
+  });
+}
+
+if (clearSongBtn) {
+  clearSongBtn.addEventListener('click', () => {
+    clearImportedSong();
+    if (pt2JsonInput) {
+      pt2JsonInput.value = '';
+    }
+  });
+}
+
+if (pt2MusicSelect) {
+  pt2MusicSelect.addEventListener('change', () => {
+    selectedImportedSongIndex = parseInt(pt2MusicSelect.value, 10) || 0;
+    const entry = importedSongs[selectedImportedSongIndex];
+    if (entry) {
+      setSongStatus(`Section id ${entry.id}: ${entry.bpm} BPM, ${entry.baseBeats} baseBeats → ${entry.speed.toFixed(3)} t/s (${entry.durationSeconds.toFixed(1)}s segment).`);
+    }
+  });
+}
 
 // Keybind setter logic
 let bindingColIdx = null;
@@ -452,12 +1969,17 @@ function startGame() {
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
 
+  ensureAudioEngine();
+
   // Reset state
   gameActive = true;
   gameStarted = false;
   timeElapsed = 0;
   
-  const startSpeed = getStartSpeed();
+  const useImportedSong = !!importedSong;
+  const startSpeed = useImportedSong
+    ? (importedSongSpeedSchedule[0] ? importedSongSpeedSchedule[0].speed : getStartSpeed())
+    : getStartSpeed();
   currentSpeed = startSpeed;
   
   updateHUD(currentSpeed);
@@ -470,24 +1992,35 @@ function startGame() {
   nextTileId = 0;
   activeKeys = { 0: false, 1: false, 2: false, 3: false };
 
-  // Parse pattern
-  parsedPattern = parsePattern(textareaCustomPattern.value);
-  currentPatternIndex = 0;
+  if (useImportedSong) {
+    ensureSoundfontInstrument();
+    frozenSpeed = null;
+    importedSongElapsedSeconds = 0;
+    lastSpawnY = 50;
+    lastSpawnedCols = [];
+    tiles = buildImportedSongTiles(importedSong);
+    importedSongTiles = tiles;
+    updateDebugCurrentSection();
+  } else {
+    // Parse pattern
+    parsedPattern = parsePattern(textareaCustomPattern.value);
+    currentPatternIndex = 0;
 
-  // Spawn initial tiles
-  lastSpawnY = 50;
-  lastSpawnedCols = [];
-  frozenSpeed = null;
-  for (let i = 0; i < 4; i++) {
-    const isStartRow = i === 0;
-    const maxLength = spawnPatternRow(lastSpawnY, { forceSingle: isStartRow });
-    if (isStartRow) {
-      const startTile = tiles.find(t => t.y === lastSpawnY && t.type === 'single');
-      if (startTile) {
-        startTile.isStart = true;
+    // Spawn initial tiles
+    lastSpawnY = 50;
+    lastSpawnedCols = [];
+    frozenSpeed = null;
+    for (let i = 0; i < 4; i++) {
+      const isStartRow = i === 0;
+      const maxLength = spawnPatternRow(lastSpawnY, { forceSingle: isStartRow });
+      if (isStartRow) {
+        const startTile = tiles.find(t => t.y === lastSpawnY && t.type === 'single');
+        if (startTile) {
+          startTile.isStart = true;
+        }
       }
+      lastSpawnY -= maxLength * 25;
     }
-    lastSpawnY -= maxLength * 25;
   }
 
   renderTiles();
@@ -580,7 +2113,6 @@ function playHitAnimation(colIdx, hitContext, tile) {
     ({ x, y } = getKeyboardHitPosition(colIdx, tile));
   }
   spawnHitRipple(x, y);
-
   if (tile && tile.type === 'combo') {
     const el = document.querySelector(`[data-tile-id="${tile.id}"]`);
     if (el) {
@@ -619,6 +2151,13 @@ function handleColumnInputDown(colIdx, hitContext) {
   if (matchingTile) {
     if (!gameStarted) {
       gameStarted = true;
+      if (importedSong && matchingTile.isStart) {
+        ensureAudioEngine();
+      }
+    }
+
+    if (matchingTile.fromImportedSong) {
+      updateDebugLastPlayedState(matchingTile);
     }
 
     playHitAnimation(colIdx, hitContext, matchingTile);
@@ -626,6 +2165,9 @@ function handleColumnInputDown(colIdx, hitContext) {
     if (matchingTile.type === 'single') {
       matchingTile.clicked = true;
       playClickVisual(matchingTile.id);
+      if (matchingTile.fromImportedSong) {
+        playImportedTileAudio(matchingTile);
+      }
     } else if (matchingTile.type === 'combo') {
       const wasUntouched = matchingTile.remainingTaps === matchingTile.taps;
       matchingTile.remainingTaps--;
@@ -659,6 +2201,9 @@ function handleColumnInputDown(colIdx, hitContext) {
       const el = document.querySelector(`[data-tile-id="${matchingTile.id}"]`);
       if (el) {
         el.classList.add('tile-holding');
+      }
+      if (matchingTile.fromImportedSong) {
+        playImportedTileAudio(matchingTile);
       }
     }
   } else {
@@ -700,12 +2245,18 @@ function gameLoop(time) {
   lastTime = time;
 
   if (gameStarted) {
-    const startSpeed = getStartSpeed();
+    const importedMode = !!importedSong;
+    const startSpeed = importedMode ? getImportedSongSpeedAt(0) : getStartSpeed();
     const accel = parseFloat(inputAccel.value) || 0.07;
-    const comboInSlowdown = getComboInSlowdownPhase();
+    const comboInSlowdown = importedMode ? null : getComboInSlowdownPhase();
     let effectiveSpeed;
 
-    if (comboInSlowdown && frozenSpeed !== null) {
+    if (importedMode) {
+      importedSongElapsedSeconds += dt;
+      currentSpeed = getImportedSongSpeedAt(importedSongElapsedSeconds);
+      effectiveSpeed = currentSpeed;
+      updateDebugCurrentSection();
+    } else if (comboInSlowdown && frozenSpeed !== null) {
       currentSpeed = frozenSpeed;
       effectiveSpeed = getComboEffectiveSpeed(frozenSpeed, comboInSlowdown.remainingTaps);
     } else {
@@ -747,11 +2298,13 @@ function gameLoop(time) {
       return !((t.clicked || t.tapped) && t.y > 100);
     });
 
-    lastSpawnY += movement;
+    if (!importedMode) {
+      lastSpawnY += movement;
 
-    // Keep spawning tiles using the independent lastSpawnY tracker
-    while (lastSpawnY > -25) {
-      lastSpawnY = lastSpawnY - spawnPatternRow(lastSpawnY) * 25;
+      // Keep spawning tiles using the independent lastSpawnY tracker
+      while (lastSpawnY > -25) {
+        lastSpawnY = lastSpawnY - spawnPatternRow(lastSpawnY) * 25;
+      }
     }
   }
 

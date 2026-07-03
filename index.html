@@ -6,6 +6,8 @@
   <title>Raining Tiles - Piano Tiles 2 Clone</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SF2 soundfont loader -->
+  <script src="https://unpkg.com/sf2-player"></script>
   <!-- Custom CSS for fonts and animations -->
   <link rel="stylesheet" href="style.css">
   <style>
@@ -15,10 +17,20 @@
     }
   </style>
 </head>
-<body class="h-full flex items-center justify-center select-none bg-[#f3f4f6]">
+<body class="h-full select-none bg-[#f3f4f6] overflow-hidden">
 
-  <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
-  <div class="relative h-screen w-[50vh] max-w-full glass-dark shadow-2xl border-x border-gray-250 overflow-hidden flex flex-col justify-between">
+  <div class="relative flex h-screen w-full items-center justify-center gap-3 p-3">
+    <!-- Raw debug panel -->
+    <aside class="hidden xl:flex shrink-0 h-full w-[280px] max-w-[28vw] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/90 backdrop-blur-md shadow-xl">
+      <div class="border-b border-gray-200 px-4 py-3">
+        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Raw Data</p>
+        <p class="text-xs text-gray-500 mt-1">Last played tile highlighted</p>
+      </div>
+      <div id="debug-raw-panel" class="flex-1 overflow-y-auto p-3 space-y-3"></div>
+    </aside>
+
+    <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
+    <div class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 overflow-hidden flex flex-col justify-between">
     
     <!-- Columns (4 columns) -->
     <div id="game-board" class="absolute inset-0 flex z-0">
@@ -58,6 +70,29 @@
         RAINING TILES
       </h1>
       <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs">Tap the black tiles in order. Don't touch any white space!</p>
+
+      <!-- Song Import -->
+      <div class="w-full max-w-xs mb-5 flex flex-col gap-2">
+        <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Piano Tiles 2 JSON</label>
+        <input id="pt2-json-input" type="file" accept=".json,application/json" class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-gray-800 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
+        <div class="flex flex-col gap-1">
+          <label for="pt2-music-select" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Music Entry</label>
+          <select id="pt2-music-select" class="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+            <option value="">Load a PT2 JSON first</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button id="load-sample-json-btn" class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-all active:scale-[0.98]">
+            Load Horseman.json
+          </button>
+          <button id="clear-song-btn" class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]">
+            Pattern Mode
+          </button>
+        </div>
+        <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1">
+          No PT2 file loaded. Pattern mode is active.
+        </div>
+      </div>
 
       <!-- High Score Info -->
       <div class="mb-6 flex gap-4 text-xs text-gray-500">
@@ -188,6 +223,16 @@
       </div>
     </div>
 
+    </div>
+
+    <!-- Parsed debug panel -->
+    <aside class="hidden xl:flex shrink-0 h-full w-[320px] max-w-[32vw] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/90 backdrop-blur-md shadow-xl">
+      <div class="border-b border-gray-200 px-4 py-3">
+        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Parsed Data</p>
+        <p class="text-xs text-gray-500 mt-1">Engine speed, section, and note view</p>
+      </div>
+      <div id="debug-parsed-panel" class="flex-1 overflow-y-auto p-3 space-y-3"></div>
+    </aside>
   </div>
 
   <!-- Game Logic Script -->

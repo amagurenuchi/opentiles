@@ -268,3 +268,8 @@ body {
   background: #111827 !important;
   color: #ffffff !important;
 }
+
+#debug-raw-panel,
+#debug-parsed-panel {
+  scroll-behavior: auto;
+}

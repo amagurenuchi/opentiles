@@ -196,6 +196,36 @@ function getImportedSectionIdForElapsedSeconds(elapsedSeconds) {
   return section ? section.id : null;
 }
 
+function getImportedSectionIdForCurrentTile() {
+  if (!gameActive) {
+    return null;
+  }
+
+  const lowestTile = getLowestUnclickedTile();
+  if (lowestTile && lowestTile.sourceSectionId !== undefined && lowestTile.sourceSectionId !== null) {
+    return lowestTile.sourceSectionId;
+  }
+
+  return null;
+}
+
+function getImportedPlaybackSection(elapsedSeconds = importedSongElapsedSeconds) {
+  const sectionId = getImportedSectionIdForCurrentTile();
+  if (sectionId !== null && sectionId !== undefined) {
+    const matchingSection = importedSongSpeedSchedule.find((section) => String(section.id) === String(sectionId));
+    if (matchingSection) {
+      return matchingSection;
+    }
+  }
+
+  return getImportedSongSectionAt(elapsedSeconds);
+}
+
+function getImportedSectionIdForPlayback(elapsedSeconds = importedSongElapsedSeconds) {
+  const section = getImportedPlaybackSection(elapsedSeconds);
+  return section ? section.id : null;
+}
+
 function clearDebugPanels() {
   if (debugRawPanel) debugRawPanel.innerHTML = '';
   if (debugParsedPanel) debugParsedPanel.innerHTML = '';
@@ -223,10 +253,10 @@ function scrollDebugPanels() {
     const parsedSectionEl = debugParsedSectionMap.get(sectionKey) || null;
 
     if (rawSectionEl) {
-      rawSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      rawSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
     }
     if (parsedSectionEl) {
-      parsedSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      parsedSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
     }
 
     debugLastScrolledSectionId = sectionId;
@@ -239,17 +269,17 @@ function scrollDebugPanels() {
   const parsedEventEl = debugParsedEventMap.get(eventKey) || null;
 
   if (rawEventEl) {
-    rawEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    rawEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
   }
   if (parsedEventEl) {
-    parsedEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    parsedEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
   }
 
   debugLastScrolledEventKey = eventKey;
 }
 
 function updateDebugCurrentSection() {
-  const sectionId = importedSong ? getImportedSectionIdForElapsedSeconds(importedSongElapsedSeconds) : null;
+  const sectionId = importedSong ? getImportedSectionIdForPlayback(importedSongElapsedSeconds) : null;
   debugCurrentSectionId = sectionId;
 
   debugParsedSectionMap.forEach((sectionEl, key) => {
@@ -375,7 +405,7 @@ function buildDebugPanels(song) {
         const eventKey = getImportedEventKey(event);
         const row = document.createElement('div');
         row.dataset.eventKey = eventKey;
-        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 transition-colors';
+        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700';
         row.innerHTML = `
           <div class="flex items-center justify-between gap-2">
             <span class="font-mono text-[11px] leading-snug break-all">${event.raw || '(rest)'}</span>
@@ -419,7 +449,7 @@ function buildDebugPanels(song) {
         const eventKey = getImportedEventKey(event);
         const row = document.createElement('div');
         row.dataset.eventKey = eventKey;
-        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 transition-colors';
+        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700';
 
         const noteNames = getImportedEventNoteNames(event);
         const notesHtml = noteNames.length
@@ -558,11 +588,87 @@ function stripOuterPair(input, openChar, closeChar) {
   return trimmed.slice(1, -1).trim();
 }
 
+function calculateArpeggioDelay(operator, operatorCount, tileLength) {
+  if (!operator || operatorCount === 0) return 0;
+
+  const n = operatorCount;
+  const l = tileLength;
+
+  switch (operator) {
+    case '~':
+    case '$':
+      if (n === 1) {
+        return (1/10) * l;
+      } else if (n > 1) {
+        return (1/10) / (n - 1) * l;
+      }
+      return l / (n + 1);
+    case '%':
+      return (3/10) / n * l;
+    case '!':
+      return (3/20) / n * l;
+    case '@':
+      // Same as % for arpeggios
+      return (3/10) / n * l;
+    case '^':
+    case '&':
+      // Fixed delay of 1/12 second (independent of tile length)
+      return 1/12;
+    default:
+      return 0;
+  }
+}
+
 function parsePT2NoteGroup(rawGroup) {
   const cleaned = stripOuterPair(rawGroup, '(', ')').trim();
   if (!cleaned) return [];
 
-  return cleaned.split(/[.,~]/).map(note => note.trim()).filter(Boolean).map(note => {
+  // Check for arpeggio operators (~, %, @, !, ^, &)
+  const hasArpeggio = /[~%@!^&]/.test(cleaned);
+
+  if (hasArpeggio) {
+    // Split by arpeggio operators while preserving the operators
+    const parts = cleaned.split(/([~%@!^&])/).filter(Boolean);
+    const notes = [];
+    let currentOperator = '';
+    const operatorCounts = {};
+
+    // Count operators for delay calculation
+    parts.forEach(part => {
+      if (/[~%@!^&]/.test(part)) {
+        operatorCounts[part] = (operatorCounts[part] || 0) + 1;
+      }
+    });
+
+    const totalOperators = Object.values(operatorCounts).reduce((sum, count) => sum + count, 0);
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (/[~%@!^&]/.test(part)) {
+        currentOperator = part;
+      } else if (part) {
+        const durationMatch = part.match(/\[([^\]]+)\]\s*$/);
+        const effectMatch = part.match(/\{([^}]+)\}\s*$/);
+        const bareNote = part
+          .replace(/\{[^}]+\}\s*$/, '')
+          .replace(/\[[^\]]+\]\s*$/, '')
+          .trim();
+
+        notes.push({
+          raw: part,
+          name: bareNote,
+          durationTag: durationMatch ? durationMatch[1].trim() : '',
+          effect: effectMatch ? effectMatch[1].trim() : '',
+          arpeggioOperator: currentOperator,
+          arpeggioOperatorCount: totalOperators
+        });
+      }
+    }
+    return notes;
+  }
+
+  // No arpeggio - split by . and , only
+  return cleaned.split(/[.,]/).map(note => note.trim()).filter(Boolean).map(note => {
     const durationMatch = note.match(/\[([^\]]+)\]\s*$/);
     const effectMatch = note.match(/\{([^}]+)\}\s*$/);
     const bareNote = note
@@ -574,7 +680,9 @@ function parsePT2NoteGroup(rawGroup) {
       raw: note,
       name: bareNote,
       durationTag: durationMatch ? durationMatch[1].trim() : '',
-      effect: effectMatch ? effectMatch[1].trim() : ''
+      effect: effectMatch ? effectMatch[1].trim() : '',
+      arpeggioOperator: '',
+      arpeggioOperatorCount: 0
     };
   });
 }
@@ -658,10 +766,14 @@ function parsePT2NoteGroupToken(rawToken) {
   };
 }
 
-function classifyPT2Tile(noteCount, durationRatio, specialType) {
+function classifyPT2Tile(noteCount, durationRatio, specialType, durationBeats, baseBeats) {
   if (specialType) return specialType;
   // Unmarked PT2 blocks with duration ratio > 1 render as hold/long tiles.
-  if (durationRatio > 1) return 'long';
+  // Check actual duration in beats relative to baseBeats for notes without explicit tags.
+  // durationRatio is the note's duration in beats, baseBeats is the smallest unit.
+  // The actual ratio is how many baseBeats the note spans.
+  const actualRatio = (durationRatio && baseBeats && baseBeats > 0) ? durationRatio / baseBeats : durationRatio;
+  if (actualRatio > 1) return 'long';
   return 'single';
 }
 
@@ -702,10 +814,12 @@ function getImportedTileLengthRows(event, forceMinForLong) {
   const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
   const durationBeats = event && event.durationBeats ? event.durationBeats : baseBeats;
   const ratio = durationBeats / baseBeats;
-  const length = Math.max(1, Math.ceil(ratio));
+  // Use exact ratio (may be non-integer) so that non-power-of-2 durations (e.g. [KL] = 1.5)
+  // don't create visual gaps between tiles. Round only to avoid floating-point noise.
+  const exactLength = Math.max(1, Math.round(ratio * 1000) / 1000);
   // Long tiles must be at least 2 rows to be visually/mechanically meaningful
-  if (forceMinForLong && length < 2) return 2;
-  return length;
+  if (forceMinForLong && exactLength < 2) return 2;
+  return exactLength;
 }
 
 function resolvePT2SectionBpm(music, fallbackBpm) {
@@ -740,6 +854,54 @@ function computePT2TilesPerSecond(bpm, baseBeats) {
   const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
   const safeBaseBeats = Number.isFinite(baseBeats) && baseBeats > 0 ? baseBeats : 1;
   return safeBpm / (60 * safeBaseBeats);
+}
+
+function buildImportedSectionRowOffsets(song) {
+  const offsets = new Map();
+  let cursorRows = 0;
+
+  (Array.isArray(song && song.entries) ? song.entries : []).forEach((entry, index) => {
+    const key = entry && entry.songIndex !== undefined && entry.songIndex !== null
+      ? String(entry.songIndex)
+      : String(index);
+    const bpm = resolvePT2SectionBpm(entry, song.baseBpm || song.bpm || 120);
+    const baseBeats = resolvePT2SectionBaseBeats(entry, song.baseBeats || 1);
+    const durationSeconds = parseFloat(entry && entry.durationSeconds ? entry.durationSeconds : 0) || 0;
+    const sectionRows = durationSeconds * computePT2TilesPerSecond(bpm, baseBeats);
+
+    offsets.set(key, cursorRows);
+    if (entry && entry.id !== undefined && entry.id !== null) {
+      offsets.set(`id:${entry.id}`, cursorRows);
+    }
+
+    cursorRows += sectionRows;
+  });
+
+  return offsets;
+}
+
+function getImportedEventStartRows(event, sectionRowOffsets) {
+  const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
+  const localRows = Number.isFinite(event && event.startBeats)
+    ? event.startBeats / baseBeats
+    : 0;
+  const sectionKey = event && event.songIndex !== undefined && event.songIndex !== null
+    ? String(event.songIndex)
+    : null;
+  const sectionOffset = sectionKey !== null && sectionRowOffsets.has(sectionKey)
+    ? sectionRowOffsets.get(sectionKey)
+    : sectionRowOffsets.get(`id:${event && event.musicId}`) || 0;
+
+  return sectionOffset + localRows;
+}
+
+function getImportedEventDurationRows(event) {
+  const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
+  const durationBeats = event && event.durationBeats ? event.durationBeats : baseBeats;
+  const ratio = durationBeats / baseBeats;
+  // Use exact ratio (may be non-integer) so layout gaps match the actual tile heights.
+  // This avoids spurious visual gaps with non-power-of-2 durations like [KL] = 1.5 beats.
+  return ratio > 0 ? Math.max(1, Math.round(ratio * 1000) / 1000) : 0;
 }
 
 function sortPT2MusicsById(musics) {
@@ -797,7 +959,7 @@ function getImportedSongSectionAt(elapsedSeconds) {
 }
 
 function getImportedSongSpeedAt(elapsedSeconds) {
-  const section = getImportedSongSectionAt(elapsedSeconds);
+  const section = getImportedPlaybackSection(elapsedSeconds);
   if (section) {
     return section.speed;
   }
@@ -1050,36 +1212,64 @@ function playImportedTileAudio(tile) {
   const ctx = ensureAudioEngine();
   if (!ctx || !audioGainNode) return;
 
-  const audioEvents = buildPT2AudioEvents(
-    {
-      notes: tile.notes || [],
-      durationSeconds: tile.durationSeconds || 0.25
-    },
-    tile.trackInstrument
-  );
+  const baseStartAt = ctx.currentTime + 0.01;
 
-  const startAt = ctx.currentTime + 0.01;
-  if (soundfontInstrument) {
-    audioEvents.forEach((audioEvent) => {
-      const node = soundfontInstrument.play(audioEvent.midi, startAt, {
-        duration: Math.max(0.08, Math.min(1.2, audioEvent.durationSeconds)),
-        gain: Math.min(1, 0.98 * audioEvent.velocity)
-      });
-      if (node) {
-        scheduledAudioNodes.push(node);
+  if (tile.isArpeggio && Array.isArray(tile.notes) && tile.notes.some(n => n.arpeggioDelay !== undefined)) {
+    // Arpeggio long tile: play each note sequentially with its stored delay
+    tile.notes.forEach((note) => {
+      const delay = (typeof note.arpeggioDelay === 'number') ? note.arpeggioDelay : 0;
+      const noteStartAt = baseStartAt + delay;
+      const noteDuration = Math.max(0.08, Math.min(1.2, tile.durationSeconds || 0.25));
+      const midi = noteTokenToMidi(note.name);
+      const freq = noteTokenToFrequency(note.name);
+      const velocity = note.effect && String(note.effect).toUpperCase().includes('V') ? 1.15 : 1;
+      if (soundfontInstrument && midi !== null) {
+        const node = soundfontInstrument.play(midi, noteStartAt, {
+          duration: noteDuration,
+          gain: Math.min(1, 0.98 * velocity)
+        });
+        if (node) scheduledAudioNodes.push(node);
+      } else if (freq !== null) {
+        playSynthNote({
+          frequency: freq,
+          startTime: noteStartAt,
+          duration: Math.max(0.08, Math.min(0.8, noteDuration)),
+          instrumentName: tile.trackInstrument,
+          velocity
+        });
       }
     });
   } else {
-    ensureSoundfontInstrument();
-    audioEvents.forEach((audioEvent) => {
-      playSynthNote({
-        frequency: audioEvent.frequency,
-        startTime: startAt,
-        duration: Math.max(0.08, Math.min(0.8, audioEvent.durationSeconds)),
-        instrumentName: audioEvent.instrumentName,
-        velocity: audioEvent.velocity
+    const audioEvents = buildPT2AudioEvents(
+      {
+        notes: tile.notes || [],
+        durationSeconds: tile.durationSeconds || 0.25
+      },
+      tile.trackInstrument
+    );
+
+    if (soundfontInstrument) {
+      audioEvents.forEach((audioEvent) => {
+        const node = soundfontInstrument.play(audioEvent.midi, baseStartAt, {
+          duration: Math.max(0.08, Math.min(1.2, audioEvent.durationSeconds)),
+          gain: Math.min(1, 0.98 * audioEvent.velocity)
+        });
+        if (node) {
+          scheduledAudioNodes.push(node);
+        }
       });
-    });
+    } else {
+      ensureSoundfontInstrument();
+      audioEvents.forEach((audioEvent) => {
+        playSynthNote({
+          frequency: audioEvent.frequency,
+          startTime: baseStartAt,
+          duration: Math.max(0.08, Math.min(0.8, audioEvent.durationSeconds)),
+          instrumentName: audioEvent.instrumentName,
+          velocity: audioEvent.velocity
+        });
+      });
+    }
   }
 
   tile.audioPlayed = true;
@@ -1092,6 +1282,7 @@ function mergePT2Events(events) {
 
   const applyLeadTrackTileFields = (target, source) => {
     target.raw = source.raw;
+    target.startBeats = source.startBeats;
     target.durationSeconds = source.durationSeconds;
     target.durationBeats = source.durationBeats;
     target.tileType = source.tileType;
@@ -1100,6 +1291,10 @@ function mergePT2Events(events) {
     target.leadTrackIndex = source.trackIndex;
     target.songIndex = source.songIndex;
     target.musicId = source.musicId;
+    target.isRest = source.isRest;
+    target.durationRatio = source.durationRatio;
+    // Preserve arpeggio metadata so sequential note playback is not lost
+    target.isArpeggio = source.isArpeggio || false;
   };
 
   const shouldPreferLeadTile = (existing, event) => {
@@ -1116,6 +1311,7 @@ function mergePT2Events(events) {
     if (!existing) {
       mergedByTime.set(bucketKey, {
         raw: event.raw,
+        startBeats: event.startBeats,
         startSeconds: event.startSeconds,
         durationSeconds: event.durationSeconds,
         durationBeats: event.durationBeats,
@@ -1128,7 +1324,10 @@ function mergePT2Events(events) {
         baseBeats: event.baseBeats,
         leadTrackIndex: event.trackIndex,
         songIndex: event.songIndex,
-        musicId: event.musicId
+        musicId: event.musicId,
+        isRest: event.isRest || false,
+        durationRatio: event.durationRatio,
+        isArpeggio: event.isArpeggio || false
       });
       return;
     }
@@ -1145,6 +1344,16 @@ function mergePT2Events(events) {
       existing.durationBeats = Math.max(existing.durationBeats, event.durationBeats);
       existing.specialType = existing.specialType || event.specialType;
       existing.baseBeats = existing.baseBeats || event.baseBeats;
+      existing.isRest = existing.isRest && event.isRest;
+      // Re-classify tileType based on merged duration
+      if (!existing.specialType && existing.baseBeats && existing.durationRatio) {
+        const actualRatio = existing.durationRatio / existing.baseBeats;
+        if (actualRatio > 1) {
+          existing.tileType = 'long';
+        } else if (existing.tileType === 'long') {
+          existing.tileType = 'single';
+        }
+      }
     }
   });
 
@@ -1176,6 +1385,26 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
       // Detect PT2 space/rest tokens: bare uppercase letters Q-Y without brackets
       if (!token.includes('[') && !token.includes('<') && !token.includes('(') && PT2_SPACE_WEIGHTS[token] !== undefined) {
         const spaceBeats = baseBeats * PT2_SPACE_WEIGHTS[token];
+        const durationSeconds = spaceBeats * (60 / bpm);
+        events.push({
+          raw: token,
+          musicId,
+          songIndex,
+          trackIndex,
+          trackInstrument,
+          startBeats: cursorBeats,
+          startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)),
+          durationBeats: spaceBeats,
+          durationSeconds,
+          noteCount: 0,
+          tileType: 'rest',
+          specialId: 0,
+          notes: [],
+          specialType: '',
+          bpm,
+          baseBeats,
+          isRest: true
+        });
         cursorBeats += spaceBeats;
         if (cursorBeats > songEndBeats) songEndBeats = cursorBeats;
         return;
@@ -1191,27 +1420,108 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
       const durationBeats = baseBeats * durationRatio;
       const durationSeconds = durationBeats * (60 / bpm);
       const noteCount = parsedToken.noteCount || noteGroups.length || 1;
-      const tileType = classifyPT2Tile(noteCount, durationRatio, specialType);
+      const tileType = classifyPT2Tile(noteCount, durationRatio, specialType, durationBeats, baseBeats);
 
       if (!isRest) {
-        events.push({
-          raw: token,
-          musicId,
-          songIndex,
-          trackIndex,
-          trackInstrument,
-          startBeats: cursorBeats,
-          startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)),
-          durationBeats,
-          durationSeconds,
-          noteCount,
-          tileType,
-          specialId: parsedToken.specialId,
-          notes: noteGroups,
-          specialType,
-          bpm,
-          baseBeats
-        });
+        // Check if notes have arpeggio operators AND the token has parentheses
+        // (i.e. the arpeggio group is inside circle brackets like (c~d~e)[L])
+        const hasArpeggio = noteGroups.some(note => note.arpeggioOperator);
+        const tokenHasCircleBrackets = token.trimStart().startsWith('(');
+
+        if (hasArpeggio && noteGroups.length > 1 && tokenHasCircleBrackets) {
+          // Arpeggio in circle brackets → ONE long tile event.
+          // Build per-note delays for sequential audio playback.
+          const arpeggioNotes = [];
+          let cumulativeDelay = 0;
+          noteGroups.forEach((note, index) => {
+            const operator = note.arpeggioOperator || '';
+            const operatorCount = note.arpeggioOperatorCount || 0;
+            if (operator && index > 0) {
+              const delay = calculateArpeggioDelay(operator, operatorCount, durationSeconds);
+              cumulativeDelay += delay;
+            }
+            arpeggioNotes.push({
+              ...note,
+              arpeggioDelay: cumulativeDelay
+            });
+          });
+
+          events.push({
+            raw: token,
+            musicId,
+            songIndex,
+            trackIndex,
+            trackInstrument,
+            startBeats: cursorBeats,
+            startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)),
+            durationBeats,
+            durationSeconds,
+            noteCount,
+            tileType: 'long',
+            specialId: parsedToken.specialId,
+            notes: arpeggioNotes,
+            specialType,
+            bpm,
+            baseBeats,
+            durationRatio,
+            isArpeggio: true
+          });
+        } else if (hasArpeggio && noteGroups.length > 1) {
+          // Arpeggio WITHOUT circle brackets → separate tile events with delays (old behavior)
+          let arpeggioDelay = 0;
+          noteGroups.forEach((note, index) => {
+            const operator = note.arpeggioOperator || '';
+            const operatorCount = note.arpeggioOperatorCount || 0;
+
+            if (operator && index > 0) {
+              const delay = calculateArpeggioDelay(operator, operatorCount, durationSeconds);
+              arpeggioDelay += delay;
+            }
+
+            events.push({
+              raw: note.raw || token,
+              musicId,
+              songIndex,
+              trackIndex,
+              trackInstrument,
+              startBeats: cursorBeats + (arpeggioDelay * bpm / 60),
+              startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)) + arpeggioDelay,
+              durationBeats: durationBeats / noteGroups.length,
+              durationSeconds: durationSeconds / noteGroups.length,
+              noteCount: 1,
+              tileType: 'single',
+              specialId: parsedToken.specialId,
+              notes: [note],
+              specialType: '',
+              bpm,
+              baseBeats,
+              durationRatio: durationRatio / noteGroups.length,
+              isArpeggio: true,
+              arpeggioOperator: operator
+            });
+          });
+        } else {
+          // Single event for non-arpeggio notes
+          events.push({
+            raw: token,
+            musicId,
+            songIndex,
+            trackIndex,
+            trackInstrument,
+            startBeats: cursorBeats,
+            startSeconds: offsetSeconds + (cursorBeats * (60 / bpm)),
+            durationBeats,
+            durationSeconds,
+            noteCount,
+            tileType,
+            specialId: parsedToken.specialId,
+            notes: noteGroups,
+            specialType,
+            bpm,
+            baseBeats,
+            durationRatio
+          });
+        }
       }
 
       cursorBeats += durationBeats;
@@ -1366,13 +1676,19 @@ function buildImportedSongSection(song, selectedIndex = 0) {
 function buildImportedSongTiles(song) {
   const playableEvents = Array.isArray(song.playableEvents) ? song.playableEvents : song.events;
   const builtTiles = [];
-  let currentY = 50;
+  const startTileY = 50;
+  const firstEventY = 25;
+  const sectionRowOffsets = buildImportedSectionRowOffsets(song);
+  let previousTimingRows = null;
+  let previousDurationRows = 0;
+  let previousVisualRows = 1;
+  let layoutRows = 0;
   lastSpawnedCols = [];
 
   builtTiles.push({
     id: nextTileId++,
     col: 1,
-    y: currentY,
+    y: startTileY,
     type: 'single',
     clicked: false,
     isStart: true,
@@ -1384,15 +1700,37 @@ function buildImportedSongTiles(song) {
     audioPlayed: false
   });
 
-  currentY -= 25;
   playableEvents.forEach((event) => {
     const tileType = event.tileType || 'single';
+    const isRest = tileType === 'rest' || event.isRest;
     const isLong = tileType === 'long';
     const isCombo = tileType === 'combo';
     const isDouble = tileType === 'double';
+    const isArpeggio = isLong && event.isArpeggio;
     const tileLength = isLong
-      ? getImportedTileLengthRows(event, true)
+      ? getImportedTileLengthRows(event, !isArpeggio)
       : (isCombo ? 2 : 1);
+    const timingRows = getImportedEventStartRows(event, sectionRowOffsets);
+    const durationRows = getImportedEventDurationRows(event);
+
+    if (previousTimingRows === null) {
+      layoutRows = Math.max(0, timingRows);
+    } else {
+      const timingDeltaRows = Math.max(0, timingRows - previousTimingRows);
+      const blankRows = Math.max(0, timingDeltaRows - previousDurationRows);
+      layoutRows += previousVisualRows + blankRows;
+    }
+
+    // Skip tile creation for rest events, but add their duration to the layout
+    if (isRest) {
+      layoutRows += durationRows;
+      previousTimingRows = timingRows;
+      previousDurationRows = durationRows;
+      previousVisualRows = 0;
+      return;
+    }
+
+    const eventY = firstEventY - (layoutRows * 25);
     const chosenCols = pickColumnsForImportedTile(tileType, event.noteCount || 1);
     const sourceEventKey = getImportedEventKey(event);
     const sourceNoteNames = getImportedEventNoteNames(event);
@@ -1403,7 +1741,7 @@ function buildImportedSongTiles(song) {
         builtTiles.push({
           id: nextTileId++,
           col: col,
-          y: currentY,
+          y: eventY,
           type: 'single',
           clicked: false,
           isStart: false,
@@ -1422,14 +1760,13 @@ function buildImportedSongTiles(song) {
         });
       });
       lastSpawnedCols = chosenCols;
-      currentY -= 25;
     } else if (isCombo) {
       // Combo tiles: span two columns, require multiple taps
       const comboTaps = Math.max(2, event.noteCount || event.notes.length || 3);
       builtTiles.push({
         id: nextTileId++,
         col: 1,
-        y: currentY - (tileLength - 1) * 25,
+        y: eventY - (tileLength - 1) * 25,
         type: 'combo',
         clicked: false,
         isStart: false,
@@ -1450,14 +1787,13 @@ function buildImportedSongTiles(song) {
         spanCols: [1, 2]
       });
       lastSpawnedCols = [1, 2];
-      currentY -= tileLength * 25;
     } else if (isLong) {
-      // Long/hold tiles
+      // Long/hold tiles (including arpeggio long tiles)
       const chosenCol = chosenCols[0];
       builtTiles.push({
         id: nextTileId++,
         col: chosenCol,
-        y: currentY - (tileLength - 1) * 25,
+        y: eventY - (tileLength - 1) * 25,
         type: 'long',
         clicked: false,
         isStart: false,
@@ -1478,17 +1814,17 @@ function buildImportedSongTiles(song) {
         holdProgress: 0,
         holdCompleted: false,
         tapped: false,
-        pressY: undefined
+        pressY: undefined,
+        isArpeggio: event.isArpeggio || false
       });
       lastSpawnedCols = [chosenCol];
-      currentY -= tileLength * 25;
     } else {
       // Single tiles (default)
       const chosenCol = chosenCols[0];
       builtTiles.push({
         id: nextTileId++,
         col: chosenCol,
-        y: currentY,
+        y: eventY,
         type: 'single',
         clicked: false,
         isStart: false,
@@ -1506,8 +1842,11 @@ function buildImportedSongTiles(song) {
         audioPlayed: false
       });
       lastSpawnedCols = [chosenCol];
-      currentY -= 25;
     }
+
+    previousTimingRows = timingRows;
+    previousDurationRows = durationRows;
+    previousVisualRows = tileLength;
   });
 
   return builtTiles;

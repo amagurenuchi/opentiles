@@ -6,8 +6,6 @@
   <title>Raining Tiles - Piano Tiles 2 Clone</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SF2 soundfont loader -->
-  <script src="https://unpkg.com/sf2-player"></script>
   <!-- Custom CSS for fonts and animations -->
   <link rel="stylesheet" href="style.css">
   <style>
@@ -20,17 +18,8 @@
 <body class="h-full select-none bg-[#f3f4f6] overflow-hidden">
 
   <div class="relative flex h-screen w-full items-center justify-center gap-3 p-3">
-    <!-- Raw debug panel -->
-    <aside class="hidden xl:flex shrink-0 h-full w-[280px] max-w-[28vw] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/90 backdrop-blur-md shadow-xl">
-      <div class="border-b border-gray-200 px-4 py-3">
-        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Raw Data</p>
-        <p class="text-xs text-gray-500 mt-1">Last played tile highlighted</p>
-      </div>
-      <div id="debug-raw-panel" class="flex-1 overflow-y-auto p-3 space-y-3"></div>
-    </aside>
-
     <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
-    <div class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 overflow-hidden flex flex-col justify-between">
+    <div class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
     
     <!-- Columns (4 columns) -->
     <div id="game-board" class="absolute inset-0 flex z-0">
@@ -40,18 +29,28 @@
       <div data-col="3" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
     </div>
 
-    <!-- Live Tiles Container -->
-    <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10"></div>
+    <!-- Live Tiles Container (overflow-hidden keeps tiles clipped to the board) -->
+    <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <!-- Score pop effects — no overflow clip so labels can float past board edges -->
+    <div id="score-effects" class="absolute inset-0 pointer-events-none z-[18]"></div>
 
     <!-- Hit effect ripples -->
     <div id="hit-effects" class="absolute inset-0 pointer-events-none z-[15] overflow-hidden"></div>
 
-    <!-- Floating HUD near the top of the board (TPS & Stars) -->
+    <!-- Floating HUD near the top of the board (Score/TPS & Stars) -->
     <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
-      <div class="flex items-center gap-3">
-        <span id="tps-display" class="font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0.000</span>
-      </div>
+      <!-- Score display (shown for imported song mode) -->
+      <div id="score-display" class="hidden font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0</div>
+      <!-- TPS display (shown for pattern mode, smaller under score for imported mode) -->
+      <div id="tps-display" class="font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0.000</div>
+      <div id="tps-small-display" class="hidden font-game text-2xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow mt-1">0.000</div>
+      <!-- Stars display -->
       <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
+      <div id="crowns-display" class="mt-2 text-2xl drop-shadow select-none"></div>
+      <!-- Star animation display (positioned at same height as score) -->
+      <div id="star-animation-display" class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow"></div>
+      <div id="crown-animation-display" class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow"></div>
     </div>
 
     <!-- Keybind Hints Overlay (Desktop only, hidden on mobile) -->
@@ -65,7 +64,7 @@
     <!-- Screens overlay (Start Screen, Settings Modal, Game Over) -->
     
     <!-- Start Screen -->
-    <div id="start-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 transition-all duration-300">
+    <div id="start-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
       <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game">
         RAINING TILES
       </h1>
@@ -101,11 +100,11 @@
 
       <!-- Play Button -->
       <div class="w-full max-w-xs mb-8 flex flex-col gap-2.5">
-        <button id="play-btn" class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-            <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
+        <button id="song-library-btn" class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
-          Play Game
+          Song Library
         </button>
       </div>
 
@@ -200,12 +199,15 @@
       <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center">Better luck next time!</p>
       
       <div class="w-full max-w-xs bg-gray-50 border border-gray-200 p-4 rounded-2xl mb-8 flex flex-col items-center">
-        <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Max Speed (TPS)</span>
+        <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Final Score</span>
         <div class="flex items-center gap-2 mb-2">
-          <span id="final-tps" class="font-game text-5xl font-black text-[#ff6b6b]">0.000</span>
-          <span id="final-grade" class="font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow">E</span>
+          <span id="final-score" class="font-game text-5xl font-black text-[#ff6b6b]">0</span>
+          <span id="final-grade" class="hidden font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow">E</span>
         </div>
-        <div id="final-stars" class="text-2xl mb-4 select-none"></div>
+        <div class="flex gap-2 mb-4">
+          <div id="final-stars" class="text-2xl select-none"></div>
+          <div id="final-crowns" class="text-2xl select-none"></div>
+        </div>
         
         <div class="w-full border-t border-gray-200 pt-3 flex justify-between text-xs text-gray-500">
           <span>Start TPS: <strong id="final-start-tps" class="text-gray-850">0.000</strong></span>
@@ -223,19 +225,27 @@
       </div>
     </div>
 
+    <!-- Song List Screen -->
+    <div id="song-list-screen" class="absolute inset-0 flex flex-col bg-gray-50 z-40 transition-all duration-300">
+      <div class="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm">
+        <h2 class="text-xl font-bold text-gray-900">Song Library</h2>
+        <div class="flex items-center gap-2">
+          <button id="song-list-settings-btn" class="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.34 1.866a1.2 1.2 0 0 1 1.32 0l1.196.7a1.2 1.2 0 0 0 1.353-.087l1.088-.894a1.2 1.2 0 0 1 1.66.173l.456 1.323a1.2 1.2 0 0 0 1.08.734l1.377.196a1.2 1.2 0 0 1 .988 1.328l-.228 1.363a1.2 1.2 0 0 0 .543 1.128l1.196.7a1.2 1.2 0 0 1 .173 1.66l-.894 1.088a1.2 1.2 0 0 0-.087 1.353l.7 1.196a1.2 1.2 0 0 1-.173 1.66l-1.323.456a1.2 1.2 0 0 0-.734 1.08l-.196 1.377a1.2 1.2 0 0 1-1.328.988l-1.363-.228a1.2 1.2 0 0 0-1.128.543l-.7 1.196a1.2 1.2 0 0 1-1.66.173l-1.088-.894a1.2 1.2 0 0 0-1.353-.087l-1.196.7a1.2 1.2 0 0 1-1.66-.173l-.456-1.323a1.2 1.2 0 0 0-1.08-.734l-1.377-.196a1.2 1.2 0 0 1-.988-1.328l.228-1.363a1.2 1.2 0 0 0-.543-1.128l-1.196-.7a1.2 1.2 0 0 1-.173-1.66l.894-1.088a1.2 1.2 0 0 0 .087-1.353l-.7-1.196a1.2 1.2 0 0 1 .173-1.66l1.323-.456a1.2 1.2 0 0 0 .734-1.08l.196-1.377a1.2 1.2 0 0 1 1.328-.988l1.363.228a1.2 1.2 0 0 0 1.128-.543ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="song-list-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+        <!-- Song cards will be rendered here -->
+      </div>
     </div>
 
-    <!-- Parsed debug panel -->
-    <aside class="hidden xl:flex shrink-0 h-full w-[320px] max-w-[32vw] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/90 backdrop-blur-md shadow-xl">
-      <div class="border-b border-gray-200 px-4 py-3">
-        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Parsed Data</p>
-        <p class="text-xs text-gray-500 mt-1">Engine speed, section, and note view</p>
-      </div>
-      <div id="debug-parsed-panel" class="flex-1 overflow-y-auto p-3 space-y-3"></div>
-    </aside>
+    </div>
   </div>
 
   <!-- Game Logic Script -->
-  <script src="game.js"></script>
+  <script type="module" src="game.js"></script>
 </body>
 </html>

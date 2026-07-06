@@ -1,3 +1,8 @@
+// Import smplr Soundfont2Sampler and soundfont2 SF2 parser
+import { Soundfont2Sampler } from 'https://esm.sh/smplr@0.16.3';
+import soundfont2Pkg from 'https://esm.sh/soundfont2';
+const SoundFont2 = soundfont2Pkg.SoundFont2 ?? soundfont2Pkg.default?.SoundFont2 ?? soundfont2Pkg;
+
 const PATTERN_PRESETS = {
   single: `1\n1\n1\n1\n1\n1`,
   long: `L3\nL3\nL2\nL4`,
@@ -101,24 +106,47 @@ let importedSongSpeedLocked = false;
 let importedSongSpeedSchedule = [];
 let importedSongElapsedSeconds = 0;
 let importedSongRawText = '';
+let musicCsvData = []; // Stores parsed music_json.csv data
 
-let debugCurrentSectionId = null;
-let debugLastPlayedTileId = null;
-let debugLastPlayedEventKey = null;
-let debugLastPlayedNoteNames = [];
-let debugLastScrolledSectionId = null;
-let debugLastScrolledEventKey = null;
-let debugRawEventMap = new Map();
-let debugParsedSectionMap = new Map();
-let debugParsedEventMap = new Map();
-let debugParsedNoteMap = new Map();
+let currentScore = 0;
+let starsEarned = 0;
+let crownsEarned = 0;
+let currentLap = 1;
+let lapSpeedOffset = 0; // Additional TPS added at section starts from lap 2+
+let sectionsPassedThisLap = 0; // Count of sections passed in current lap for speed boosting
+let lastStarSectionReached = 0; // Index into importedSong.starSectionIds for star/crown progression
+let currentPlayingSongIndex = null; // Index into speed schedule (JSON music part)
+let isStarAnimationPlaying = false;
+let isCrownAnimationPlaying = false;
+let doubleTileHits = new Map(); // Track double tile hits by event key
+
+// ── Performance optimisation state ──────────────────────────────────────────
+// Avoids rebuilding an element map from DOM children every frame.
+let tileElementCache = new Map(); // tile.id (string) → DOM element
+// Dirty flag so getLowestUnclickedTile() scans tiles[] at most once per frame.
+let lowestTileDirty = true;
+let _cachedLowestTile = null;
+// Frame counter used to throttle periodic audio-node GC.
+let audioCleanupCounter = 0;
+let gameOverAnimating = false;
+let gameOverAnimEndTime = 0;
+let gameOverFailedTileId = null;
+let gameOverFailureType = 'missed';
+let gameOverFailedTileDisplayY = null;
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 // DOM Elements
 const boardEl = document.getElementById('game-board');
 const tilesContainer = document.getElementById('tiles-container');
 const hitEffectsEl = document.getElementById('hit-effects');
 const tpsDisplay = document.getElementById('tps-display');
+const tpsSmallDisplay = document.getElementById('tps-small-display');
+const scoreDisplay = document.getElementById('score-display');
 const starsDisplay = document.getElementById('stars-display');
+const starAnimationDisplay = document.getElementById('star-animation-display');
+const crownsDisplay = document.getElementById('crowns-display');
+const crownAnimationDisplay = document.getElementById('crown-animation-display');
 const bestDisplay = document.getElementById('best-display');
 const keyHintEls = document.querySelectorAll('.key-hint');
 const colElements = document.querySelectorAll('.col-element');
@@ -127,6 +155,8 @@ const colElements = document.querySelectorAll('.col-element');
 const startScreen = document.getElementById('start-screen');
 const settingsScreen = document.getElementById('settings-screen');
 const gameoverScreen = document.getElementById('gameover-screen');
+const songListScreen = document.getElementById('song-list-screen');
+const songListContainer = document.getElementById('song-list-container');
 
 // Settings Elements
 const inputStartSpeed = document.getElementById('settings-start-speed');
@@ -138,8 +168,6 @@ const pt2MusicSelect = document.getElementById('pt2-music-select');
 const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
 const clearSongBtn = document.getElementById('clear-song-btn');
 const songStatusEl = document.getElementById('song-status');
-const debugRawPanel = document.getElementById('debug-raw-panel');
-const debugParsedPanel = document.getElementById('debug-parsed-panel');
 
 // Initialize settings from localStorage or defaults
 function loadSettings() {
@@ -173,6 +201,261 @@ function setSongStatus(message) {
   }
 }
 
+async function loadMusicCsv() {
+  try {
+    const response = await fetch('music_json.csv');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const csvText = await response.text();
+    musicCsvData = parseMusicCsv(csvText);
+    console.log(`Loaded ${musicCsvData.length} songs from music_json.csv`);
+    populateMusicSelect();
+    renderSongList();
+  } catch (err) {
+    console.warn('Failed to load music_json.csv:', err);
+    setSongStatus('Failed to load song list from CSV');
+  }
+}
+
+function parseMusicCsv(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 3) return []; // Header + Chinese header + at least one data row
+
+  const rawData = [];
+  // Skip first 2 header rows (English and Chinese headers)
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // Parse CSV line (handling quoted fields)
+    const fields = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    fields.push(current.trim());
+
+    // Map CSV columns to song object
+    // Id, Mid, BPM, [empty/baseBeats], Ratio (tiles/min), MusicJson, Musician, Acceleration, AniID, BridgeAniID
+    if (fields.length >= 7) {
+      const song = {
+        id: parseInt(fields[0], 10) || 0,
+        mid: parseInt(fields[1], 10) || 0,
+        bpm: parseInt(fields[2], 10) || 120,
+        baseBeats: parseFloat(fields[3]) || 0.5, // Column left of Ratio
+        ratio: parseFloat(fields[4]) || 0.5, // This is the precalculated tiles/min value
+        musicJson: fields[5] || '',
+        musician: fields[6] || 'Unknown',
+        acceleration: fields[7] || '',
+        aniId: fields[8] || '',
+        bridgeAniId: fields[9] || ''
+      };
+      rawData.push(song);
+    }
+  }
+
+  // Combine entries by Mid value (identical Mid = same song)
+  const combinedData = new Map();
+  rawData.forEach((song) => {
+    const mid = song.mid; // Use Mid as the grouping key
+    const sectionId = song.id % 100; // Extract section ID (1, 2, or 3)
+    
+    if (!combinedData.has(mid)) {
+      combinedData.set(mid, {
+        mid,
+        musicJson: song.musicJson,
+        musician: song.musician,
+        sections: {},
+        stars: 0,
+        maxStars: 0
+      });
+    }
+    
+    combinedData.get(mid).sections[sectionId] = song;
+  });
+
+  // Calculate stars based on available sections
+  combinedData.forEach((song) => {
+    const sectionIds = Object.keys(song.sections).map(Number).sort();
+    song.maxStars = sectionIds.length; // Each section = 1 star
+    song.stars = 0; // Will be updated from localStorage
+  });
+
+  // Convert map to array and sort by Mid
+  return Array.from(combinedData.values()).sort((a, b) => a.mid - b.mid);
+}
+
+function populateMusicSelect() {
+  if (!pt2MusicSelect || !musicCsvData.length) return;
+
+  pt2MusicSelect.innerHTML = '<option value="">Select a song...</option>';
+  pt2MusicSelect.disabled = false;
+
+  musicCsvData.forEach((song) => {
+    const option = document.createElement('option');
+    option.value = song.mid;
+    
+    // Get BPM from section 1 (normal difficulty) as default
+    const section1 = song.sections[1];
+    const bpm = section1 ? section1.bpm : 120;
+    
+    // Count available sections
+    const availableSections = Object.keys(song.sections).sort();
+    const sectionCount = availableSections.length;
+    
+    option.textContent = `${song.musicJson} (${song.musician}) - ${bpm} BPM [${sectionCount} sections]`;
+    pt2MusicSelect.appendChild(option);
+  });
+
+  setSongStatus(`Loaded ${musicCsvData.length} songs. Select a song to play.`);
+}
+
+function renderSongList() {
+  if (!songListContainer || !musicCsvData.length) return;
+
+  songListContainer.innerHTML = '';
+
+  musicCsvData.forEach((song) => {
+    const section1 = song.sections[1];
+    const bpm = section1 ? section1.bpm : 120;
+    const sectionCount = Object.keys(song.sections).length;
+    
+    // Load progress from localStorage
+    const progressKey = `song_progress_${song.mid}`;
+    const savedProgress = JSON.parse(localStorage.getItem(progressKey) || '{}');
+    const earnedStars = savedProgress.stars || 0;
+    const earnedCrowns = savedProgress.crowns || 0;
+
+    const card = document.createElement('div');
+    card.className = 'song-card';
+    card.dataset.mid = song.mid;
+
+    card.innerHTML = `
+      <div class="song-card-info-left">
+        <div class="song-card-title">${song.musicJson}</div>
+        <div class="song-card-artist">${song.musician}</div>
+        <div class="song-card-info">
+          <span class="song-card-bpm">${bpm} BPM</span>
+          <span class="song-card-sections">${sectionCount} sections</span>
+        </div>
+        <div class="song-card-progress">
+          <div class="song-card-stars">
+            ${Array(song.maxStars).fill(0).map((_, i) => `
+              <svg class="song-card-star ${i < earnedStars ? 'earned' : ''}" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            `).join('')}
+          </div>
+          <div class="song-card-crowns">
+            ${Array(3).fill(0).map((_, i) => `
+              <svg class="song-card-crown ${i < earnedCrowns ? 'earned' : ''}" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
+              </svg>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <button class="song-card-play-btn">Play</button>
+    `;
+
+    // Add click handler for play button
+    const playBtn = card.querySelector('.song-card-play-btn');
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      loadSongFromCard(song.mid);
+    });
+
+    songListContainer.appendChild(card);
+  });
+}
+
+function loadSongFromCard(mid) {
+  const songData = musicCsvData.find(s => s.mid === mid);
+  if (!songData) {
+    setSongStatus('Song data not found');
+    return;
+  }
+
+  setSongStatus(`Loading ${songData.musicJson} (all sections)...`);
+
+  // Hide song list screen
+  if (songListScreen) {
+    songListScreen.classList.add('hidden');
+  }
+
+  // Load the song (same logic as dropdown selection)
+  loadSongFromData(songData);
+}
+
+async function loadSongFromData(songData) {
+  try {
+    // Load all available sections for this song
+    const sectionIds = Object.keys(songData.sections).map(Number).sort();
+    const mergedSong = {
+      baseBpm: songData.sections[1]?.bpm || 120,
+      baseBeats: songData.sections[1]?.baseBeats || 0.5,
+      entries: [],
+      playableEvents: []
+    };
+
+    for (const sectionId of sectionIds) {
+      const sectionData = songData.sections[sectionId];
+      const jsonFileName = `${sectionData.musicJson}.json`;
+      
+      try {
+        const response = await fetch(`song/${jsonFileName}`, { cache: 'no-store' });
+        if (!response.ok) {
+          console.warn(`Failed to load section ${sectionId}: HTTP ${response.status}`);
+          continue;
+        }
+        const text = await response.text();
+        const sectionJson = JSON.parse(text);
+        
+        // Merge section data
+        if (Array.isArray(sectionJson.musics)) {
+          sectionJson.musics.forEach((music) => {
+            // Star/crown sections come from CSV; keep JSON music.id for internal speed parts
+            music.starSectionId = sectionId;
+            // Use CSV baseBeats for note duration calculations
+            music.baseBeats = sectionData.baseBeats;
+            // Store the precalculated tiles/min (ratio) as speed, converted to tiles/sec
+            music.speed = sectionData.ratio / 60;
+            mergedSong.entries.push(music);
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to load section ${sectionId}:`, err);
+      }
+    }
+
+    if (mergedSong.entries.length === 0) {
+      throw new Error('No sections could be loaded');
+    }
+
+    // Load the merged song
+    const mergedJsonText = JSON.stringify({ musics: mergedSong.entries });
+    loadImportedSongFromJsonText(mergedJsonText, `${songData.musicJson} (merged)`);
+    setSongStatus(`Loaded: ${songData.musicJson} by ${songData.musician} - ${sectionIds.length} sections merged`);
+    
+    // Auto-start the game after loading
+    startGame();
+  } catch (err) {
+    setSongStatus(`Failed to load ${songData.musicJson}: ${err.message}`);
+    console.error('Failed to load song JSON:', err);
+  }
+}
+
 function getImportedEventKey(event) {
   if (!event) return '';
   const sectionId = event.musicId !== undefined && event.musicId !== null
@@ -196,307 +479,91 @@ function getImportedSectionIdForElapsedSeconds(elapsedSeconds) {
   return section ? section.id : null;
 }
 
-function getImportedSectionIdForCurrentTile() {
-  if (!gameActive) {
-    return null;
+function getImportedStarSectionIds() {
+  if (importedSong && Array.isArray(importedSong.starSectionIds) && importedSong.starSectionIds.length) {
+    return importedSong.starSectionIds;
+  }
+  return [1];
+}
+
+function getImportedMaxStars() {
+  return getImportedStarSectionIds().length;
+}
+
+function buildStarSectionBoundaries(speedSchedule, starSectionIds) {
+  return (Array.isArray(starSectionIds) ? starSectionIds : []).map((starSectionId, rank) => {
+    const entry = (Array.isArray(speedSchedule) ? speedSchedule : []).find((item) => item.starSectionId === starSectionId);
+    return {
+      rank,
+      starSectionId,
+      startSeconds: entry ? entry.startSeconds : 0,
+      songIndex: entry ? entry.songIndex : null
+    };
+  });
+}
+
+function getStarSectionStartRankForTile(tile) {
+  const boundaries = importedSong && importedSong.starSectionBoundaries;
+  if (!tile || tile.sourceSongIndex === undefined || tile.sourceSongIndex === null || !Array.isArray(boundaries)) {
+    return -1;
   }
 
-  const lowestTile = getLowestUnclickedTile();
-  if (lowestTile && lowestTile.sourceSectionId !== undefined && lowestTile.sourceSectionId !== null) {
-    return lowestTile.sourceSectionId;
+  const songIndex = tile.sourceSongIndex;
+  for (let rank = 1; rank < boundaries.length; rank++) {
+    if (boundaries[rank].songIndex === songIndex) {
+      return rank;
+    }
   }
 
-  return null;
+  return -1;
+}
+
+function applyStarSectionRankProgress(sectionRank) {
+  if (sectionRank <= 0 || sectionRank <= lastStarSectionReached || lastStarSectionReached >= 900) {
+    return;
+  }
+
+  lastStarSectionReached = sectionRank;
+
+  if (currentLap === 1) {
+    starsEarned = sectionRank;
+    triggerStarAnimation(sectionRank);
+    return;
+  }
+
+  sectionsPassedThisLap++;
+  lapSpeedOffset += 0.5;
+
+  if (currentLap === 2 && sectionRank === 1) {
+    crownsEarned = Math.max(crownsEarned, 1);
+    triggerCrownAnimation(1);
+  }
 }
 
 function getImportedPlaybackSection(elapsedSeconds = importedSongElapsedSeconds) {
-  const sectionId = getImportedSectionIdForCurrentTile();
-  if (sectionId !== null && sectionId !== undefined) {
-    const matchingSection = importedSongSpeedSchedule.find((section) => String(section.id) === String(sectionId));
-    if (matchingSection) {
-      return matchingSection;
+  if (currentPlayingSongIndex !== null && currentPlayingSongIndex !== undefined) {
+    const entry = importedSongSpeedSchedule[currentPlayingSongIndex];
+    if (entry) {
+      return entry;
+    }
+  }
+
+  if (gameActive) {
+    const lowestTile = getLowestUnclickedTile();
+    if (lowestTile && lowestTile.sourceSongIndex !== undefined && lowestTile.sourceSongIndex !== null) {
+      const entry = importedSongSpeedSchedule[lowestTile.sourceSongIndex];
+      if (entry) {
+        return entry;
+      }
     }
   }
 
   return getImportedSongSectionAt(elapsedSeconds);
 }
 
-function getImportedSectionIdForPlayback(elapsedSeconds = importedSongElapsedSeconds) {
-  const section = getImportedPlaybackSection(elapsedSeconds);
-  return section ? section.id : null;
-}
-
-function clearDebugPanels() {
-  if (debugRawPanel) debugRawPanel.innerHTML = '';
-  if (debugParsedPanel) debugParsedPanel.innerHTML = '';
-  debugCurrentSectionId = null;
-  debugLastPlayedTileId = null;
-  debugLastPlayedEventKey = null;
-  debugLastPlayedNoteNames = [];
-  debugLastScrolledSectionId = null;
-  debugLastScrolledEventKey = null;
-  debugRawEventMap = new Map();
-  debugParsedSectionMap = new Map();
-  debugParsedEventMap = new Map();
-  debugParsedNoteMap = new Map();
-}
-
-function scrollDebugPanels() {
-  if (!importedSong) return;
-
-  const sectionId = debugCurrentSectionId;
-  if (sectionId !== null && sectionId !== debugLastScrolledSectionId) {
-    const sectionKey = String(sectionId);
-    const rawSectionEl = debugRawPanel
-      ? debugRawPanel.querySelector(`[data-debug-section-id="${sectionKey}"]`)
-      : null;
-    const parsedSectionEl = debugParsedSectionMap.get(sectionKey) || null;
-
-    if (rawSectionEl) {
-      rawSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-    }
-    if (parsedSectionEl) {
-      parsedSectionEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-    }
-
-    debugLastScrolledSectionId = sectionId;
-  }
-
-  const eventKey = debugLastPlayedEventKey;
-  if (!eventKey || eventKey === debugLastScrolledEventKey) return;
-
-  const rawEventEl = debugRawEventMap.get(eventKey) || null;
-  const parsedEventEl = debugParsedEventMap.get(eventKey) || null;
-
-  if (rawEventEl) {
-    rawEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
-  }
-  if (parsedEventEl) {
-    parsedEventEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
-  }
-
-  debugLastScrolledEventKey = eventKey;
-}
-
-function updateDebugCurrentSection() {
-  const sectionId = importedSong ? getImportedSectionIdForPlayback(importedSongElapsedSeconds) : null;
-  debugCurrentSectionId = sectionId;
-
-  debugParsedSectionMap.forEach((sectionEl, key) => {
-    if (!sectionEl) return;
-    const isCurrent = sectionId !== null && String(key) === String(sectionId);
-    sectionEl.classList.toggle('debug-current-section', isCurrent);
-    const badge = sectionEl.querySelector('[data-debug-current-badge="1"]');
-    if (badge) {
-      badge.classList.toggle('bg-amber-100', isCurrent);
-      badge.classList.toggle('text-amber-800', isCurrent);
-      badge.classList.toggle('bg-gray-100', !isCurrent);
-      badge.classList.toggle('text-gray-600', !isCurrent);
-    }
-  });
-
-  debugRawPanel && debugRawPanel.querySelectorAll('[data-debug-section-id]').forEach((sectionEl) => {
-    const isCurrent = sectionId !== null && String(sectionEl.dataset.debugSectionId) === String(sectionId);
-    sectionEl.classList.toggle('debug-current-section', isCurrent);
-  });
-
-  scrollDebugPanels();
-}
-
-function updateDebugLastPlayedState(tile) {
-  if (!tile || !importedSong) return;
-
-  debugLastPlayedTileId = tile.id;
-  debugLastPlayedEventKey = tile.sourceEventKey || '';
-  debugLastPlayedNoteNames = Array.isArray(tile.notes) ? tile.notes.map((note) => note && note.name).filter(Boolean) : [];
-
-  debugRawEventMap.forEach((eventEl, key) => {
-    if (!eventEl) return;
-    eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
-  });
-
-  debugParsedEventMap.forEach((eventEl, key) => {
-    if (!eventEl) return;
-    eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
-  });
-
-  debugParsedNoteMap.forEach((noteNodes, eventKey) => {
-    const isActiveEvent = eventKey === debugLastPlayedEventKey;
-    (Array.isArray(noteNodes) ? noteNodes : []).forEach((noteEl) => {
-      if (!noteEl) return;
-      const noteName = noteEl.dataset.debugNoteName;
-      const isMatch = isActiveEvent && debugLastPlayedNoteNames.includes(noteName);
-      noteEl.classList.toggle('debug-last-played-note', isMatch);
-    });
-  });
-
-  scrollDebugPanels();
-}
-
-function buildDebugPanels(song) {
-  clearDebugPanels();
-
-  if (!song || !Array.isArray(song.entries) || !song.entries.length) {
-    if (debugRawPanel) {
-      debugRawPanel.innerHTML = '<div class="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500">Load a PT2 song to inspect raw tile data.</div>';
-    }
-    if (debugParsedPanel) {
-      debugParsedPanel.innerHTML = '<div class="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500">Load a PT2 song to inspect parsed engine data.</div>';
-    }
-    return;
-  }
-
-  const playableEvents = Array.isArray(song.playableEvents) ? song.playableEvents : [];
-  const rawEventsBySection = new Map();
-  playableEvents.forEach((event) => {
-    const sectionId = event.musicId !== undefined && event.musicId !== null
-      ? event.musicId
-      : (event.songIndex !== undefined && event.songIndex !== null ? event.songIndex + 1 : 'unknown');
-    const key = String(sectionId);
-    if (!rawEventsBySection.has(key)) rawEventsBySection.set(key, []);
-    rawEventsBySection.get(key).push(event);
-  });
-
-  const parsedEventsBySection = new Map();
-  playableEvents.forEach((event) => {
-    const sectionId = event.musicId !== undefined && event.musicId !== null
-      ? event.musicId
-      : (event.songIndex !== undefined && event.songIndex !== null ? event.songIndex + 1 : 'unknown');
-    const key = String(sectionId);
-    if (!parsedEventsBySection.has(key)) parsedEventsBySection.set(key, []);
-    parsedEventsBySection.get(key).push(event);
-  });
-
-  if (debugRawPanel) {
-    debugRawPanel.innerHTML = '';
-  }
-  if (debugParsedPanel) {
-    debugParsedPanel.innerHTML = '';
-  }
-
-  const sectionEntries = Array.isArray(song.entries) ? song.entries : [];
-  sectionEntries.forEach((entry) => {
-    const sectionKey = String(entry.id);
-    const sectionEvents = rawEventsBySection.get(sectionKey) || [];
-    const sectionParsedEvents = parsedEventsBySection.get(sectionKey) || [];
-
-    if (debugRawPanel) {
-      const sectionCard = document.createElement('section');
-      sectionCard.dataset.debugSectionId = sectionKey;
-      sectionCard.className = 'rounded-2xl border border-gray-200 bg-gray-50/90 p-3';
-
-      const header = document.createElement('div');
-      header.className = 'flex items-start justify-between gap-3 mb-3';
-      header.innerHTML = `
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-black text-gray-900">Section ${entry.id}</span>
-            <span class="text-[10px] uppercase tracking-[0.2em] text-gray-400">raw</span>
-          </div>
-          <div class="text-[11px] text-gray-500 mt-1">${entry.bpm} BPM · ${entry.baseBeats} bb · ${entry.speed.toFixed(3)} t/s</div>
-        </div>
-      `;
-      sectionCard.appendChild(header);
-
-      const tokenWrap = document.createElement('div');
-      tokenWrap.className = 'space-y-2';
-
-      sectionEvents.forEach((event) => {
-        const eventKey = getImportedEventKey(event);
-        const row = document.createElement('div');
-        row.dataset.eventKey = eventKey;
-        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700';
-        row.innerHTML = `
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-[11px] leading-snug break-all">${event.raw || '(rest)'}</span>
-            <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">${event.tileType || 'single'}</span>
-          </div>
-          <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-400">
-            <span>start ${Number.isFinite(event.startSeconds) ? event.startSeconds.toFixed(2) : '0.00'}s</span>
-            <span>tracks ${(Array.isArray(event.trackIndices) ? event.trackIndices : [event.trackIndex]).join(',') || '-'}</span>
-          </div>
-        `;
-        debugRawEventMap.set(eventKey, row);
-        tokenWrap.appendChild(row);
-      });
-
-      sectionCard.appendChild(tokenWrap);
-      debugRawPanel.appendChild(sectionCard);
-    }
-
-    if (debugParsedPanel) {
-      const sectionCard = document.createElement('section');
-      sectionCard.dataset.debugSectionId = sectionKey;
-      sectionCard.className = 'rounded-2xl border border-gray-200 bg-gray-50/90 p-3';
-
-      const header = document.createElement('div');
-      header.className = 'flex items-start justify-between gap-3 mb-3';
-      header.innerHTML = `
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-black text-gray-900">Section ${entry.id}</span>
-            <span data-debug-current-badge="1" class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-600">current</span>
-          </div>
-          <div class="text-[11px] text-gray-500 mt-1">id ${entry.id} · ${entry.bpm} BPM · ${entry.baseBeats} bb · ${entry.speed.toFixed(3)} t/s</div>
-        </div>
-      `;
-      sectionCard.appendChild(header);
-
-      const eventList = document.createElement('div');
-      eventList.className = 'space-y-2';
-
-      sectionParsedEvents.forEach((event) => {
-        const eventKey = getImportedEventKey(event);
-        const row = document.createElement('div');
-        row.dataset.eventKey = eventKey;
-        row.className = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700';
-
-        const noteNames = getImportedEventNoteNames(event);
-        const notesHtml = noteNames.length
-          ? noteNames.map((noteName) => `<span data-debug-note-name="${noteName}" class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-gray-600">${noteName}</span>`).join(' ')
-          : '<span class="text-gray-400">rest</span>';
-        row.innerHTML = `
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-[11px] leading-snug break-all">${event.raw || '(rest)'}</span>
-            <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">${event.tileType || 'single'}</span>
-          </div>
-          <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-400">
-            <span>${Number.isFinite(event.durationBeats) ? event.durationBeats.toFixed(3) : '0.000'} beats</span>
-            <span>${Number.isFinite(event.durationSeconds) ? event.durationSeconds.toFixed(2) : '0.00'}s</span>
-            <span>note${noteNames.length === 1 ? '' : 's'} ${noteNames.length}</span>
-          </div>
-          <div class="mt-2 flex flex-wrap gap-1">${notesHtml}</div>
-        `;
-
-        debugParsedNoteMap.set(eventKey, Array.from(row.querySelectorAll('[data-debug-note-name]')));
-
-        debugParsedEventMap.set(eventKey, row);
-        eventList.appendChild(row);
-      });
-
-      sectionCard.appendChild(eventList);
-      debugParsedSectionMap.set(sectionKey, sectionCard);
-      debugParsedPanel.appendChild(sectionCard);
-    }
-  });
-
-  updateDebugCurrentSection();
-  if (debugLastPlayedEventKey) {
-    debugRawEventMap.forEach((eventEl, key) => {
-      if (eventEl) eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
-    });
-    debugParsedEventMap.forEach((eventEl, key) => {
-      if (eventEl) eventEl.classList.toggle('debug-last-played', key === debugLastPlayedEventKey);
-    });
-    debugParsedNoteMap.forEach((noteNodes, eventKey) => {
-      const isActiveEvent = eventKey === debugLastPlayedEventKey;
-      (Array.isArray(noteNodes) ? noteNodes : []).forEach((noteEl) => {
-        if (!noteEl) return;
-        const noteName = noteEl.dataset.debugNoteName;
-        noteEl.classList.toggle('debug-last-played-note', isActiveEvent && debugLastPlayedNoteNames.includes(noteName));
-      });
-    });
-  }
+function getImportedSectionIdForPlayback() {
+  const section = getImportedPlaybackSection();
+  return section ? section.starSectionId : null;
 }
 
 function clearImportedSong() {
@@ -514,7 +581,6 @@ function clearImportedSong() {
   importedSongSpeedLocked = false;
   importedSongSpeedSchedule = [];
   importedSongElapsedSeconds = 0;
-  buildDebugPanels(null);
   if (pt2MusicSelect) {
     pt2MusicSelect.innerHTML = '<option value="">Load a PT2 JSON first</option>';
     pt2MusicSelect.disabled = true;
@@ -814,9 +880,8 @@ function getImportedTileLengthRows(event, forceMinForLong) {
   const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
   const durationBeats = event && event.durationBeats ? event.durationBeats : baseBeats;
   const ratio = durationBeats / baseBeats;
-  // Use exact ratio (may be non-integer) so that non-power-of-2 durations (e.g. [KL] = 1.5)
-  // don't create visual gaps between tiles. Round only to avoid floating-point noise.
-  const exactLength = Math.max(1, Math.round(ratio * 1000) / 1000);
+  // Round all non-whole values up for scoring
+  const exactLength = Math.max(1, Math.ceil(ratio * 1000) / 1000);
   // Long tiles must be at least 2 rows to be visually/mechanically meaningful
   if (forceMinForLong && exactLength < 2) return 2;
   return exactLength;
@@ -899,13 +964,19 @@ function getImportedEventDurationRows(event) {
   const baseBeats = event && event.baseBeats ? event.baseBeats : 1;
   const durationBeats = event && event.durationBeats ? event.durationBeats : baseBeats;
   const ratio = durationBeats / baseBeats;
-  // Use exact ratio (may be non-integer) so layout gaps match the actual tile heights.
-  // This avoids spurious visual gaps with non-power-of-2 durations like [KL] = 1.5 beats.
-  return ratio > 0 ? Math.max(1, Math.round(ratio * 1000) / 1000) : 0;
+  // Round all non-whole values up for scoring
+  return ratio > 0 ? Math.max(1, Math.ceil(ratio * 1000) / 1000) : 0;
 }
 
 function sortPT2MusicsById(musics) {
   return [...musics].map((music, sourceIndex) => ({ music, sourceIndex })).sort((a, b) => {
+    const starA = parseInt(a.music && a.music.starSectionId, 10);
+    const starB = parseInt(b.music && b.music.starSectionId, 10);
+    const hasStarSectionOrder = Number.isFinite(starA) && Number.isFinite(starB);
+    if (hasStarSectionOrder && starA !== starB) {
+      return starA - starB;
+    }
+
     const idA = parseInt(a.music && a.music.id, 10);
     const idB = parseInt(b.music && b.music.id, 10);
     const safeA = Number.isFinite(idA) ? idA : Number.MAX_SAFE_INTEGER;
@@ -923,17 +994,22 @@ function buildImportedSongSpeedSchedule(song) {
     const bpm = resolvePT2SectionBpm(entry, song.baseBpm || song.bpm || 120);
     const baseBeats = resolvePT2SectionBaseBeats(entry, song.baseBeats || 1);
     const durationSeconds = parseFloat(entry && entry.durationSeconds ? entry.durationSeconds : 0) || 0;
-    const speed = computePT2TilesPerSecond(bpm, baseBeats);
+    // entry.speed is already in tiles/sec (converted from CSV ratio in parsePT2SongData)
+    // If not set, compute from BPM/baseBeats
+    const speed = (entry.speed && entry.speed > 0) ? entry.speed : computePT2TilesPerSecond(bpm, baseBeats);
 
     schedule.push({
       index,
       id: entry.id,
+      songIndex: entry.songIndex,
+      starSectionId: entry.starSectionId,
       startSeconds: cursorSeconds,
       endSeconds: cursorSeconds + durationSeconds,
       durationSeconds,
       bpm,
       baseBeats,
-      speed
+      speed,
+      originalSpeed: speed // Store original speed for lap multiplication
     });
 
     cursorSeconds += durationSeconds;
@@ -961,10 +1037,69 @@ function getImportedSongSectionAt(elapsedSeconds) {
 function getImportedSongSpeedAt(elapsedSeconds) {
   const section = getImportedPlaybackSection(elapsedSeconds);
   if (section) {
-    return section.speed;
+    // Apply per-lap speed multiplier (UnitedTiles CLASSIC method) only on lap 2+
+    const baseSpeed = section.originalSpeed || section.speed;
+    
+    if (currentLap === 1) {
+      // Lap 1: use original speed without acceleration
+      return baseSpeed + lapSpeedOffset;
+    }
+    
+    const currentBpm = baseSpeed * 60; // Convert tiles/sec to BPM
+    const reachedFourthLap = currentLap >= 4;
+    const currentBeats = 1.0; // Always 1 for our tiles
+    const currentPartBaseBeats = section.baseBeats || 1.0;
+    
+    // CLASSIC acceleration formula from UnitedTiles (exact C++ implementation)
+    const tUnknown = reachedFourthLap ? 130.0 : 100.0;
+    const v1 = Math.max(0.0, currentBeats);
+    const v2 = currentBpm;
+    const n = v2 / v1;
+    const v3 = n - tUnknown;
+    const v4 = 0.001 * v3;
+    const a = 1.3 - v4;
+    const r = n / 60.0;
+    const v5 = a < 1.04 ? 1.04 : a;
+    const v6 = r * v5;
+    const v7 = 60.0 * v6;
+    const v8 = v7 * currentPartBaseBeats;
+    
+    const newBpm = v8;
+    const newSpeed = newBpm / 60; // Convert back to tiles/sec
+    
+    return newSpeed + lapSpeedOffset;
   }
 
-  return importedSongBaseSpeed || getStartSpeed();
+  const baseSpeed = importedSongBaseSpeed || getStartSpeed();
+  
+  if (currentLap === 1) {
+    // Lap 1: use original speed without acceleration
+    return baseSpeed + lapSpeedOffset;
+  }
+  
+  const currentBpm = baseSpeed * 60;
+  const reachedFourthLap = currentLap >= 4;
+  const currentBeats = 1.0;
+  const currentPartBaseBeats = 1.0;
+  
+  // CLASSIC acceleration formula from UnitedTiles (exact C++ implementation)
+  const tUnknown = reachedFourthLap ? 130.0 : 100.0;
+  const v1 = Math.max(0.0, currentBeats);
+  const v2 = currentBpm;
+  const n = v2 / v1;
+  const v3 = n - tUnknown;
+  const v4 = 0.001 * v3;
+  const a = 1.3 - v4;
+  const r = n / 60.0;
+  const v5 = a < 1.04 ? 1.04 : a;
+  const v6 = r * v5;
+  const v7 = 60.0 * v6;
+  const v8 = v7 * currentPartBaseBeats;
+  
+  const newBpm = v8;
+  const newSpeed = newBpm / 60;
+  
+  return newSpeed + lapSpeedOffset;
 }
 
 function noteTokenToMidi(noteName) {
@@ -1047,98 +1182,67 @@ function ensureSoundfontInstrument() {
   }
 
   const ctx = ensureAudioEngine();
-  const SoundFontCtor = window.SoundFont;
-  if (!ctx || typeof SoundFontCtor !== 'function') {
+
+  if (!ctx) {
+    console.warn('Missing audio context');
     return Promise.resolve(null);
   }
 
-  const soundfont = new SoundFontCtor();
+  soundfontInstrumentPromise = (async () => {
+    try {
+      console.log('Creating Soundfont2 sampler...');
+      const sampler = new Soundfont2Sampler(ctx, {
+        url: './School_Piano_2024.sf2',
+        createSoundfont: (data) => new SoundFont2(data),
+      });
 
-  const pickProgramId = () => {
-    const programs = Array.isArray(soundfont.programs) ? soundfont.programs : [];
-    const preferred = programs.find((program) => {
-      const name = String(program && (program.name || program.text || program.title || '')).toLowerCase();
-      return name.includes('piano') || name.includes('steinway') || name.includes('grand');
-    });
-    return (preferred || programs[0] || {}).id;
-  };
+      console.log('Loading soundfont (awaiting sampler.load)...');
+      await sampler.load;
+      console.log('Soundfont loaded successfully');
 
-  const pickBankId = () => {
-    const banks = Array.isArray(soundfont.banks) ? soundfont.banks : [];
-    return (banks[0] || {}).id;
-  };
+      // Pick a piano instrument from the soundfont
+      const instrumentNames = sampler.instrumentNames || [];
+      console.log('Available instruments:', instrumentNames);
+      const preferredInstrument = instrumentNames.find((name) => {
+        const lowerName = String(name || '').toLowerCase();
+        return lowerName.includes('piano') || lowerName.includes('steinway') || lowerName.includes('grand');
+      }) || instrumentNames[0];
 
-  soundfontInstrumentPromise = soundfont.loadSoundFontFromURL('./akai_steinway.sf2').then(() => {
-    const bankId = pickBankId();
-    const programId = pickProgramId();
-    if (bankId !== undefined) {
-      soundfont.bank = bankId;
-    }
-    if (programId !== undefined) {
-      soundfont.program = programId;
-    }
+      console.log('Selected instrument:', preferredInstrument);
 
-    soundfontInstrument = {
-      play(midi, startTime, options = {}) {
-        if (typeof midi !== 'number' || Number.isNaN(midi)) return null;
-
-        const duration = Math.max(0.05, Number(options.duration) || 0.25);
-        const startDelayMs = Math.max(0, (startTime - (performance.now() / 1000)) * 1000);
-        const endDelayMs = startDelayMs + duration * 1000;
-
-        let active = true;
-        let noteStarted = false;
-        let startTimer = null;
-        let stopTimer = null;
-
-        const noteOff = () => {
-          if (!active) return;
-          active = false;
-          try {
-            soundfont.noteOff(midi);
-          } catch (err) {}
-        };
-
-        startTimer = window.setTimeout(() => {
-          if (!active) return;
-          noteStarted = true;
-          try {
-            soundfont.noteOn(midi);
-          } catch (err) {}
-        }, startDelayMs);
-
-        stopTimer = window.setTimeout(() => {
-          if (noteStarted) {
-            noteOff();
-          } else {
-            active = false;
-          }
-        }, endDelayMs);
-
-        return {
-          stop() {
-            active = false;
-            if (startTimer !== null) {
-              clearTimeout(startTimer);
-            }
-            if (stopTimer !== null) {
-              clearTimeout(stopTimer);
-            }
-            if (noteStarted) {
-              try {
-                soundfont.noteOff(midi);
-              } catch (err) {}
-            }
-          }
-        };
+      if (preferredInstrument) {
+        await sampler.loadInstrument(preferredInstrument);
       }
-    };
 
-    return soundfontInstrument;
-  }).catch((err) => {
-    console.warn('Unable to load akai_steinway.sf2; using synth fallback.', err);
-    return null;
-  }).finally(() => {
+      soundfontInstrument = {
+        play(midi, startTime, options = {}) {
+          if (typeof midi !== 'number' || Number.isNaN(midi)) return null;
+
+          const duration = Math.max(0.05, Number(options.duration) || 0.25);
+          const velocity = Math.round(Math.min(127, Math.max(1, (Number(options.gain) || 1) * 100)));
+          // startTime is ctx.currentTime-relative seconds — pass directly as smplr 'time'
+          const stopFn = sampler.start({
+            note: midi,
+            velocity,
+            time: startTime,
+            duration,
+          });
+
+          return {
+            stop() {
+              try { if (typeof stopFn === 'function') stopFn(); } catch (_) {}
+            }
+          };
+        }
+      };
+
+      console.log('Soundfont instrument created successfully');
+      return soundfontInstrument;
+    } catch (err) {
+      console.warn('Unable to load School_Piano_2024.sf2; using synth fallback.', err);
+      return null;
+    }
+  })().finally(() => {
     soundfontInstrumentPromise = null;
   });
 
@@ -1207,8 +1311,42 @@ function buildPT2AudioEvents(parsedEvent, instrumentName) {
     .filter(event => event.frequency !== null || event.midi !== null);
 }
 
+function updateSectionOnTileHit(tile) {
+  if (!importedSong || !tile) return;
+
+  if (tile.sourceSongIndex !== undefined && tile.sourceSongIndex !== null) {
+    currentPlayingSongIndex = tile.sourceSongIndex;
+  }
+
+  const sectionRank = getStarSectionStartRankForTile(tile);
+  if (sectionRank >= 1) {
+    applyStarSectionRankProgress(sectionRank);
+  }
+
+  // Lap completion check: when the last tile is played
+  if (tile.isLast && lastStarSectionReached !== 998 && lastStarSectionReached !== 999) {
+    const maxStars = getImportedMaxStars();
+    lastStarSectionReached = 999;
+    if (currentLap === 1) {
+      starsEarned = maxStars;
+      triggerStarAnimation(maxStars);
+      lastStarSectionReached = 998;
+      setTimeout(() => { startNextLap(); }, 600);
+    } else if (currentLap === 2) {
+      crownsEarned = 2;
+      triggerCrownAnimation(2);
+      lastStarSectionReached = 998;
+      setTimeout(() => { startNextLap(); }, 600);
+    } else if (currentLap >= 3) {
+      crownsEarned = 3;
+      triggerCrownAnimation(3);
+    }
+  }
+}
+
 function playImportedTileAudio(tile) {
   if (!importedSong || !tile || tile.audioPlayed) return;
+
   const ctx = ensureAudioEngine();
   if (!ctx || !audioGainNode) return;
 
@@ -1291,10 +1429,15 @@ function mergePT2Events(events) {
     target.leadTrackIndex = source.trackIndex;
     target.songIndex = source.songIndex;
     target.musicId = source.musicId;
+    target.starSectionId = source.starSectionId;
     target.isRest = source.isRest;
     target.durationRatio = source.durationRatio;
     // Preserve arpeggio metadata so sequential note playback is not lost
     target.isArpeggio = source.isArpeggio || false;
+    // Preserve notes with arpeggio delays if source is arpeggio
+    if (source.isArpeggio && Array.isArray(source.notes) && source.notes.some(n => n.arpeggioDelay !== undefined)) {
+      target.notes = [...source.notes];
+    }
   };
 
   const shouldPreferLeadTile = (existing, event) => {
@@ -1325,6 +1468,7 @@ function mergePT2Events(events) {
         leadTrackIndex: event.trackIndex,
         songIndex: event.songIndex,
         musicId: event.musicId,
+        starSectionId: event.starSectionId,
         isRest: event.isRest || false,
         durationRatio: event.durationRatio,
         isArpeggio: event.isArpeggio || false
@@ -1333,7 +1477,15 @@ function mergePT2Events(events) {
     }
 
     existing.trackIndices.push(event.trackIndex);
-    existing.notes.push(...notes);
+    // Preserve arpeggio delays when merging notes
+    if (event.isArpeggio && notes.some(n => n.arpeggioDelay !== undefined)) {
+      // If incoming event is arpeggio, preserve its note structure
+      existing.notes = notes;
+      existing.isArpeggio = true;
+    } else if (!existing.isArpeggio) {
+      // Only merge notes if existing is not already an arpeggio
+      existing.notes.push(...notes);
+    }
     existing.noteCount = existing.notes.length;
     existing.trackInstrument = existing.trackInstrument || event.trackInstrument;
 
@@ -1366,6 +1518,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
   const bpm = resolvePT2SectionBpm(music, fallbackBpm);
   const baseBeats = resolvePT2SectionBaseBeats(music, fallbackBaseBeats);
   const musicId = sectionMeta && sectionMeta.id;
+  const starSectionId = sectionMeta && sectionMeta.starSectionId;
   const songIndex = sectionMeta && sectionMeta.songIndex;
   const scores = Array.isArray(music.scores) ? music.scores : [];
   const instruments = Array.isArray(music.instruments) ? music.instruments : [];
@@ -1389,6 +1542,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
         events.push({
           raw: token,
           musicId,
+          starSectionId,
           songIndex,
           trackIndex,
           trackInstrument,
@@ -1449,6 +1603,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
           events.push({
             raw: token,
             musicId,
+            starSectionId,
             songIndex,
             trackIndex,
             trackInstrument,
@@ -1481,6 +1636,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
             events.push({
               raw: note.raw || token,
               musicId,
+              starSectionId,
               songIndex,
               trackIndex,
               trackInstrument,
@@ -1505,6 +1661,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
           events.push({
             raw: token,
             musicId,
+            starSectionId,
             songIndex,
             trackIndex,
             trackInstrument,
@@ -1562,8 +1719,11 @@ function parsePT2SongData(jsonData) {
   sortedMusics.forEach((music, songIndex) => {
     const parsedId = parseInt(music && music.id, 10);
     const sectionId = Number.isFinite(parsedId) ? parsedId : songIndex + 1;
+    const parsedStarSectionId = parseInt(music && music.starSectionId, 10);
+    const starSectionId = Number.isFinite(parsedStarSectionId) ? parsedStarSectionId : 1;
     const parsedMusic = parsePT2MusicEntry(music, {
       id: sectionId,
+      starSectionId,
       songIndex,
       fallbackBpm: rootBaseBpm,
       fallbackBaseBeats: sortedMusics[0] ? resolvePT2SectionBaseBeats(sortedMusics[0], 1) : 1
@@ -1571,10 +1731,12 @@ function parsePT2SongData(jsonData) {
 
     entries.push({
       id: sectionId,
+      starSectionId,
       songIndex,
       bpm: parsedMusic.bpm,
       baseBeats: parsedMusic.baseBeats,
-      speed: computePT2TilesPerSecond(parsedMusic.bpm, parsedMusic.baseBeats),
+      // Use existing speed if set (from CSV ratio), otherwise compute from BPM/baseBeats
+      speed: (music.speed && music.speed > 0) ? music.speed : computePT2TilesPerSecond(parsedMusic.bpm, parsedMusic.baseBeats),
       startSeconds: songOffsetSeconds,
       instruments: parsedMusic.instruments,
       alternatives: parsedMusic.alternatives,
@@ -1600,6 +1762,7 @@ function parsePT2SongData(jsonData) {
   const playableEvents = mergePT2Events(events);
   const totalDurationSeconds = entries.reduce((sum, entry) => sum + entry.durationSeconds, 0);
   const firstEntry = entries[0] || null;
+  const starSectionIds = [...new Set(entries.map((entry) => entry.starSectionId).filter((id) => id !== undefined && id !== null))].sort((a, b) => a - b);
 
   const song = {
     title: sortedMusics.length === 1 && sortedMusics[0].id ? `Music ${sortedMusics[0].id}` : 'Imported PT2 song',
@@ -1611,12 +1774,14 @@ function parsePT2SongData(jsonData) {
     events,
     playableEvents,
     durationSeconds: totalDurationSeconds,
+    starSectionIds,
     instruments: firstEntry ? firstEntry.instruments : [],
     alternatives: firstEntry ? firstEntry.alternatives : [],
     baseBpm: Number.isFinite(rootBaseBpm) && rootBaseBpm > 0 ? rootBaseBpm : (firstEntry ? firstEntry.bpm : 120)
   };
 
   song.speedSchedule = buildImportedSongSpeedSchedule(song);
+  song.starSectionBoundaries = buildStarSectionBoundaries(song.speedSchedule, starSectionIds);
   return song;
 }
 
@@ -1753,10 +1918,13 @@ function buildImportedSongTiles(song) {
           trackInstrument: event.trackInstrument,
           chordSize: event.notes.length,
           sourceEventKey,
+          sourceSongIndex: event.songIndex,
+          sourceStarSectionId: event.starSectionId,
           sourceSectionId: event.musicId,
           sourceRaw: event.raw,
           sourceNoteNames,
-          audioPlayed: false
+          audioPlayed: false,
+          isDoubleTile: true
         });
       });
       lastSpawnedCols = chosenCols;
@@ -1778,6 +1946,8 @@ function buildImportedSongTiles(song) {
         trackInstrument: event.trackInstrument,
         chordSize: event.notes.length,
         sourceEventKey,
+        sourceSongIndex: event.songIndex,
+        sourceStarSectionId: event.starSectionId,
         sourceSectionId: event.musicId,
         sourceRaw: event.raw,
         sourceNoteNames,
@@ -1805,6 +1975,8 @@ function buildImportedSongTiles(song) {
         trackInstrument: event.trackInstrument,
         chordSize: event.notes.length,
         sourceEventKey,
+        sourceSongIndex: event.songIndex,
+        sourceStarSectionId: event.starSectionId,
         sourceSectionId: event.musicId,
         sourceRaw: event.raw,
         sourceNoteNames,
@@ -1836,6 +2008,8 @@ function buildImportedSongTiles(song) {
         trackInstrument: event.trackInstrument,
         chordSize: event.notes.length,
         sourceEventKey,
+        sourceSongIndex: event.songIndex,
+        sourceStarSectionId: event.starSectionId,
         sourceSectionId: event.musicId,
         sourceRaw: event.raw,
         sourceNoteNames,
@@ -1848,6 +2022,15 @@ function buildImportedSongTiles(song) {
     previousDurationRows = durationRows;
     previousVisualRows = tileLength;
   });
+
+  if (builtTiles.length > 0) {
+    const lastY = builtTiles[builtTiles.length - 1].y;
+    builtTiles.forEach((tile) => {
+      if (tile.y === lastY) {
+        tile.isLast = true;
+      }
+    });
+  }
 
   return builtTiles;
 }
@@ -1869,6 +2052,12 @@ function loadImportedSongFromJsonText(text, label = 'Imported PT2 file') {
   importedSongTitle = song.title;
   importedSongDurationSeconds = song.durationSeconds;
   importedSongSpeedSchedule = song.speedSchedule || buildImportedSongSpeedSchedule(song);
+  if (!Array.isArray(song.starSectionBoundaries) || !song.starSectionBoundaries.length) {
+    song.starSectionBoundaries = buildStarSectionBoundaries(
+      importedSongSpeedSchedule,
+      song.starSectionIds || [1]
+    );
+  }
   importedSongBaseSpeed = importedSongSpeedSchedule[0]
     ? importedSongSpeedSchedule[0].speed
     : computePT2TilesPerSecond(song.bpm, song.baseBeats);
@@ -1888,7 +2077,6 @@ function loadImportedSongFromJsonText(text, label = 'Imported PT2 file') {
     pt2MusicSelect.value = '0';
   }
   setSongStatus(`Loaded ${label}: ${importedSongs.length} section(s) by id — ${formatPT2SectionSpeedSummary(importedSongs)}.`);
-  buildDebugPanels(song);
   scheduleImportedSongAudio(song);
   return song;
 }
@@ -1903,6 +2091,7 @@ loadSettings();
 updateKeybindHints();
 updateBestScoreDisplay();
 clearImportedSong();
+loadMusicCsv(); // Load song list from CSV on initialization
 
 if (pt2JsonInput) {
   pt2JsonInput.addEventListener('change', async (e) => {
@@ -1943,13 +2132,42 @@ if (clearSongBtn) {
   });
 }
 
-if (pt2MusicSelect) {
-  pt2MusicSelect.addEventListener('change', () => {
-    selectedImportedSongIndex = parseInt(pt2MusicSelect.value, 10) || 0;
-    const entry = importedSongs[selectedImportedSongIndex];
-    if (entry) {
-      setSongStatus(`Section id ${entry.id}: ${entry.bpm} BPM, ${entry.baseBeats} baseBeats → ${entry.speed.toFixed(3)} t/s (${entry.durationSeconds.toFixed(1)}s segment).`);
+// Song library button handler
+const songLibraryBtn = document.getElementById('song-library-btn');
+if (songLibraryBtn) {
+  songLibraryBtn.addEventListener('click', () => {
+    if (songListScreen) {
+      songListScreen.classList.remove('hidden');
     }
+  });
+}
+
+// Song list settings button handler
+const songListSettingsBtn = document.getElementById('song-list-settings-btn');
+if (songListSettingsBtn) {
+  songListSettingsBtn.addEventListener('click', () => {
+    if (settingsScreen) {
+      settingsScreen.classList.remove('hidden');
+    }
+  });
+}
+
+if (pt2MusicSelect) {
+  pt2MusicSelect.addEventListener('change', async () => {
+    const mid = parseInt(pt2MusicSelect.value, 10);
+    if (!mid) {
+      setSongStatus('No song selected');
+      return;
+    }
+
+    const songData = musicCsvData.find(s => s.mid === mid);
+    if (!songData) {
+      setSongStatus('Song data not found');
+      return;
+    }
+
+    setSongStatus(`Loading ${songData.musicJson} (all sections)...`);
+    loadSongFromData(songData);
   });
 }
 
@@ -2087,18 +2305,27 @@ textareaCustomPattern.addEventListener('input', () => {
   selectPatternPreset.value = 'custom';
 });
 
-document.getElementById('play-btn').addEventListener('click', () => {
-  startGame();
-});
+const playBtn = document.getElementById('play-btn');
+if (playBtn) {
+  playBtn.addEventListener('click', () => {
+    startGame();
+  });
+}
 
-document.getElementById('restart-btn').addEventListener('click', () => {
-  startGame();
-});
+const restartBtn = document.getElementById('restart-btn');
+if (restartBtn) {
+  restartBtn.addEventListener('click', () => {
+    startGame();
+  });
+}
 
-document.getElementById('home-btn').addEventListener('click', () => {
-  gameoverScreen.classList.add('hidden');
-  startScreen.classList.remove('hidden');
-});
+const homeBtn = document.getElementById('home-btn');
+if (homeBtn) {
+  homeBtn.addEventListener('click', () => {
+    gameoverScreen.classList.add('hidden');
+    songListScreen.classList.remove('hidden');
+  });
+}
 
 // Score & Star-Crown formulas
 function getStarsAndCrowns(tps) {
@@ -2139,11 +2366,146 @@ function getGradeClass(grade) {
 }
 
 function updateHUD(tps) {
-  tpsDisplay.textContent = tps.toFixed(3);
-  const grade = getGrade(tps);
-  tpsDisplay.style.color = GRADE_COLORS[grade] || "#ff6b6b";
-  starsDisplay.textContent = getStarsAndCrowns(tps);
+  const useImportedSong = !!importedSong;
+  
+  if (useImportedSong) {
+    // Imported song mode: show score, hide large TPS, show small TPS under score
+    if (!isStarAnimationPlaying && !isCrownAnimationPlaying) {
+      scoreDisplay.classList.remove('hidden');
+      tpsSmallDisplay.classList.remove('hidden');
+    }
+    tpsDisplay.classList.add('hidden');
+    scoreDisplay.textContent = currentScore.toString();
+    tpsSmallDisplay.textContent = tps.toFixed(3);
+    // Show earned stars in starsDisplay, crowns in crownsDisplay
+    starsDisplay.textContent = starsEarned > 0 ? '✦'.repeat(starsEarned) : '';
+    crownsDisplay.textContent = crownsEarned > 0 ? '👑'.repeat(crownsEarned) : '';
+  } else {
+    // Pattern mode: show large TPS, hide score and small TPS
+    scoreDisplay.classList.add('hidden');
+    tpsDisplay.classList.remove('hidden');
+    tpsSmallDisplay.classList.add('hidden');
+    tpsDisplay.textContent = tps.toFixed(3);
+    const grade = getGrade(tps);
+    tpsDisplay.style.color = GRADE_COLORS[grade] || "#ff6b6b";
+    starsDisplay.textContent = getStarsAndCrowns(tps);
+    crownsDisplay.textContent = '';
+  }
 }
+
+// Generic animation helper that hides score/TPS, shows a centered symbol animation, then restores
+function triggerCenterAnimation(displayEl, symbols, animClass, onDoneFlag, onDoneSetter) {
+  if (onDoneFlag) return; // animation already playing
+
+  onDoneSetter(true);
+
+  // Hide score and TPS immediately
+  scoreDisplay.classList.add('hidden');
+  tpsSmallDisplay.classList.add('hidden');
+
+  // Position the animation display centrally
+  const scoreRect = scoreDisplay.getBoundingClientRect();
+  const containerRect = scoreDisplay.parentElement.getBoundingClientRect();
+  const relativeTop = scoreRect.top - containerRect.top;
+  displayEl.style.top = relativeTop + 'px';
+  displayEl.style.left = '50%';
+  displayEl.style.transform = 'translateX(-50%)';
+  displayEl.textContent = symbols;
+  displayEl.classList.remove('hidden', 'fade-out', animClass);
+
+  // Force reflow so animation restarts cleanly
+  void displayEl.offsetWidth;
+  displayEl.classList.add(animClass);
+
+  // After animation (800ms pop + 200ms linger), fade out
+  setTimeout(() => {
+    displayEl.classList.add('fade-out');
+    setTimeout(() => {
+      displayEl.classList.add('hidden');
+      displayEl.classList.remove('fade-out', animClass);
+      displayEl.style.top = '';
+      displayEl.style.left = '';
+      displayEl.style.transform = '';
+
+      // Fade score + TPS back in
+      scoreDisplay.classList.remove('hidden');
+      tpsSmallDisplay.classList.remove('hidden');
+      scoreDisplay.classList.add('fade-in');
+      tpsSmallDisplay.classList.add('fade-in');
+      setTimeout(() => {
+        scoreDisplay.classList.remove('fade-in');
+        tpsSmallDisplay.classList.remove('fade-in');
+        onDoneSetter(false);
+      }, 200);
+    }, 200);
+  }, 800);
+}
+
+function triggerStarAnimation(starCount) {
+  triggerCenterAnimation(
+    starAnimationDisplay,
+    '✦'.repeat(starCount),
+    'star-pop-animation',
+    isStarAnimationPlaying,
+    (v) => { isStarAnimationPlaying = v; }
+  );
+}
+
+function triggerCrownAnimation(crownCount) {
+  triggerCenterAnimation(
+    crownAnimationDisplay,
+    '👑'.repeat(crownCount),
+    'star-pop-animation',
+    isCrownAnimationPlaying,
+    (v) => { isCrownAnimationPlaying = v; }
+  );
+}
+
+// Called when the current lap's last note has been played; starts the next lap seamlessly
+function startNextLap() {
+  if (!gameActive) return; // Don't start if game ended during the delay
+
+  currentLap++;
+  lastStarSectionReached = 0;
+  sectionsPassedThisLap = 0;
+  importedSongElapsedSeconds = 0;
+  importedSongSpawnCursor = 0;
+  currentPlayingSongIndex = null;
+  frozenSpeed = null;
+
+  // Reset tile container transform (in case scroll-reveal happened on a fail that got cancelled)
+  tilesContainer.style.transition = 'none';
+  tilesContainer.style.transform = 'none';
+
+  // Append new lap tiles instead of clearing and restarting
+  const newLapTiles = buildImportedSongTiles(importedSong);
+  
+  // Adjust the Y positions of new tiles to continue from where the last lap ended
+  const lastTile = tiles[tiles.length - 1];
+  const lastTileBottom = lastTile ? (lastTile.y + (lastTile.type === 'long' ? lastTile.length : 1)) : 0;
+  
+  // Offset new tiles to append after the last tile
+  newLapTiles.forEach(tile => {
+    tile.y += lastTileBottom;
+    tile.id = nextTileId++; // Assign new unique IDs
+  });
+  
+  // Append new tiles to existing tiles array
+  tiles = tiles.concat(newLapTiles);
+  importedSongTiles = tiles;
+  
+  // Clear DOM elements - renderTiles() will recreate them with new tiles
+  tilesContainer.innerHTML = '';
+  hitEffectsEl.innerHTML = '';
+  tileElementCache.clear();
+  lowestTileDirty = true;
+  _cachedLowestTile = null;
+  
+  lastSpawnY = lastTileBottom + 50;
+  lastSpawnedCols = [];
+}
+
+
 
 // Core Game Mechanics
 function updateBestScoreDisplay() {
@@ -2312,8 +2674,24 @@ function startGame() {
 
   // Reset state
   gameActive = true;
+  gameOverAnimating = false;
+  gameOverAnimEndTime = 0;
+  gameOverFailedTileId = null;
+  gameOverFailureType = 'missed';
+  gameOverFailedTileDisplayY = null;
   gameStarted = false;
   timeElapsed = 0;
+  currentScore = 0;
+  starsEarned = 0;
+  crownsEarned = 0;
+  currentLap = 1;
+  lapSpeedOffset = 0;
+  sectionsPassedThisLap = 0;
+  lastStarSectionReached = 0;
+  currentPlayingSongIndex = null;
+  isStarAnimationPlaying = false;
+  isCrownAnimationPlaying = false;
+  doubleTileHits.clear();
   
   const useImportedSong = !!importedSong;
   const startSpeed = useImportedSong
@@ -2327,8 +2705,17 @@ function startGame() {
   tilesContainer.style.transform = 'none';
   tilesContainer.innerHTML = '';
   hitEffectsEl.innerHTML = '';
+  starAnimationDisplay.classList.add('hidden');
+  starAnimationDisplay.classList.remove('fade-out', 'star-pop-animation');
+  crownAnimationDisplay.classList.add('hidden');
+  crownAnimationDisplay.classList.remove('fade-out', 'star-pop-animation');
+  starsDisplay.textContent = '';
+  crownsDisplay.textContent = '';
   tiles = [];
   nextTileId = 0;
+  tileElementCache.clear();
+  lowestTileDirty = true;
+  _cachedLowestTile = null;
   activeKeys = { 0: false, 1: false, 2: false, 3: false };
 
   if (useImportedSong) {
@@ -2339,7 +2726,6 @@ function startGame() {
     lastSpawnedCols = [];
     tiles = buildImportedSongTiles(importedSong);
     importedSongTiles = tiles;
-    updateDebugCurrentSection();
   } else {
     // Parse pattern
     parsedPattern = parsePattern(textareaCustomPattern.value);
@@ -2369,7 +2755,13 @@ function startGame() {
 }
 
 function getTileBottom(tile) {
-  return tile.y + (tile.type === 'long' ? tile.length * 25 : (tile.type === 'combo' ? 50 : 25));
+  return tile.y + getTileHeightPercent(tile);
+}
+
+function getTileHeightPercent(tile) {
+  if (tile.type === 'long') return tile.length * 25;
+  if (tile.type === 'combo') return 50;
+  return 25;
 }
 
 function tileMatchesColumn(tile, colIdx) {
@@ -2401,10 +2793,12 @@ function getComboEffectiveSpeed(frozenBaseSpeed, remainingTaps) {
 }
 
 function getLowestUnclickedTile() {
+  // Return cached result when nothing has changed since the last call this frame.
+  if (!lowestTileDirty) return _cachedLowestTile;
   let lowest = null;
   let maxBottom = -9999;
   for (let i = 0; i < tiles.length; i++) {
-    if (!tiles[i].clicked && !tiles[i].holdCompleted) {
+    if (!tiles[i].clicked && !tiles[i].holdCompleted && !tiles[i].released) {
       const tileBottom = getTileBottom(tiles[i]);
       if (tileBottom > maxBottom) {
         maxBottom = tileBottom;
@@ -2412,6 +2806,8 @@ function getLowestUnclickedTile() {
       }
     }
   }
+  _cachedLowestTile = lowest;
+  lowestTileDirty = false;
   return lowest;
 }
 
@@ -2441,6 +2837,58 @@ function spawnHitRipple(x, y) {
   hitEffectsEl.appendChild(ripple);
   ripple.addEventListener('animationend', () => ripple.remove());
 }
+
+function spawnScorePopup(tile, scoreAmount) {
+  if (!tile || !importedSong) return;
+  
+  const tileEl = document.querySelector(`[data-tile-id="${tile.id}"]`);
+  if (!tileEl) return;
+  
+  const containerRect = tilesContainer.getBoundingClientRect();
+  const tileRect = tileEl.getBoundingClientRect();
+  
+  const popup = document.createElement('div');
+  popup.className = 'score-popup';
+  popup.textContent = '+' + scoreAmount;
+  
+  // Position popup above the tile
+  const popupTop = tileRect.top - containerRect.top - 20;
+  const popupLeft = tileRect.left - containerRect.left + (tileRect.width / 2) - 20;
+  
+  popup.style.top = popupTop + 'px';
+  popup.style.left = popupLeft + 'px';
+  
+  tilesContainer.appendChild(popup);
+  popup.addEventListener('animationend', () => popup.remove());
+}
+
+function spawnScorePopupLong(tile, scoreAmount) {
+  if (!tile || !importedSong) return;
+  
+  const popup = document.createElement('div');
+  popup.className = 'score-popup-long';
+  popup.textContent = '+' + scoreAmount;
+  
+  // Position at the top edge of the tile, centered on its column.
+  const colLeftPercent = tile.col * 25;
+  const colCenterPercent = colLeftPercent + 12.5;
+  
+  popup.style.top = tile.y + '%';
+  popup.style.left = colCenterPercent + '%';
+  popup.style.transform = 'translateX(-50%)';
+  
+  tilesContainer.appendChild(popup);
+
+  // Store on the tile so renderTiles() can keep updating its top each frame.
+  tile.scorePopupEl = popup;
+
+  popup.addEventListener('animationend', () => {
+    popup.remove();
+    // Clear the reference so renderTiles() stops tracking it.
+    if (tile.scorePopupEl === popup) tile.scorePopupEl = null;
+  });
+}
+
 
 function playHitAnimation(colIdx, hitContext, tile) {
   let x;
@@ -2472,6 +2920,12 @@ function pulseComboBadge(tileId, remainingTaps) {
   }
 }
 
+function handleImportedSongTileProgress(tile) {
+  if (!tile || !tile.fromImportedSong || tile.isStart || tile.sectionProgressHandled) return;
+  tile.sectionProgressHandled = true;
+  updateSectionOnTileHit(tile);
+}
+
 function handleColumnInputDown(colIdx, hitContext) {
   if (!gameActive) return;
 
@@ -2482,6 +2936,7 @@ function handleColumnInputDown(colIdx, hitContext) {
   const lowestActiveTiles = tiles.filter(t => 
     !t.clicked && 
     !t.holdCompleted && 
+    !t.released &&
     Math.abs(getTileBottom(t) - lowestBottom) < 1
   );
   
@@ -2495,58 +2950,88 @@ function handleColumnInputDown(colIdx, hitContext) {
       }
     }
 
-    if (matchingTile.fromImportedSong) {
-      updateDebugLastPlayedState(matchingTile);
-    }
-
     playHitAnimation(colIdx, hitContext, matchingTile);
     
     if (matchingTile.type === 'single') {
       matchingTile.clicked = true;
       playClickVisual(matchingTile.id);
       if (matchingTile.fromImportedSong) {
+        handleImportedSongTileProgress(matchingTile);
         playImportedTileAudio(matchingTile);
+        
+        // Check if this is part of a double tile using the isDoubleTile flag
+        if (matchingTile.isDoubleTile && matchingTile.sourceEventKey) {
+          const hits = doubleTileHits.get(matchingTile.sourceEventKey) || 0;
+          doubleTileHits.set(matchingTile.sourceEventKey, hits + 1);
+          
+          // First tile gives nothing, second tile gives +4 (no popup for double tiles)
+          if (hits + 1 === 2) {
+            currentScore += 4;
+            doubleTileHits.delete(matchingTile.sourceEventKey);
+          }
+        } else {
+          currentScore++;
+        }
+        updateHUD(currentSpeed);
       }
     } else if (matchingTile.type === 'combo') {
       const wasUntouched = matchingTile.remainingTaps === matchingTile.taps;
       matchingTile.remainingTaps--;
       if (wasUntouched && matchingTile.remainingTaps > 0) {
-        const startSpeed = getStartSpeed();
-        const accel = parseFloat(inputAccel.value) || 0.07;
-        frozenSpeed = startSpeed + accel * timeElapsed;
+        // Freeze speed for combo tiles (both pattern and imported mode)
+        frozenSpeed = currentSpeed;
       }
       if (matchingTile.remainingTaps <= 0) {
         matchingTile.clicked = true;
         playClickVisual(matchingTile.id);
+        if (matchingTile.fromImportedSong) {
+          handleImportedSongTileProgress(matchingTile);
+          currentScore += matchingTile.taps;
+          updateHUD(currentSpeed);
+        }
       } else {
         pulseComboBadge(matchingTile.id, matchingTile.remainingTaps);
+        if (matchingTile.fromImportedSong) {
+          currentScore++;
+          spawnScorePopup(matchingTile, 1);
+          updateHUD(currentSpeed);
+        }
       }
     } else if (matchingTile.type === 'long') {
-      matchingTile.held = true;
-      matchingTile.tapped = true;
-      
-      // Calculate where the press occurred
-      if (hitContext && hitContext.source === 'pointer' && hitContext.y !== undefined) {
-        const boardRect = boardEl.getBoundingClientRect();
-        const pressPercentY = ((hitContext.y - boardRect.top) / boardRect.height) * 100;
-        matchingTile.pressY = Math.max(10, Math.min(95, pressPercentY));
-      } else {
-        // Keyboard or default hit position at bottom of the long tile (cue ring area)
-        // cue ring is at tileBottom - 12.5
-        const tileBottom = matchingTile.y + matchingTile.length * 25;
-        matchingTile.pressY = Math.max(10, Math.min(95, tileBottom - 12.5));
-      }
+      // Only allow holding if not already tapped and not released
+      if (!matchingTile.tapped) {
+        matchingTile.held = true;
+        matchingTile.tapped = true;
+        matchingTile.pressTime = Date.now();
+        matchingTile.startYOnHold = matchingTile.y;
+        
+        // Calculate where the press occurred
+        if (hitContext && hitContext.source === 'pointer' && hitContext.y !== undefined) {
+          const boardRect = boardEl.getBoundingClientRect();
+          const pressPercentY = ((hitContext.y - boardRect.top) / boardRect.height) * 100;
+          matchingTile.pressY = Math.max(10, Math.min(95, pressPercentY));
+        } else {
+          // Keyboard or default hit position at bottom of the long tile (cue ring area)
+          // cue ring is at tileBottom - 12.5
+          const tileBottom = matchingTile.y + matchingTile.length * 25;
+          matchingTile.pressY = Math.max(10, Math.min(95, tileBottom - 12.5));
+        }
 
-      const el = document.querySelector(`[data-tile-id="${matchingTile.id}"]`);
-      if (el) {
-        el.classList.add('tile-holding');
-      }
-      if (matchingTile.fromImportedSong) {
-        playImportedTileAudio(matchingTile);
+        const el = document.querySelector(`[data-tile-id="${matchingTile.id}"]`);
+        if (el) {
+          el.classList.add('tile-holding');
+        }
+        if (matchingTile.fromImportedSong) {
+          handleImportedSongTileProgress(matchingTile);
+          playImportedTileAudio(matchingTile);
+        }
       }
     }
+    // Tile state changed — invalidate the lowest-tile cache so next call re-scans.
+    lowestTileDirty = true;
   } else {
-    gameOver(lowest.id);
+    // Wrong column press - pass the pressed column index for the flash animation
+    gameOver(lowest.id, 'wrong_press', colIdx);
   }
 }
 
@@ -2556,9 +3041,24 @@ function handleColumnInputUp(colIdx) {
   const activeLongTile = tiles.find(t => t.col === colIdx && t.type === 'long' && t.held && !t.holdCompleted);
   if (activeLongTile) {
     activeLongTile.held = false;
+    activeLongTile.released = true; // Mark as released so it does not block next tiles or trigger game over
+    activeLongTile.canRehold = false; // Prevent re-holding after letting go
+    if (activeLongTile.pressY !== undefined) {
+      activeLongTile.releaseYOffset = activeLongTile.pressY - activeLongTile.y;
+    }
     const el = document.querySelector(`[data-tile-id="${activeLongTile.id}"]`);
     if (el) {
       el.classList.remove('tile-holding');
+    }
+    
+    // Award score for the portion held only if the player let go early
+    // (full completion is handled in the game loop below)
+    if (activeLongTile.fromImportedSong) {
+      const tileLength = activeLongTile.length || 1;
+      const scoreGain = tileLength + 1;
+      currentScore += scoreGain;
+      spawnScorePopup(activeLongTile, scoreGain);
+      updateHUD(currentSpeed);
     }
   }
 }
@@ -2578,23 +3078,43 @@ function playClickVisual(tileId) {
 }
 
 function gameLoop(time) {
+  if (gameOverAnimating) {
+    renderTiles();
+    if (time >= gameOverAnimEndTime) {
+      gameOverAnimating = false;
+      gameOverFailedTileId = null;
+      gameOverFailureType = 'missed';
+      gameOverFailedTileDisplayY = null;
+      gameoverScreen.classList.remove('hidden');
+    }
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
   if (!gameActive) return;
 
   const dt = (time - lastTime) / 1000;
   lastTime = time;
+  // Invalidate the lowest-tile cache at the start of every frame.
+  lowestTileDirty = true;
 
   if (gameStarted) {
     const importedMode = !!importedSong;
     const startSpeed = importedMode ? getImportedSongSpeedAt(0) : getStartSpeed();
     const accel = parseFloat(inputAccel.value) || 0.07;
-    const comboInSlowdown = importedMode ? null : getComboInSlowdownPhase();
+    const comboInSlowdown = getComboInSlowdownPhase();
     let effectiveSpeed;
 
     if (importedMode) {
       importedSongElapsedSeconds += dt;
       currentSpeed = getImportedSongSpeedAt(importedSongElapsedSeconds);
       effectiveSpeed = currentSpeed;
-      updateDebugCurrentSection();
+      
+      // Handle combo slowdown for imported songs
+      if (comboInSlowdown && frozenSpeed !== null) {
+        currentSpeed = frozenSpeed;
+        effectiveSpeed = getComboEffectiveSpeed(frozenSpeed, comboInSlowdown.remainingTaps);
+      }
     } else if (comboInSlowdown && frozenSpeed !== null) {
       currentSpeed = frozenSpeed;
       effectiveSpeed = getComboEffectiveSpeed(frozenSpeed, comboInSlowdown.remainingTaps);
@@ -2620,22 +3140,43 @@ function gameLoop(time) {
           tiles[i].held = false;
           tiles[i].clicked = true;
           playClickVisual(tiles[i].id);
+          // Award score for completing the long tile: (length + 1) points
+          if (tiles[i].fromImportedSong) {
+            const scoreGain = tiles[i].length + 1;
+            currentScore += scoreGain;
+            spawnScorePopupLong(tiles[i], scoreGain);
+            updateHUD(currentSpeed);
+          }
         }
       }
     }
 
     // Check if any unclicked tile is completely out of bounds (top y > 100)
     for (let i = 0; i < tiles.length; i++) {
-      if (!tiles[i].clicked && !tiles[i].held && !tiles[i].tapped && tiles[i].y > 100) {
-        gameOver(tiles[i].id);
-        return;
+      if (!tiles[i].clicked && !tiles[i].held && !tiles[i].tapped && !tiles[i].released && tiles[i].y > 100) {
+        gameOver(tiles[i].id, 'missed');
+        break;
       }
     }
 
-    // Clean up passed tiles (only when the top of the tile goes off-screen so long tiles don't disappear early)
-    tiles = tiles.filter(t => {
-      return !((t.clicked || t.tapped) && t.y > 100);
-    });
+    if (gameOverAnimating) {
+      renderTiles();
+      requestAnimationFrame(gameLoop);
+      return;
+    }
+
+    // Clean up passed tiles in-place — avoids allocating a new array every frame.
+    let writeIdx = 0;
+    for (let i = 0; i < tiles.length; i++) {
+      const t = tiles[i];
+      if (!((t.clicked || t.tapped || t.released) && t.y > 100)) {
+        tiles[writeIdx++] = t;
+      }
+    }
+    if (writeIdx < tiles.length) {
+      lowestTileDirty = true; // Tiles were removed; cached lowest may be stale.
+      tiles.length = writeIdx;
+    }
 
     if (!importedMode) {
       lastSpawnY += movement;
@@ -2645,6 +3186,17 @@ function gameLoop(time) {
         lastSpawnY = lastSpawnY - spawnPatternRow(lastSpawnY) * 25;
       }
     }
+
+    // Periodically trim the scheduledAudioNodes array to prevent unbounded growth.
+    // Audio nodes are short-lived; entries older than ~2 s (≈120 frames) are dead.
+    audioCleanupCounter++;
+    if (audioCleanupCounter >= 120) {
+      audioCleanupCounter = 0;
+      if (scheduledAudioNodes.length > 150) {
+        // Keep only the most-recently-scheduled 75 nodes; older ones have finished.
+        scheduledAudioNodes = scheduledAudioNodes.slice(-75);
+      }
+    }
   }
 
   renderTiles();
@@ -2652,14 +3204,31 @@ function gameLoop(time) {
 }
 
 function renderTiles() {
-  const existingEls = {};
-  const children = Array.from(tilesContainer.children);
-  children.forEach(child => {
-    existingEls[child.dataset.tileId] = child;
+  // Filter only tiles that are currently visible or about to be visible in the viewport
+  const visibleTiles = tiles.filter(tile => {
+    if (gameOverAnimating && gameOverFailureType === 'missed') {
+      return tile.id === gameOverFailedTileId;
+    }
+    if (gameOverAnimating && tile.id === gameOverFailedTileId) return true;
+    const bottom = getTileBottom(tile);
+    return tile.y <= 120 && bottom >= -50;
   });
 
-  tiles.forEach(tile => {
-    let el = existingEls[tile.id];
+  const visibleIds = new Set(visibleTiles.map(t => String(t.id)));
+
+  // Remove DOM elements for tiles no longer in view using tileElementCache (no full DOM walk).
+  const toRemove = [];
+  for (const [id, el] of tileElementCache) {
+    if (!visibleIds.has(id)) {
+      toRemove.push(id);
+      el.remove();
+    }
+  }
+  toRemove.forEach(id => tileElementCache.delete(id));
+
+  visibleTiles.forEach(tile => {
+    const idStr = String(tile.id);
+    let el = tileElementCache.get(idStr);
     if (!el) {
       el = document.createElement('div');
       el.dataset.tileId = tile.id;
@@ -2710,9 +3279,12 @@ function renderTiles() {
       }
 
       tilesContainer.appendChild(el);
+      tileElementCache.set(idStr, el);
     }
 
     // Update position
+    const isFailedTileAnimating = gameOverAnimating && tile.id === gameOverFailedTileId;
+
     if (tile.spanCols) {
       el.style.left = (tile.spanCols[0] * 25) + '%';
       el.style.width = (tile.spanCols.length * 25) + '%';
@@ -2721,36 +3293,41 @@ function renderTiles() {
       el.style.left = (tile.col * 25) + '%';
       el.style.width = '';
     }
-    el.style.top = tile.y + '%';
-    
+    const displayY = (isFailedTileAnimating && gameOverFailedTileDisplayY !== null)
+      ? gameOverFailedTileDisplayY
+      : tile.y;
+    el.style.top = displayY + '%';
+    if (isFailedTileAnimating) {
+      el.style.zIndex = '9998';
+    }
+
+    // Keep the long-tile score popup anchored to the tile as it scrolls.
+    if (tile.scorePopupEl) {
+      tile.scorePopupEl.style.top = tile.y + '%';
+    }
+
+    if (isFailedTileAnimating && gameOverFailureType === 'missed') {
+      el.classList.remove('tile-holding', 'tile-clicked');
+      el.style.background = '';
+      el.style.border = '';
+      el.style.boxShadow = '';
+      if (!el.classList.contains('blink-three-times')) {
+        el.classList.add('bg-black', 'blink-three-times');
+      }
+      el.querySelectorAll('.red-ring-cue, .tile-long-line, .tile-hold-dome, .combo-badge').forEach(child => child.remove());
+    }
+
     // Update active class for holding
     if (tile.type === 'long') {
       if (tile.held) {
         el.classList.add('tile-holding');
-        
-        if (tile.pressY !== undefined) {
-          let domeEl = el.querySelector('.tile-hold-dome');
-          if (!domeEl) {
-            domeEl = document.createElement('div');
-            domeEl.className = 'tile-hold-dome';
-            el.appendChild(domeEl);
-          }
-          const tileHeightPercent = tile.length * 25;
-          const pressPercentOfTile = ((tile.pressY - tile.y) / tileHeightPercent) * 100;
-          const domeHeightPercentOfTile = (12 / tileHeightPercent) * 100;
-          
-          domeEl.style.height = domeHeightPercentOfTile + '%';
-          domeEl.style.top = (pressPercentOfTile - domeHeightPercentOfTile) + '%';
-        }
       } else {
         el.classList.remove('tile-holding');
-        const domeEl = el.querySelector('.tile-hold-dome');
-        if (domeEl) {
-          domeEl.remove();
-        }
       }
-      
-      if (tile.clicked) {
+
+      if (isFailedTileAnimating) {
+        // Preserve game-over blink animation styles.
+      } else if (tile.clicked) {
         el.style.background = '#f3f4f6';
         el.style.border = '1px solid #e5e7eb';
         el.style.boxShadow = 'none';
@@ -2760,35 +3337,82 @@ function renderTiles() {
         if (dome) dome.remove();
         const line = el.querySelector('.tile-long-line');
         if (line) line.remove();
+      } else if (tile.pressY !== undefined) {
+        let domeEl = el.querySelector('.tile-hold-dome');
+        if (!domeEl) {
+          domeEl = document.createElement('div');
+          domeEl.className = 'tile-hold-dome';
+          el.appendChild(domeEl);
+        }
+        const tileHeightPercent = tile.length * 25;
+        const pressOffset = tile.releaseYOffset !== undefined ? tile.releaseYOffset : (tile.pressY - tile.y);
+        const pressPercentOfTile = (pressOffset / tileHeightPercent) * 100;
+        const domeHeightPercentOfTile = (12 / tileHeightPercent) * 100;
+        
+        domeEl.style.height = domeHeightPercentOfTile + '%';
+        domeEl.style.top = (pressPercentOfTile - domeHeightPercentOfTile) + '%';
       }
-    }
-  });
-
-  // Remove elements that are no longer in the tiles list
-  const currentIds = new Set(tiles.map(t => String(t.id)));
-  children.forEach(child => {
-    if (!currentIds.has(child.dataset.tileId)) {
-      child.remove();
     }
   });
 }
 
-function gameOver(failedTileId) {
+function gameOver(failedTileId, failureType = 'missed', pressedColIdx = null) {
   gameActive = false;
+  gameOverAnimating = true;
+  gameOverAnimEndTime = performance.now() + 1500;
+  gameOverFailedTileId = failedTileId;
+  gameOverFailureType = failureType;
 
   const failedTile = tiles.find(t => t.id === failedTileId);
   const failedEl = document.querySelector(`[data-tile-id="${failedTileId}"]`);
-  if (failedEl) {
-    failedEl.classList.remove('bg-black', 'tile-holding');
-    failedEl.style.background = ''; // reset dynamic gradients if any
-    failedEl.classList.add('flash-error');
+  
+  if (failureType === 'missed') {
+    if (failedTile) {
+      // Snap the missed tile to the tap line so it stays visible while blinking
+      gameOverFailedTileDisplayY = 100 - getTileHeightPercent(failedTile);
+      tilesContainer.style.transition = 'none';
+      tilesContainer.style.transform = 'none';
+    }
+    // Missed tile: blink three times before the game over screen
+    if (failedEl) {
+      failedEl.classList.remove('tile-holding', 'tile-clicked');
+      failedEl.style.background = '';
+      failedEl.style.border = '';
+      failedEl.style.boxShadow = '';
+      failedEl.classList.add('bg-black', 'blink-three-times');
+      failedEl.querySelectorAll('.red-ring-cue, .tile-long-line, .tile-hold-dome, .combo-badge').forEach(child => child.remove());
+    }
+  } else if (failureType === 'wrong_press') {
+    // White-area press: blink the pressed column in light red at the intended tile height
+    const colIdx = pressedColIdx !== null ? pressedColIdx : (failedTile ? failedTile.col : 0);
+    if (failedTile && tilesContainer) {
+      const tileHeight = getTileHeightPercent(failedTile);
+      const tileTop = failedTile.y;
+      const colLeft = colIdx * 25;
+      
+      const flashEl = document.createElement('div');
+      flashEl.className = 'column-flash-red';
+      flashEl.style.position = 'absolute';
+      flashEl.style.left = `${colLeft}%`;
+      flashEl.style.width = '25%';
+      flashEl.style.top = `${tileTop}%`;
+      flashEl.style.height = `${tileHeight}%`;
+      flashEl.style.zIndex = '9999';
+      flashEl.style.pointerEvents = 'none';
+      
+      tilesContainer.appendChild(flashEl);
+      
+      setTimeout(() => {
+        flashEl.remove();
+      }, 1500);
+    }
   }
 
-  // Scroll up to reveal the missed note if it went off screen
-  if (failedTile) {
+  // Scroll up to reveal the missed note if it went off screen (wrong-press only)
+  if (failedTile && failureType !== 'missed') {
     const tileBottom = getTileBottom(failedTile);
     if (tileBottom > 100) {
-      const overlap = tileBottom - 90; // center bottom of tile at 90% of screen
+      const overlap = tileBottom - 90;
       tilesContainer.style.transition = 'transform 1s cubic-bezier(0.25, 1, 0.5, 1)';
       tilesContainer.style.transform = `translateY(-${overlap}%)`;
     }
@@ -2802,13 +3426,23 @@ function gameOver(failedTileId) {
   }
 
   // Populate game over panel info
-  document.getElementById('final-tps').textContent = currentSpeed.toFixed(3);
-  const grade = getGrade(currentSpeed);
-  const finalGradeEl = document.getElementById('final-grade');
-  finalGradeEl.textContent = grade;
-  finalGradeEl.className = `font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow ${getGradeClass(grade)}`;
-  
-  document.getElementById('final-stars').textContent = getStarsAndCrowns(currentSpeed);
+  const isImportedMode = !!importedSong;
+  if (isImportedMode) {
+    // Show score and stars/crowns for imported song mode
+    document.getElementById('final-score').textContent = currentScore;
+    document.getElementById('final-stars').textContent = starsEarned > 0 ? '✦'.repeat(starsEarned) : '';
+    document.getElementById('final-crowns').textContent = crownsEarned > 0 ? '👑'.repeat(crownsEarned) : '';
+  } else {
+    // Show TPS grade for pattern mode
+    document.getElementById('final-score').textContent = currentSpeed.toFixed(3);
+    const grade = getGrade(currentSpeed);
+    const finalGradeEl = document.getElementById('final-grade');
+    finalGradeEl.textContent = grade;
+    finalGradeEl.className = `font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow ${getGradeClass(grade)}`;
+    finalGradeEl.classList.remove('hidden');
+    document.getElementById('final-stars').textContent = getStarsAndCrowns(currentSpeed);
+    document.getElementById('final-crowns').textContent = '';
+  }
   
   const startSpeedVal = getStartSpeed();
   document.getElementById('final-start-tps').textContent = startSpeedVal.toFixed(1);
@@ -2816,8 +3450,6 @@ function gameOver(failedTileId) {
   const accelVal = parseFloat(inputAccel.value) || 0.07;
   document.getElementById('final-accel').textContent = accelVal.toFixed(2);
 
-  // Show Game Over Screen
-  setTimeout(() => {
-    gameoverScreen.classList.remove('hidden');
-  }, 500);
+  renderTiles();
+  requestAnimationFrame(gameLoop);
 }

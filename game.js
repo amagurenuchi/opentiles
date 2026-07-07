@@ -107,8 +107,7 @@ let currentScore = 0;
 let starsEarned = 0;
 let crownsEarned = 0;
 let currentLap = 1;
-let lapSpeedOffset = 0; // Additional TPS added at section starts from lap 2+
-let sectionsPassedThisLap = 0; // Count of sections passed in current lap for speed boosting
+let sectionsPassedThisLap = 0; // Count of sections passed in current lap for tracking
 let lastStarSectionReached = 0; // Index into importedSong.starSectionIds for star/crown progression
 let currentPlayingSongIndex = null; // Index into speed schedule (JSON music part)
 let isStarAnimationPlaying = false;
@@ -404,33 +403,53 @@ async function loadSongFromData(songData) {
       playableEvents: []
     };
 
-    for (const sectionId of sectionIds) {
-      const sectionData = songData.sections[sectionId];
+    console.log('[DEBUG] Loading song with CSV sections:', sectionIds);
+
+    for (const csvSectionId of sectionIds) {
+      const sectionData = songData.sections[csvSectionId];
       const jsonFileName = `${sectionData.musicJson}.json`;
-      
+
       try {
         const response = await fetch(`song/${jsonFileName}`, { cache: 'no-store' });
         if (!response.ok) {
-          console.warn(`Failed to load section ${sectionId}: HTTP ${response.status}`);
+          console.warn(`Failed to load CSV section ${csvSectionId}: HTTP ${response.status}`);
           continue;
         }
         const text = await response.text();
         const sectionJson = JSON.parse(text);
-        
-        // Merge section data
+
+        console.log('[DEBUG] Loaded JSON for CSV section', csvSectionId, 'with', sectionJson.musics?.length, 'music entries');
+
+        // Map CSV sectionId to music sections
+        // CSV sectionId 1 -> musicId 1, CSV sectionId 2 -> musicId 2, etc.
         if (Array.isArray(sectionJson.musics)) {
           sectionJson.musics.forEach((music) => {
-            // Star/crown sections come from CSV; keep JSON music.id for internal speed parts
-            music.starSectionId = sectionId;
+            // Map: CSV sectionId determines which music.id to use for progress tracking
+            // If CSV sectionId is 1, use music.id 1 for the first music entry, etc.
+            const targetMusicId = csvSectionId; // CSV sectionId maps directly to musicId for progress
+
+            // Override music.id to match CSV sectionId for consistent progress tracking
+            const originalMusicId = music.id;
+            music.id = targetMusicId;
+
             // Use CSV baseBeats for note duration calculations
             music.baseBeats = sectionData.baseBeats;
             // Store the precalculated tiles/min (ratio) as speed, converted to tiles/sec
             music.speed = sectionData.ratio / 60;
+
+            console.log('[DEBUG] CSV section mapping:', {
+              csvSectionId,
+              originalMusicId,
+              newMusicId: music.id,
+              speed: music.speed,
+              baseBeats: music.baseBeats
+            });
+
             mergedSong.entries.push(music);
           });
         }
       } catch (err) {
-        console.warn(`Failed to load section ${sectionId}:`, err);
+        console.warn(`Failed to load CSV section ${csvSectionId}:`, err);
       }
     }
 
@@ -482,56 +501,105 @@ function getImportedStarSectionIds() {
 }
 
 function getImportedMaxStars() {
-  return getImportedStarSectionIds().length;
+  // Fixed at 3 stars for the 3 music sections
+  return 3;
 }
 
 function buildStarSectionBoundaries(speedSchedule, starSectionIds) {
-  return (Array.isArray(starSectionIds) ? starSectionIds : []).map((starSectionId, rank) => {
-    const entry = (Array.isArray(speedSchedule) ? speedSchedule : []).find((item) => item.starSectionId === starSectionId);
-    return {
+  console.log('[DEBUG] buildStarSectionBoundaries called with:', { starSectionIds, speedScheduleLength: speedSchedule?.length });
+  const boundaries = (Array.isArray(starSectionIds) ? starSectionIds : []).map((starSectionId, rank) => {
+    // Match by entry.id (music.id) - this should be 1, 2, 3
+    const entry = (Array.isArray(speedSchedule) ? speedSchedule : []).find((item) => item.id === starSectionId);
+    const boundary = {
       rank,
       starSectionId,
       startSeconds: entry ? entry.startSeconds : 0,
       songIndex: entry ? entry.songIndex : null
     };
+    console.log('[DEBUG] Created boundary for musicId', starSectionId, ':', boundary);
+    return boundary;
   });
+  console.log('[DEBUG] Final boundaries:', boundaries);
+  return boundaries;
 }
 
 function getStarSectionStartRankForTile(tile) {
   const boundaries = importedSong && importedSong.starSectionBoundaries;
+  console.log('[DEBUG] getStarSectionStartRankForTile called with:', {
+    tileExists: !!tile,
+    sourceSongIndex: tile?.sourceSongIndex,
+    sourceStarSectionId: tile?.sourceStarSectionId,
+    boundariesExist: !!boundaries,
+    boundariesLength: boundaries?.length
+  });
+
   if (!tile || tile.sourceSongIndex === undefined || tile.sourceSongIndex === null || !Array.isArray(boundaries)) {
+    console.log('[DEBUG] getStarSectionStartRankForTile returning -1 (invalid input)');
     return -1;
   }
 
   const songIndex = tile.sourceSongIndex;
+  console.log('[DEBUG] Looking for songIndex:', songIndex, 'in boundaries:', boundaries);
+
   for (let rank = 1; rank < boundaries.length; rank++) {
     if (boundaries[rank].songIndex === songIndex) {
+      console.log('[DEBUG] Found matching boundary at rank:', rank, 'for songIndex:', songIndex);
       return rank;
     }
   }
 
+  console.log('[DEBUG] No matching boundary found for songIndex:', songIndex, 'returning -1');
   return -1;
 }
 
 function applyStarSectionRankProgress(sectionRank) {
+  console.log('[DEBUG] applyStarSectionRankProgress called with:', {
+    sectionRank,
+    lastStarSectionReached,
+    currentLap,
+    starsEarned,
+    crownsEarned
+  });
+
   if (sectionRank <= 0 || sectionRank <= lastStarSectionReached || lastStarSectionReached >= 900) {
+    console.log('[DEBUG] applyStarSectionRankProgress skipped (invalid or already reached)');
     return;
   }
 
   lastStarSectionReached = sectionRank;
+  console.log('[DEBUG] Updated lastStarSectionReached to:', sectionRank);
 
   if (currentLap === 1) {
-    starsEarned = sectionRank;
-    triggerStarAnimation(sectionRank);
+    // Lap 1: Award stars based on section reached
+    // Section 2 (musicId 2) -> 1st star
+    // Section 3 (musicId 3) -> 2nd star
+    // Last note of section 3 -> 3rd star (handled in updateSectionOnTileHit)
+    if (sectionRank === 2) {
+      starsEarned = 1;
+      console.log('[DEBUG] Lap 1: Reached section 2, awarded 1st star');
+      triggerStarAnimation(1);
+    } else if (sectionRank === 3) {
+      starsEarned = 2;
+      console.log('[DEBUG] Lap 1: Reached section 3, awarded 2nd star');
+      triggerStarAnimation(2);
+    }
     return;
   }
 
   sectionsPassedThisLap++;
-  lapSpeedOffset += 0.5;
+  // Speed acceleration is applied per-lap, not per-section
+  // The acceleration formula in getImportedSongSpeedAt handles the per-lap speed increase
+  console.log('[DEBUG] Lap', currentLap, ': sectionsPassedThisLap:', sectionsPassedThisLap);
 
-  if (currentLap === 2 && sectionRank === 1) {
-    crownsEarned = Math.max(crownsEarned, 1);
-    triggerCrownAnimation(1);
+  if (currentLap === 2) {
+    // Lap 2: Award crowns based on section reached
+    // Section 2 (musicId 2) -> 1st crown
+    // Last note of section 3 -> 2nd crown (handled in updateSectionOnTileHit)
+    if (sectionRank === 2) {
+      crownsEarned = Math.max(crownsEarned, 1);
+      console.log('[DEBUG] Lap 2: Reached section 2, awarded 1st crown, total crowns:', crownsEarned);
+      triggerCrownAnimation(1);
+    }
   }
 }
 
@@ -985,6 +1053,8 @@ function buildImportedSongSpeedSchedule(song) {
   const schedule = [];
   let cursorSeconds = 0;
 
+  console.log('[DEBUG] buildImportedSongSpeedSchedule called with', song.entries?.length, 'entries');
+
   (Array.isArray(song.entries) ? song.entries : []).forEach((entry, index) => {
     const bpm = resolvePT2SectionBpm(entry, song.baseBpm || song.bpm || 120);
     const baseBeats = resolvePT2SectionBaseBeats(entry, song.baseBeats || 1);
@@ -993,11 +1063,11 @@ function buildImportedSongSpeedSchedule(song) {
     // If not set, compute from BPM/baseBeats
     const speed = (entry.speed && entry.speed > 0) ? entry.speed : computePT2TilesPerSecond(bpm, baseBeats);
 
-    schedule.push({
+    const scheduleEntry = {
       index,
       id: entry.id,
       songIndex: entry.songIndex,
-      starSectionId: entry.starSectionId,
+      starSectionId: entry.id, // Use entry.id (music.id) for progress tracking
       startSeconds: cursorSeconds,
       endSeconds: cursorSeconds + durationSeconds,
       durationSeconds,
@@ -1005,11 +1075,21 @@ function buildImportedSongSpeedSchedule(song) {
       baseBeats,
       speed,
       originalSpeed: speed // Store original speed for lap multiplication
+    };
+
+    console.log('[DEBUG] Schedule entry', index, ':', {
+      songIndex: entry.songIndex,
+      starSectionId: entry.id,
+      id: entry.id,
+      startSeconds: cursorSeconds
     });
+    
+    schedule.push(scheduleEntry);
 
     cursorSeconds += durationSeconds;
   });
 
+  console.log('[DEBUG] Final schedule has', schedule.length, 'entries');
   return schedule;
 }
 
@@ -1037,15 +1117,17 @@ function getImportedSongSpeedAt(elapsedSeconds) {
     
     if (currentLap === 1) {
       // Lap 1: use original speed without acceleration
-      return baseSpeed + lapSpeedOffset;
+      console.log('[DEBUG] Lap 1 speed:', baseSpeed, '(no acceleration)');
+      return baseSpeed;
     }
     
     const currentBpm = baseSpeed * 60; // Convert tiles/sec to BPM
     const reachedFourthLap = currentLap >= 4;
     const currentBeats = 1.0; // Always 1 for our tiles
     const currentPartBaseBeats = section.baseBeats || 1.0;
-    
+
     // CLASSIC acceleration formula from UnitedTiles (exact C++ implementation)
+    // Different threshold for lap 4+ (130.0) vs laps 2-3 (100.0)
     const tUnknown = reachedFourthLap ? 130.0 : 100.0;
     const v1 = Math.max(0.0, currentBeats);
     const v2 = currentBpm;
@@ -1058,26 +1140,30 @@ function getImportedSongSpeedAt(elapsedSeconds) {
     const v6 = r * v5;
     const v7 = 60.0 * v6;
     const v8 = v7 * currentPartBaseBeats;
-    
+
     const newBpm = v8;
     const newSpeed = newBpm / 60; // Convert back to tiles/sec
-    
-    return newSpeed + lapSpeedOffset;
+
+    const lapRange = reachedFourthLap ? '(lap 4+)' : '(lap 2-3)';
+    console.log('[DEBUG] Lap', currentLap, 'accelerated speed:', newSpeed, '(threshold:', tUnknown, lapRange + ')');
+    return newSpeed;
   }
 
   const baseSpeed = importedSongBaseSpeed || getStartSpeed();
-  
+
   if (currentLap === 1) {
     // Lap 1: use original speed without acceleration
-    return baseSpeed + lapSpeedOffset;
+    console.log('[DEBUG] Fallback Lap 1 speed:', baseSpeed, '(no section found)');
+    return baseSpeed;
   }
   
   const currentBpm = baseSpeed * 60;
   const reachedFourthLap = currentLap >= 4;
   const currentBeats = 1.0;
   const currentPartBaseBeats = 1.0;
-  
+
   // CLASSIC acceleration formula from UnitedTiles (exact C++ implementation)
+  // Different threshold for lap 4+ (130.0) vs laps 2-3 (100.0)
   const tUnknown = reachedFourthLap ? 130.0 : 100.0;
   const v1 = Math.max(0.0, currentBeats);
   const v2 = currentBpm;
@@ -1090,11 +1176,13 @@ function getImportedSongSpeedAt(elapsedSeconds) {
   const v6 = r * v5;
   const v7 = 60.0 * v6;
   const v8 = v7 * currentPartBaseBeats;
-  
+
   const newBpm = v8;
   const newSpeed = newBpm / 60;
-  
-  return newSpeed + lapSpeedOffset;
+
+  const lapRange = reachedFourthLap ? '(lap 4+)' : '(lap 2-3)';
+  console.log('[DEBUG] Fallback Lap', currentLap, 'accelerated speed:', newSpeed, '(threshold:', tUnknown, lapRange + ')');
+  return newSpeed;
 }
 
 function noteTokenToMidi(noteName) {
@@ -1389,31 +1477,48 @@ function buildPT2AudioEvents(parsedEvent, instrumentName) {
 function updateSectionOnTileHit(tile) {
   if (!importedSong || !tile) return;
 
+  console.log('[DEBUG] updateSectionOnTileHit called with tile:', {
+    tileId: tile.id,
+    sourceSongIndex: tile.sourceSongIndex,
+    sourceStarSectionId: tile.sourceStarSectionId,
+    isLast: tile.isLast
+  });
+
   if (tile.sourceSongIndex !== undefined && tile.sourceSongIndex !== null) {
     currentPlayingSongIndex = tile.sourceSongIndex;
+    console.log('[DEBUG] Updated currentPlayingSongIndex to:', currentPlayingSongIndex);
   }
 
   const sectionRank = getStarSectionStartRankForTile(tile);
+  console.log('[DEBUG] Got sectionRank:', sectionRank);
+
   if (sectionRank >= 1) {
     applyStarSectionRankProgress(sectionRank);
   }
 
   // Lap completion check: when the last tile is played
   if (tile.isLast && lastStarSectionReached !== 998 && lastStarSectionReached !== 999) {
-    const maxStars = getImportedMaxStars();
+    console.log('[DEBUG] Last tile hit, lap completion. currentLap:', currentLap);
     lastStarSectionReached = 999;
+
     if (currentLap === 1) {
-      starsEarned = maxStars;
-      triggerStarAnimation(maxStars);
+      // Lap 1 complete: Award 3rd star (total 3 stars)
+      starsEarned = 3;
+      console.log('[DEBUG] Lap 1 complete: Awarded 3rd star, total stars:', starsEarned);
+      triggerStarAnimation(3);
       lastStarSectionReached = 998;
       setTimeout(() => { startNextLap(); }, 600);
     } else if (currentLap === 2) {
+      // Lap 2 complete: Award 2nd crown (total 2 crowns)
       crownsEarned = 2;
+      console.log('[DEBUG] Lap 2 complete: Awarded 2nd crown, total crowns:', crownsEarned);
       triggerCrownAnimation(2);
       lastStarSectionReached = 998;
       setTimeout(() => { startNextLap(); }, 600);
-    } else if (currentLap >= 3) {
+    } else if (currentLap === 3) {
+      // Lap 3 complete: Award 3rd crown (total 3 crowns) - only on lap 3
       crownsEarned = 3;
+      console.log('[DEBUG] Lap 3 complete: Awarded 3rd crown, total crowns:', crownsEarned);
       triggerCrownAnimation(3);
     }
   }
@@ -1483,7 +1588,7 @@ function mergePT2Events(events) {
     target.leadTrackIndex = source.trackIndex;
     target.songIndex = source.songIndex;
     target.musicId = source.musicId;
-    target.starSectionId = source.starSectionId;
+    target.starSectionId = source.musicId; // Use musicId for progress tracking
     target.isRest = source.isRest;
     target.durationRatio = source.durationRatio;
     // Preserve arpeggio metadata so sequential note playback is not lost
@@ -1522,7 +1627,7 @@ function mergePT2Events(events) {
         leadTrackIndex: event.trackIndex,
         songIndex: event.songIndex,
         musicId: event.musicId,
-        starSectionId: event.starSectionId,
+        starSectionId: event.musicId, // Use musicId for progress tracking
         isRest: event.isRest || false,
         durationRatio: event.durationRatio,
         isArpeggio: event.isArpeggio || false
@@ -1607,6 +1712,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
           noteCount: 0,
           tileType: 'rest',
           specialId: 0,
+          starSectionId: musicId, // Use musicId as starSectionId for progress tracking
           notes: [],
           specialType: '',
           bpm,
@@ -1657,7 +1763,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
           events.push({
             raw: token,
             musicId,
-            starSectionId,
+            starSectionId: musicId, // Use musicId for progress tracking
             songIndex,
             trackIndex,
             trackInstrument,
@@ -1690,7 +1796,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
             events.push({
               raw: note.raw || token,
               musicId,
-              starSectionId,
+              starSectionId: musicId, // Use musicId for progress tracking
               songIndex,
               trackIndex,
               trackInstrument,
@@ -1715,7 +1821,7 @@ function parsePT2MusicEntry(music, sectionMeta, offsetSeconds) {
           events.push({
             raw: token,
             musicId,
-            starSectionId,
+            starSectionId: musicId, // Use musicId for progress tracking
             songIndex,
             trackIndex,
             trackInstrument,
@@ -1774,7 +1880,9 @@ function parsePT2SongData(jsonData) {
     const parsedId = parseInt(music && music.id, 10);
     const sectionId = Number.isFinite(parsedId) ? parsedId : songIndex + 1;
     const parsedStarSectionId = parseInt(music && music.starSectionId, 10);
-    const starSectionId = Number.isFinite(parsedStarSectionId) ? parsedStarSectionId : 1;
+    // Use music.id as starSectionId if not explicitly set, since music.id represents actual sections
+    const starSectionId = Number.isFinite(parsedStarSectionId) ? parsedStarSectionId : sectionId;
+    console.log('[DEBUG] Processing music entry:', { songIndex, sectionId, starSectionId, musicId: music.id, rawStarSectionId: music.starSectionId });
     const parsedMusic = parsePT2MusicEntry(music, {
       id: sectionId,
       starSectionId,
@@ -1785,7 +1893,7 @@ function parsePT2SongData(jsonData) {
 
     entries.push({
       id: sectionId,
-      starSectionId,
+      starSectionId: sectionId, // Use sectionId (music.id) for progress tracking
       songIndex,
       bpm: parsedMusic.bpm,
       baseBeats: parsedMusic.baseBeats,
@@ -1796,6 +1904,13 @@ function parsePT2SongData(jsonData) {
       alternatives: parsedMusic.alternatives,
       durationSeconds: parsedMusic.durationSeconds,
       scores: Array.isArray(music.scores) ? [...music.scores] : []
+    });
+    console.log('[DEBUG] Added entry:', { 
+      songIndex, 
+      sectionId, 
+      starSectionId, 
+      speed: entries[entries.length - 1].speed,
+      hasCsvSpeed: !!(music.speed && music.speed > 0)
     });
     events.push(...parsedMusic.events);
     songOffsetSeconds += parsedMusic.durationSeconds;
@@ -1816,7 +1931,9 @@ function parsePT2SongData(jsonData) {
   const playableEvents = mergePT2Events(events);
   const totalDurationSeconds = entries.reduce((sum, entry) => sum + entry.durationSeconds, 0);
   const firstEntry = entries[0] || null;
-  const starSectionIds = [...new Set(entries.map((entry) => entry.starSectionId).filter((id) => id !== undefined && id !== null))].sort((a, b) => a - b);
+  // Star sections are music IDs 1, 2, 3 (representing the 3 music sections)
+  const starSectionIds = [1, 2, 3];
+  console.log('[DEBUG] Fixed starSectionIds to [1, 2, 3] for 3 music sections');
 
   const song = {
     title: sortedMusics.length === 1 && sortedMusics[0].id ? `Music ${sortedMusics[0].id}` : 'Imported PT2 song',
@@ -1980,6 +2097,7 @@ function buildImportedSongTiles(song) {
           audioPlayed: false,
           isDoubleTile: true
         });
+        console.log('[DEBUG] Created double tile with sourceSongIndex:', event.songIndex, 'starSectionId:', event.starSectionId, 'eventKey:', sourceEventKey);
       });
       lastSpawnedCols = chosenCols;
     } else if (isCombo) {
@@ -2010,6 +2128,7 @@ function buildImportedSongTiles(song) {
         remainingTaps: comboTaps,
         spanCols: [1, 2]
       });
+      console.log('[DEBUG] Created combo tile with sourceSongIndex:', event.songIndex, 'starSectionId:', event.starSectionId, 'eventKey:', sourceEventKey);
       lastSpawnedCols = [1, 2];
     } else if (isLong) {
       // Long/hold tiles (including arpeggio long tiles)
@@ -2043,6 +2162,7 @@ function buildImportedSongTiles(song) {
         pressY: undefined,
         isArpeggio: event.isArpeggio || false
       });
+      console.log('[DEBUG] Created long tile with sourceSongIndex:', event.songIndex, 'starSectionId:', event.starSectionId, 'eventKey:', sourceEventKey);
       lastSpawnedCols = [chosenCol];
     } else {
       // Single tiles (default)
@@ -2069,6 +2189,7 @@ function buildImportedSongTiles(song) {
         sourceNoteNames,
         audioPlayed: false
       });
+      console.log('[DEBUG] Created single tile with sourceSongIndex:', event.songIndex, 'starSectionId:', event.starSectionId, 'eventKey:', sourceEventKey);
       lastSpawnedCols = [chosenCol];
     }
 
@@ -2518,6 +2639,7 @@ function triggerCrownAnimation(crownCount) {
 function startNextLap() {
   if (!gameActive) return; // Don't start if game ended during the delay
 
+  console.log('[DEBUG] Starting next lap. Previous lap:', currentLap - 1, 'New lap:', currentLap);
   currentLap++;
   lastStarSectionReached = 0;
   sectionsPassedThisLap = 0;
@@ -2738,7 +2860,6 @@ function startGame() {
   starsEarned = 0;
   crownsEarned = 0;
   currentLap = 1;
-  lapSpeedOffset = 0;
   sectionsPassedThisLap = 0;
   lastStarSectionReached = 0;
   currentPlayingSongIndex = null;

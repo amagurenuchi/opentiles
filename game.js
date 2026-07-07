@@ -1,7 +1,4 @@
-// Import smplr Soundfont2Sampler and soundfont2 SF2 parser
-import { Soundfont2Sampler } from 'https://esm.sh/smplr@0.16.3';
-import soundfont2Pkg from 'https://esm.sh/soundfont2';
-const SoundFont2 = soundfont2Pkg.SoundFont2 ?? soundfont2Pkg.default?.SoundFont2 ?? soundfont2Pkg;
+
 
 const PATTERN_PRESETS = {
   single: `1\n1\n1\n1\n1\n1`,
@@ -72,8 +69,8 @@ let gameActive = false;
 let gameStarted = false; // true when the first tile is clicked
 let currentSpeed = 0;
 let timeElapsed = 0;
-let highScore = parseFloat(localStorage.getItem('rainingtiles_highscore') || '0');
-let keybinds = JSON.parse(localStorage.getItem('rainingtiles_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
+let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
+let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
 
 let tiles = [];
 let nextTileId = 0;
@@ -82,8 +79,6 @@ let songStartTime = 0;
 let audioContext = null;
 let audioGainNode = null;
 let scheduledAudioNodes = [];
-let soundfontInstrument = null;
-let soundfontInstrumentPromise = null;
 
 let parsedPattern = [];
 let currentPatternIndex = 0;
@@ -171,10 +166,10 @@ const songStatusEl = document.getElementById('song-status');
 
 // Initialize settings from localStorage or defaults
 function loadSettings() {
-  const startSpeedVal = localStorage.getItem('rainingtiles_start_speed') || '3.3';
-  const accelVal = localStorage.getItem('rainingtiles_accel_rate') || '0.07';
-  const presetVal = localStorage.getItem('rainingtiles_pattern_preset') || 'single';
-  const customPatternVal = localStorage.getItem('rainingtiles_custom_pattern') || PATTERN_PRESETS.single;
+  const startSpeedVal = localStorage.getItem('opentile_start_speed') || '3.3';
+  const accelVal = localStorage.getItem('opentile_accel_rate') || '0.07';
+  const presetVal = localStorage.getItem('opentile_pattern_preset') || 'single';
+  const customPatternVal = localStorage.getItem('opentile_custom_pattern') || PATTERN_PRESETS.single;
   
   inputStartSpeed.value = startSpeedVal;
   inputAccel.value = accelVal;
@@ -183,10 +178,10 @@ function loadSettings() {
 }
 
 function saveSettingsToStorage() {
-  localStorage.setItem('rainingtiles_start_speed', inputStartSpeed.value);
-  localStorage.setItem('rainingtiles_accel_rate', inputAccel.value);
-  localStorage.setItem('rainingtiles_pattern_preset', selectPatternPreset.value);
-  localStorage.setItem('rainingtiles_custom_pattern', textareaCustomPattern.value);
+  localStorage.setItem('opentile_start_speed', inputStartSpeed.value);
+  localStorage.setItem('opentile_accel_rate', inputAccel.value);
+  localStorage.setItem('opentile_pattern_preset', selectPatternPreset.value);
+  localStorage.setItem('opentile_custom_pattern', textareaCustomPattern.value);
 }
 
 function getStartSpeed() {
@@ -1147,6 +1142,182 @@ function noteTokenToFrequency(noteName) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
+function noteNameToMp3Path(noteName) {
+  if (!noteName) return null;
+  
+  const normalized = String(noteName).trim();
+  const cleaned = normalized
+    .replace(/^[\s(<\[]+/g, '')
+    .replace(/[\s>)\]]+$/g, '')
+    .replace(/\{[^}]*\}\s*$/g, '')
+    .replace(/\[[^\]]*\]\s*$/g, '')
+    .replace(/[>]+$/g, '')
+    .trim();
+
+  if (!cleaned || cleaned === 'mute' || cleaned === 'empty' || cleaned === 'chuanshao') {
+    return 'music/mute';
+  }
+
+  const pitchMatch = cleaned.match(/([#b]?)([a-gA-G])(-?\d+)?/);
+  if (!pitchMatch) return 'music/mute';
+
+  const accidental = pitchMatch[1];
+  const letter = pitchMatch[2];
+  const octavePart = pitchMatch[3];
+
+  // Map to the audio file naming convention
+  // Files use format like: c.wav, c1.wav, c2.wav, etc. for lowercase
+  // A-1.wav, A-2.wav, etc. for uppercase with negative octaves
+  // #a.wav, #a1.wav, etc. for sharps (lowercase)
+  // #A-1.wav, #A-2.wav, etc. for sharps with negative octaves (uppercase)
+  // Prefer WAV over MP3 for better decoding
+  
+  let filename;
+  
+  if (octavePart === undefined || octavePart === '0') {
+    // No octave specified, use base note (c.wav, d.wav, etc.)
+    filename = accidental + letter.toLowerCase();
+  } else {
+    const octave = parseInt(octavePart, 10);
+    if (octave < 0) {
+      // Negative octave: A-1, A-2, etc. (uppercase)
+      filename = letter.toUpperCase() + octave;
+      if (accidental === '#') {
+        filename = '#' + filename;
+      }
+    } else {
+      // Positive octave: c1, c2, etc. (lowercase)
+      filename = accidental + letter.toLowerCase() + octave;
+    }
+  }
+
+  // Return base path without extension - will try .wav first, then .mp3
+  return 'music/' + filename;
+}
+
+// Cache for loaded audio buffers to avoid repeated fetch/decode
+const audioBufferCache = new Map();
+
+async function getCachedAudioBuffer(basePath) {
+  // Try WAV first, then MP3 as fallback
+  const wavPath = basePath + '.wav';
+  const mp3Path = basePath + '.mp3';
+  
+  // URL encode the paths to handle special characters like #
+  const encodedWavPath = wavPath.replace(/#/g, '%23');
+  const encodedMp3Path = mp3Path.replace(/#/g, '%23');
+  
+  if (audioBufferCache.has(wavPath)) {
+    return audioBufferCache.get(wavPath);
+  }
+  
+  if (audioBufferCache.has(mp3Path)) {
+    return audioBufferCache.get(mp3Path);
+  }
+
+  // Try WAV first
+  try {
+    const response = await fetch(encodedWavPath);
+    if (response.ok) {
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      audioBufferCache.set(wavPath, audioBuffer);
+      audioBufferCache.set(mp3Path, audioBuffer); // Cache for both paths
+      return audioBuffer;
+    }
+  } catch (err) {
+    console.warn(`WAV failed for ${wavPath}, trying MP3:`, err);
+  }
+
+  // Fall back to MP3
+  try {
+    const response = await fetch(encodedMp3Path);
+    if (!response.ok) {
+      console.warn(`Failed to load ${mp3Path} - status: ${response.status}`);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    audioBufferCache.set(wavPath, audioBuffer); // Cache for both paths
+    audioBufferCache.set(mp3Path, audioBuffer);
+    return audioBuffer;
+  } catch (err) {
+    console.warn(`Error loading ${mp3Path}:`, err);
+    return null;
+  }
+}
+
+async function playMp3Note(basePath, startTime, duration, velocity = 1, noteName = null) {
+  if (!audioContext) return null;
+
+  try {
+    const audioBuffer = await getCachedAudioBuffer(basePath);
+    if (!audioBuffer) {
+      console.warn(`Audio buffer null for ${basePath}, falling back to synth`);
+      if (noteName) {
+        const freq = noteTokenToFrequency(noteName);
+        if (freq !== null) {
+          playSynthNote({
+            frequency: freq,
+            startTime: startTime,
+            duration: Math.max(0.08, Math.min(0.8, duration)),
+            instrumentName: 'piano',
+            velocity
+          });
+          return { stop() {} };
+        }
+      }
+      return null;
+    }
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    const gainNode = audioContext.createGain();
+    const adjustedGain = Math.min(1, 0.98 * velocity);
+    gainNode.gain.setValueAtTime(adjustedGain, startTime);
+    
+    // Use the natural duration of the audio buffer, but respect minimum duration for game timing
+    const naturalDuration = audioBuffer.duration;
+    const actualDuration = Math.max(naturalDuration, duration);
+    
+    // Fade out at the end of the natural sample
+    const fadeOutTime = Math.min(0.1, naturalDuration * 0.3);
+    gainNode.gain.setValueAtTime(adjustedGain, startTime + naturalDuration - fadeOutTime);
+    gainNode.gain.linearRampToValueAtTime(0, startTime + naturalDuration);
+    
+    source.connect(gainNode);
+    gainNode.connect(audioGainNode || audioContext.destination);
+    
+    source.start(startTime);
+    // Don't force stop - let the sample play naturally
+    
+    return {
+      stop() {
+        try { source.stop(); } catch (_) {}
+      }
+    };
+  } catch (err) {
+    console.warn(`Error playing ${basePath}:`, err);
+    // Fallback to synth if audio fails
+    if (noteName) {
+      const freq = noteTokenToFrequency(noteName);
+      if (freq !== null) {
+        playSynthNote({
+          frequency: freq,
+          startTime: startTime,
+          duration: Math.max(0.08, Math.min(0.8, duration)),
+          instrumentName: 'piano',
+          velocity
+        });
+        return { stop() {} };
+      }
+    }
+    return null;
+  }
+}
+
 function getAudioVoiceFromInstrument(instrumentName) {
   const normalized = (instrumentName || '').toLowerCase();
   if (normalized.includes('bass')) return { type: 'square', detune: -12 };
@@ -1173,81 +1344,7 @@ function ensureAudioEngine() {
   return audioContext;
 }
 
-function ensureSoundfontInstrument() {
-  if (soundfontInstrument) {
-    return Promise.resolve(soundfontInstrument);
-  }
-  if (soundfontInstrumentPromise) {
-    return soundfontInstrumentPromise;
-  }
 
-  const ctx = ensureAudioEngine();
-
-  if (!ctx) {
-    console.warn('Missing audio context');
-    return Promise.resolve(null);
-  }
-
-  soundfontInstrumentPromise = (async () => {
-    try {
-      console.log('Creating Soundfont2 sampler...');
-      const sampler = new Soundfont2Sampler(ctx, {
-        url: './School_Piano_2024.sf2',
-        createSoundfont: (data) => new SoundFont2(data),
-      });
-
-      console.log('Loading soundfont (awaiting sampler.load)...');
-      await sampler.load;
-      console.log('Soundfont loaded successfully');
-
-      // Pick a piano instrument from the soundfont
-      const instrumentNames = sampler.instrumentNames || [];
-      console.log('Available instruments:', instrumentNames);
-      const preferredInstrument = instrumentNames.find((name) => {
-        const lowerName = String(name || '').toLowerCase();
-        return lowerName.includes('piano') || lowerName.includes('steinway') || lowerName.includes('grand');
-      }) || instrumentNames[0];
-
-      console.log('Selected instrument:', preferredInstrument);
-
-      if (preferredInstrument) {
-        await sampler.loadInstrument(preferredInstrument);
-      }
-
-      soundfontInstrument = {
-        play(midi, startTime, options = {}) {
-          if (typeof midi !== 'number' || Number.isNaN(midi)) return null;
-
-          const duration = Math.max(0.05, Number(options.duration) || 0.25);
-          const velocity = Math.round(Math.min(127, Math.max(1, (Number(options.gain) || 1) * 100)));
-          // startTime is ctx.currentTime-relative seconds — pass directly as smplr 'time'
-          const stopFn = sampler.start({
-            note: midi,
-            velocity,
-            time: startTime,
-            duration,
-          });
-
-          return {
-            stop() {
-              try { if (typeof stopFn === 'function') stopFn(); } catch (_) {}
-            }
-          };
-        }
-      };
-
-      console.log('Soundfont instrument created successfully');
-      return soundfontInstrument;
-    } catch (err) {
-      console.warn('Unable to load School_Piano_2024.sf2; using synth fallback.', err);
-      return null;
-    }
-  })().finally(() => {
-    soundfontInstrumentPromise = null;
-  });
-
-  return soundfontInstrumentPromise;
-}
 
 function playSynthNote({ frequency, startTime, duration, instrumentName, velocity = 1 }) {
   if (!audioContext || !frequency) return;
@@ -1308,7 +1405,7 @@ function buildPT2AudioEvents(parsedEvent, instrumentName) {
       instrumentName,
       velocity: note.effect && String(note.effect).toUpperCase().includes('V') ? 1.15 : 1
     }))
-    .filter(event => event.frequency !== null || event.midi !== null);
+    .filter(event => event.name && event.name !== 'mute' && event.name !== 'empty');
 }
 
 function updateSectionOnTileHit(tile) {
@@ -1358,22 +1455,12 @@ function playImportedTileAudio(tile) {
       const delay = (typeof note.arpeggioDelay === 'number') ? note.arpeggioDelay : 0;
       const noteStartAt = baseStartAt + delay;
       const noteDuration = Math.max(0.08, Math.min(1.2, tile.durationSeconds || 0.25));
-      const midi = noteTokenToMidi(note.name);
-      const freq = noteTokenToFrequency(note.name);
+      const basePath = noteNameToMp3Path(note.name);
       const velocity = note.effect && String(note.effect).toUpperCase().includes('V') ? 1.15 : 1;
-      if (soundfontInstrument && midi !== null) {
-        const node = soundfontInstrument.play(midi, noteStartAt, {
-          duration: noteDuration,
-          gain: Math.min(1, 0.98 * velocity)
-        });
-        if (node) scheduledAudioNodes.push(node);
-      } else if (freq !== null) {
-        playSynthNote({
-          frequency: freq,
-          startTime: noteStartAt,
-          duration: Math.max(0.08, Math.min(0.8, noteDuration)),
-          instrumentName: tile.trackInstrument,
-          velocity
+      
+      if (basePath) {
+        playMp3Note(basePath, noteStartAt, noteDuration, velocity, note.name).then(node => {
+          if (node) scheduledAudioNodes.push(node);
         });
       }
     });
@@ -1386,28 +1473,17 @@ function playImportedTileAudio(tile) {
       tile.trackInstrument
     );
 
-    if (soundfontInstrument) {
-      audioEvents.forEach((audioEvent) => {
-        const node = soundfontInstrument.play(audioEvent.midi, baseStartAt, {
-          duration: Math.max(0.08, Math.min(1.2, audioEvent.durationSeconds)),
-          gain: Math.min(1, 0.98 * audioEvent.velocity)
+    // Play all notes in the chord simultaneously at the same start time
+    audioEvents.forEach((audioEvent) => {
+      const basePath = noteNameToMp3Path(audioEvent.name);
+      
+      if (basePath) {
+        // Use the same baseStartAt for all notes to ensure they play together as a chord
+        playMp3Note(basePath, baseStartAt, Math.max(0.08, Math.min(1.2, audioEvent.durationSeconds)), audioEvent.velocity, audioEvent.name).then(node => {
+          if (node) scheduledAudioNodes.push(node);
         });
-        if (node) {
-          scheduledAudioNodes.push(node);
-        }
-      });
-    } else {
-      ensureSoundfontInstrument();
-      audioEvents.forEach((audioEvent) => {
-        playSynthNote({
-          frequency: audioEvent.frequency,
-          startTime: baseStartAt,
-          duration: Math.max(0.08, Math.min(0.8, audioEvent.durationSeconds)),
-          instrumentName: audioEvent.instrumentName,
-          velocity: audioEvent.velocity
-        });
-      });
-    }
+      }
+    });
   }
 
   tile.audioPlayed = true;
@@ -2083,7 +2159,6 @@ function loadImportedSongFromJsonText(text, label = 'Imported PT2 file') {
 
 function scheduleImportedSongAudio(song) {
   ensureAudioEngine();
-  ensureSoundfontInstrument();
 }
 
 // Initial load updates
@@ -2186,7 +2261,7 @@ bindButtons.forEach(btn => {
 window.addEventListener('keydown', (e) => {
   if (bindingColIdx !== null) {
     keybinds[bindingColIdx] = e.code;
-    localStorage.setItem('rainingtiles_keybinds', JSON.stringify(keybinds));
+    localStorage.setItem('opentile_keybinds', JSON.stringify(keybinds));
     
     const btn = document.querySelector(`.keybind-setter[data-col-idx="${bindingColIdx}"]`);
     btn.textContent = e.code.replace('Key', '');
@@ -2719,7 +2794,6 @@ function startGame() {
   activeKeys = { 0: false, 1: false, 2: false, 3: false };
 
   if (useImportedSong) {
-    ensureSoundfontInstrument();
     frozenSpeed = null;
     importedSongElapsedSeconds = 0;
     lastSpawnY = 50;
@@ -3421,7 +3495,7 @@ function gameOver(failedTileId, failureType = 'missed', pressedColIdx = null) {
   // Update High Score
   if (currentSpeed > highScore) {
     highScore = currentSpeed;
-    localStorage.setItem('rainingtiles_highscore', highScore.toString());
+    localStorage.setItem('opentile_highscore', highScore.toString());
     updateBestScoreDisplay();
   }
 

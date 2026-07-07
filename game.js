@@ -1166,16 +1166,15 @@ function noteNameToMp3Path(noteName) {
   const octavePart = pitchMatch[3];
 
   // Map to the audio file naming convention
-  // Files use format like: c.wav, c1.wav, c2.wav, etc. for lowercase
-  // A-1.wav, A-2.wav, etc. for uppercase with negative octaves
-  // #a.wav, #a1.wav, etc. for sharps (lowercase)
-  // #A-1.wav, #A-2.wav, etc. for sharps with negative octaves (uppercase)
-  // Prefer WAV over MP3 for better decoding
+  // Files use format like: c.mp3, c1.mp3, c2.mp3, etc. for lowercase
+  // A-1.mp3, A-2.mp3, etc. for uppercase with negative octaves
+  // #a.mp3, #a1.mp3, etc. for sharps (lowercase)
+  // #A-1.mp3, #A-2.mp3, etc. for sharps with negative octaves (uppercase)
   
   let filename;
   
   if (octavePart === undefined || octavePart === '0') {
-    // No octave specified, use base note (c.wav, d.wav, etc.)
+    // No octave specified, use base note (c.mp3, d.mp3, etc.)
     filename = accidental + letter.toLowerCase();
   } else {
     const octave = parseInt(octavePart, 10);
@@ -1191,7 +1190,7 @@ function noteNameToMp3Path(noteName) {
     }
   }
 
-  // Return base path without extension - will try .wav first, then .mp3
+  // Return base path without extension - will use .mp3
   return 'music/' + filename;
 }
 
@@ -1199,37 +1198,17 @@ function noteNameToMp3Path(noteName) {
 const audioBufferCache = new Map();
 
 async function getCachedAudioBuffer(basePath) {
-  // Try WAV first, then MP3 as fallback
-  const wavPath = basePath + '.wav';
+  // Only load MP3 files
   const mp3Path = basePath + '.mp3';
   
-  // URL encode the paths to handle special characters like #
-  const encodedWavPath = wavPath.replace(/#/g, '%23');
+  // URL encode the path to handle special characters like #
   const encodedMp3Path = mp3Path.replace(/#/g, '%23');
-  
-  if (audioBufferCache.has(wavPath)) {
-    return audioBufferCache.get(wavPath);
-  }
   
   if (audioBufferCache.has(mp3Path)) {
     return audioBufferCache.get(mp3Path);
   }
 
-  // Try WAV first
-  try {
-    const response = await fetch(encodedWavPath);
-    if (response.ok) {
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      audioBufferCache.set(wavPath, audioBuffer);
-      audioBufferCache.set(mp3Path, audioBuffer); // Cache for both paths
-      return audioBuffer;
-    }
-  } catch (err) {
-    console.warn(`WAV failed for ${wavPath}, trying MP3:`, err);
-  }
-
-  // Fall back to MP3
+  // Load MP3
   try {
     const response = await fetch(encodedMp3Path);
     if (!response.ok) {
@@ -1239,7 +1218,6 @@ async function getCachedAudioBuffer(basePath) {
     
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    audioBufferCache.set(wavPath, audioBuffer); // Cache for both paths
     audioBufferCache.set(mp3Path, audioBuffer);
     return audioBuffer;
   } catch (err) {

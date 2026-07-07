@@ -1,20 +1,17 @@
 # OpenTile
 
-A Piano Tiles 2 clone built with vanilla JavaScript, featuring imported song support and custom audio samples.
+The Piano Tiles game you know and love, rebuilt with vanilla JavaScript.
 
 ## Features
 
-- **Pattern Mode**: Play with generated tile patterns
-- **Song Mode**: Import Piano Tiles 2 JSON files to play real songs
-- **Custom Audio**: Uses local WAV/MP3 samples for piano notes
-- **Keybind Customization**: Configure your own keyboard controls
-- **Progress Tracking**: Stars and crowns system for song completion
-- **Responsive Design**: Works on desktop and mobile devices
+- Ever-growing accuracy to the real game
+- Lightweight, runs on any browser
+- Customizable keybinds
 
 ## Getting Started
 
 1. Open `index.html` in a web browser
-2. Select a song from the library or use pattern mode
+2. Select a song from the library
 3. Click tiles or use keyboard keys (D, F, J, K) to play
 
 ## File Structure
@@ -28,24 +25,8 @@ A Piano Tiles 2 clone built with vanilla JavaScript, featuring imported song sup
 
 ## Audio System
 
-The game uses local audio samples instead of soundfont libraries:
-- WAV files are preferred for better decoding reliability
-- MP3 files serve as fallback
-- URL encoding handles special characters in filenames (e.g., # notes)
-- Synthesizer fallback if audio loading fails
+The game uses local audio samples instead of soundfont libraries, pulled from the original PT2 soundfont. (You can import custom soundfonts if you have.)
 
-## Song Import
-
-1. Click "Song Library" on the start screen
-2. Select a song from the available list
-3. The game loads the JSON file and associated audio samples
-
-## Settings
-
-- **Start Speed**: Initial tile speed
-- **Acceleration**: Speed increase rate
-- **Pattern Preset**: Tile generation patterns
-- **Custom Pattern**: Define your own tile sequences
 
 ## Controls
 
@@ -55,4 +36,6 @@ The game uses local audio samples instead of soundfont libraries:
 
 ## Credits
 
-Built as a Piano Tiles 2 clone with custom audio implementation.
+- CheetahMobile / Kooapps for the original Piano Tiles 2 game
+- Various non-existent contributors for the OpenTile project
+- United Tiles and UMOD community

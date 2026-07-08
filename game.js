@@ -62,7 +62,7 @@ let lastLoadedLabel = '';
 
 let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
-let autoplayEnabled = localStorage.getItem('opentile_autoplay') !== 'false';
+let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
 let key = 4;
 let songName = '';
 let sheet = [];
@@ -702,8 +702,10 @@ function getLowestManualTile() {
   let lowest = null;
   let maxBottom = -Infinity;
   tiles.forEach((tile) => {
-    if (tile.released || tile.clicked || tile.holdCompleted) return;
+    if (tile.clicked || tile.holdCompleted) return;
     if (tile.type === 1) return;
+    // Skip long tiles that have been released midway
+    if (isLongTile(tile) && tile.holdReleased) return;
     const bottom = getTileBottom(tile);
     if (bottom > maxBottom) {
       maxBottom = bottom;
@@ -782,9 +784,8 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     const startTile = tiles.find(tile => tile.type === -1 && tile.hpos === -1);
     if (startTile && tileMatchesColumn(startTile, colIdx)) {
       const tileBottom = getTileBottom(startTile);
-      const hitWindowStart = key - 1.1;
-      const hitWindowEnd = key + 0.25;
-      if (tileBottom >= hitWindowStart && tileBottom <= hitWindowEnd) {
+      // Allow tapping start tile anywhere on-screen
+      if (tileBottom >= 0) {
         startTile.clicked = true;
         startTile.ended = 1;
         playTileAudioNow(startTile);
@@ -803,12 +804,31 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   const tile = getLowestManualTile();
   if (!tile) return;
 
-  const tileBottom = getTileBottom(tile);
-  const hitWindowStart = key - 1.1;
-  const hitWindowEnd = key + 0.25;
-  if (tileBottom < hitWindowStart || tileBottom > hitWindowEnd) return;
+  // Check if there's an active long tile in a different column
+  const activeLongInOtherCol = tiles.find((t) => 
+    isLongTile(t) && 
+    t.holdStarted && 
+    !t.holdCompleted && 
+    !t.holdReleased && 
+    t.activeHoldColumn !== colIdx
+  );
+  
+  if (activeLongInOtherCol) {
+    // Drop the active long tile instead of game over
+    activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
+    activeLongInOtherCol.holdReleased = true;
+    activeLongInOtherCol.played = true;
+  }
+
+  // Remove hit window restriction - allow tapping anywhere on-screen
+  // Keep column matching and order logic
   if (!tileMatchesColumn(tile, colIdx)) {
     failRun();
+    return;
+  }
+  
+  // Don't allow tapping long tiles that have been released
+  if (isLongTile(tile) && tile.holdReleased) {
     return;
   }
 
@@ -849,10 +869,18 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   }
 
   if (isLongTile(tile)) {
+    // Don't allow re-tapping if already released - just ignore
+    if (tile.holdReleased) return;
+    
     if (!tile.holdStarted) {
       playTileAudioNow(tile);
       tile.holdStarted = true;
       tile.activeHoldColumn = colIdx;
+      
+      // Store the absolute screen Y position where the tile was tapped
+      if (pointerEvent) {
+        tile.tapScreenY = pointerEvent.clientY;
+      }
     }
   }
 }
@@ -861,8 +889,11 @@ function handleManualInputUp(colIdx) {
   if (autoplayEnabled || !isStarted) return;
   const activeLong = tiles.find((tile) => isLongTile(tile) && tile.holdStarted && !tile.holdCompleted && tile.activeHoldColumn === colIdx);
   if (activeLong) {
-    activeLong.released = true;
-    failRun();
+    // Mark the release point instead of failing
+    activeLong.holdReleasedAt = activeLong.playing || 0;
+    activeLong.holdReleased = true;
+    activeLong.played = true; // Mark as played so audio doesn't re-trigger
+    // Don't fail the run, just stop the hold
   }
 }
 
@@ -966,20 +997,20 @@ function renderTiles() {
 
     comboBadgeEl.classList.add('hidden');
     startLabelEl.classList.add('hidden');
-    startLabelEl.style.position = 'absolute';
-    startLabelEl.style.inset = '0';
-    startLabelEl.style.display = 'flex';
-    startLabelEl.style.alignItems = 'center';
     startLabelEl.style.justifyContent = 'center';
     startLabelEl.style.fontFamily = 'var(--font-game)';
     startLabelEl.style.fontWeight = '900';
     startLabelEl.style.fontSize = '0.9rem';
     startLabelEl.style.color = '#ffffff';
     startLabelEl.style.letterSpacing = '0.1em';
+    startLabelEl.style.display = 'none';
+    startLabelEl.style.position = 'absolute';
+    startLabelEl.style.inset = '0';
+    startLabelEl.style.alignItems = 'center';
 
     if (tile.type === -1 && tile.hpos === -1) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
-      if (!tile.played && !isStarted) startLabelEl.classList.remove('hidden');
+      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
     } else if (isTapTile(tile) || isDoubleTile(tile)) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
     } else if (isComboTile(tile) && !autoplayEnabled) {
@@ -990,7 +1021,15 @@ function renderTiles() {
     } else if (isLongTile(tile) || isComboTile(tile)) {
       const played = tile.played || tile.clicked;
       const ended = tile.ended || tile.holdCompleted;
-      const progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
+      const isReleased = isLongTile(tile) && tile.holdReleased;
+      
+      // Use release point if the tile was released midway, otherwise use current progress
+      let progress;
+      if (isReleased) {
+        progress = tile.holdReleasedAt || 0;
+      } else {
+        progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
+      }
 
       el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
 
@@ -1010,7 +1049,30 @@ function renderTiles() {
 
         lightOrbEl.style.display = 'block';
         lightOrbEl.style.height = `${(1 / tile.hlen) * 100}%`;
-        lightOrbEl.style.bottom = `${(Math.max(0, Math.min(tile.hlen, progress + 1)) / tile.hlen) * 100 - (1 / tile.hlen) * 100}%`;
+        
+        // Keep the light orb at the absolute screen position where it was tapped
+        if (tile.tapScreenY && !isReleased) {
+          // Calculate the current screen position of the tile
+          const tileRect = el.getBoundingClientRect();
+          const tileScreenTop = tileRect.top;
+          const tileScreenBottom = tileRect.bottom;
+          
+          // Calculate where the orb should be relative to the tile to maintain absolute screen position
+          // The orb should be at tile.tapScreenY in screen coordinates
+          // As the tile moves down, the orb needs to move up relative to the tile
+          const orbScreenY = tile.tapScreenY;
+          const orbRelativeY = orbScreenY - tileScreenTop;
+          const orbRelativePercent = (orbRelativeY / tileRect.height) * 100;
+          
+          // Convert to bottom position (bottom = 100% - top)
+          const orbBottomPercent = 100 - orbRelativePercent;
+          
+          lightOrbEl.style.bottom = `${orbBottomPercent}%`;
+        } else {
+          // Fallback to normal behavior for released tiles or when tapScreenY is not available
+          lightOrbEl.style.bottom = `${(Math.max(0, Math.min(tile.hlen, progress + 1)) / tile.hlen) * 100 - (1 / tile.hlen) * 100}%`;
+        }
+        
         lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
       }
 
@@ -1155,7 +1217,15 @@ function updateEngineFrame(now) {
     });
   } else {
     tiles.forEach((tile) => {
-      if (tile.holdStarted && !tile.holdCompleted && tile.playing > tile.hlen - 1) {
+      // Handle long tiles that were released midway
+      if (isLongTile(tile) && tile.holdReleased && !tile.holdCompleted) {
+        // Mark as completed when it goes off screen
+        if (tile.playing > tile.hlen) {
+          tile.holdCompleted = true;
+          tile.clicked = true;
+          tile.ended = 1;
+        }
+      } else if (tile.holdStarted && !tile.holdCompleted && tile.playing > tile.hlen - 1) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
@@ -1487,6 +1557,25 @@ colElements.forEach((colElement, colIdx) => {
     activeKeys[colIdx] = false;
     handleManualInputUp(colIdx);
   });
+});
+
+// Window level fallback to release key/pointer hold state reliably
+window.addEventListener('pointerup', (event) => {
+  for (let colIdx = 0; colIdx < 4; colIdx++) {
+    if (activeKeys[colIdx]) {
+      activeKeys[colIdx] = false;
+      handleManualInputUp(colIdx);
+    }
+  }
+});
+
+window.addEventListener('pointercancel', (event) => {
+  for (let colIdx = 0; colIdx < 4; colIdx++) {
+    if (activeKeys[colIdx]) {
+      activeKeys[colIdx] = false;
+      handleManualInputUp(colIdx);
+    }
+  }
 });
 
 preloadSprites();

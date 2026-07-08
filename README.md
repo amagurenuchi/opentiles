@@ -39,3 +39,4 @@ The game uses local audio samples instead of soundfont libraries, pulled from th
 - CheetahMobile / Kooapps for the original Piano Tiles 2 game
 - Various non-existent contributors for the OpenTile project
 - United Tiles and UMOD community
+- lchzh3473

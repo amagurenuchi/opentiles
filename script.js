@@ -311,21 +311,17 @@ function nextPos(arr, type) {
   }
 }
 function getDoubleTilePos(arr0) {
-  if (key === 4) {
-    let rand = Math.floor(Math.random() * 2);
-    if (arr0[0] === 1 || arr0[2] === 1) rand = 0;
-    if (arr0[1] === 1 || arr0[3] === 1) rand = 1;
-    return rand ? [1, 0, 1, 0] : [0, 1, 0, 1];
+  const validPairs = [];
+  for (let i = 0; i < key - 2; i++) {
+    if (arr0[i] === 0 && arr0[i + 2] === 0) {
+      validPairs.push(i);
+    }
   }
-  const arr = [1, 0, 1];
-  while (arr.length < key) {
-    // 随机插入0
-    arr.splice(Math.floor(Math.random() * (arr.length + 1)), 0, 0);
-  }
-  // 比较arr和arr0，若同时存在1则重新生成
-  for (let i = 0; i < key; i++) {
-    if (arr[i] && arr0[i]) return null;
-  }
+  if (validPairs.length === 0) return null;
+  const chosenIndex = validPairs[Math.floor(Math.random() * validPairs.length)];
+  const arr = new Array(key).fill(0);
+  arr[chosenIndex] = 1;
+  arr[chosenIndex + 2] = 1;
   return arr;
 }
 function getSingleTilePos(arr0) {

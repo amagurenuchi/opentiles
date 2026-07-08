@@ -598,19 +598,17 @@ function loadSongFromText(text, label) {
 }
 
 function getDoubleTilePos(arr0) {
-  if (key === 4) {
-    let rand = Math.floor(Math.random() * 2);
-    if (arr0[0] === 1 || arr0[2] === 1) rand = 0;
-    if (arr0[1] === 1 || arr0[3] === 1) rand = 1;
-    return rand ? [1, 0, 1, 0] : [0, 1, 0, 1];
+  const validPairs = [];
+  for (let i = 0; i < key - 2; i++) {
+    if (arr0[i] === 0 && arr0[i + 2] === 0) {
+      validPairs.push(i);
+    }
   }
-  const arr = [1, 0, 1];
-  while (arr.length < key) {
-    arr.splice(Math.floor(Math.random() * (arr.length + 1)), 0, 0);
-  }
-  for (let i = 0; i < key; i++) {
-    if (arr[i] && arr0[i]) return null;
-  }
+  if (validPairs.length === 0) return null;
+  const chosenIndex = validPairs[Math.floor(Math.random() * validPairs.length)];
+  const arr = new Array(key).fill(0);
+  arr[chosenIndex] = 1;
+  arr[chosenIndex + 2] = 1;
   return arr;
 }
 
@@ -818,6 +816,13 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
     activeLongInOtherCol.holdReleased = true;
     activeLongInOtherCol.played = true;
+    
+    const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
+    currentScore += Math.max(1, Math.ceil(completedHeight));
+    
+    if (!tileMatchesColumn(tile, colIdx)) {
+      return;
+    }
   }
 
   // Remove hit window restriction - allow tapping anywhere on-screen
@@ -877,9 +882,21 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       tile.holdStarted = true;
       tile.activeHoldColumn = colIdx;
       
-      // Store the absolute screen Y position where the tile was tapped
+      const el = document.querySelector(`[data-tile-id="${tile.id}"]`);
       if (pointerEvent) {
         tile.tapScreenY = pointerEvent.clientY;
+      } else if (el) {
+        const rect = el.getBoundingClientRect();
+        const unitHeight = rect.height / tile.hlen;
+        tile.tapScreenY = rect.bottom - (unitHeight / 2);
+      }
+
+      if (el && tile.tapScreenY) {
+        const rect = el.getBoundingClientRect();
+        const unitHeight = rect.height / tile.hlen;
+        const tapDistFromTop = (tile.tapScreenY - rect.top) / unitHeight;
+        tile.completionPlaying = tile.playing + tapDistFromTop - 0.5;
+        tile.tapPlaying = tile.playing;
       }
     }
   }
@@ -893,7 +910,9 @@ function handleManualInputUp(colIdx) {
     activeLong.holdReleasedAt = activeLong.playing || 0;
     activeLong.holdReleased = true;
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
-    // Don't fail the run, just stop the hold
+    
+    const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
+    currentScore += Math.max(1, Math.ceil(completedHeight));
   }
 }
 
@@ -937,9 +956,12 @@ function renderTiles() {
     if (topUnits > key + 1 || bottomUnits < -1) return;
 
     const displayCols = getTileDisplayColumns(tile);
-    const domKey = `${tile.id}:${displayCols.join('-')}`;
-    visibleKeys.add(domKey);
-    let el = tileDomCache.get(domKey);
+    const renderGroups = isDoubleTile(tile) ? displayCols.map(c => [c]) : [displayCols];
+
+    renderGroups.forEach((cols) => {
+      const domKey = `${tile.id}:${cols.join('-')}`;
+      visibleKeys.add(domKey);
+      let el = tileDomCache.get(domKey);
     if (!el) {
       el = document.createElement('div');
       el.dataset.tileId = String(tile.id);
@@ -966,8 +988,8 @@ function renderTiles() {
       tileDomCache.set(domKey, el);
     }
 
-    const leftCol = Math.min(...displayCols);
-    const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : displayCols.length;
+    const leftCol = Math.min(...cols);
+    const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
     const headEl = el.querySelector('.tile-head');
     const lightStripEl = el.querySelector('.tile-light-strip');
     const lightOrbEl = el.querySelector('.tile-light-orb');
@@ -1012,7 +1034,14 @@ function renderTiles() {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
       if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
     } else if (isTapTile(tile) || isDoubleTile(tile)) {
-      el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
+      let isPlayed = tile.played;
+      let isEnded = tile.ended;
+      if (isDoubleTile(tile) && !autoplayEnabled) {
+        const thisCol = cols[0];
+        isPlayed = tile.hitColumns.includes(thisCol);
+        isEnded = isPlayed ? 1 : 0;
+      }
+      el.style.backgroundImage = `url("gameImage/${isPlayed ? getTileFinishImage(isEnded) : 'tile_black'}.png")`;
     } else if (isComboTile(tile) && !autoplayEnabled) {
       el.className = 'tile-combo';
       el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
@@ -1041,39 +1070,40 @@ function renderTiles() {
       }
 
       if (played && !ended) {
-        const stripHeight = Math.max(0, Math.min(tile.hlen, progress + 0.9));
-        lightStripEl.style.display = 'block';
-        lightStripEl.style.bottom = '0';
-        lightStripEl.style.height = `${(stripHeight / tile.hlen) * 100}%`;
-        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
-
-        lightOrbEl.style.display = 'block';
-        lightOrbEl.style.height = `${(1 / tile.hlen) * 100}%`;
+        let orbCenterBottomPercent = 0;
         
         // Keep the light orb at the absolute screen position where it was tapped
         if (tile.tapScreenY && !isReleased) {
-          // Calculate the current screen position of the tile
           const tileRect = el.getBoundingClientRect();
           const tileScreenTop = tileRect.top;
-          const tileScreenBottom = tileRect.bottom;
           
-          // Calculate where the orb should be relative to the tile to maintain absolute screen position
-          // The orb should be at tile.tapScreenY in screen coordinates
-          // As the tile moves down, the orb needs to move up relative to the tile
           const orbScreenY = tile.tapScreenY;
           const orbRelativeY = orbScreenY - tileScreenTop;
           const orbRelativePercent = (orbRelativeY / tileRect.height) * 100;
           
-          // Convert to bottom position (bottom = 100% - top)
-          const orbBottomPercent = 100 - orbRelativePercent;
-          
-          lightOrbEl.style.bottom = `${orbBottomPercent}%`;
+          orbCenterBottomPercent = 100 - orbRelativePercent;
         } else {
           // Fallback to normal behavior for released tiles or when tapScreenY is not available
-          lightOrbEl.style.bottom = `${(Math.max(0, Math.min(tile.hlen, progress + 1)) / tile.hlen) * 100 - (1 / tile.hlen) * 100}%`;
+          // Progress is measured from the bottom of the tile up to the hitline
+          const fallbackProgress = Math.max(0, Math.min(tile.hlen, progress + 1));
+          orbCenterBottomPercent = (fallbackProgress / tile.hlen) * 100 - (0.5 / tile.hlen) * 100;
         }
         
+        // Ensure the strip doesn't overflow the tile boundaries
+        orbCenterBottomPercent = Math.max(0, Math.min(100, orbCenterBottomPercent));
+        
+        const orbHeightPercent = (1 / tile.hlen) * 100;
+        const orbBottomPercent = orbCenterBottomPercent - (orbHeightPercent / 2);
+        
+        lightOrbEl.style.display = 'block';
+        lightOrbEl.style.height = `${orbHeightPercent}%`;
+        lightOrbEl.style.bottom = `${orbBottomPercent}%`;
         lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
+        
+        lightStripEl.style.display = 'block';
+        lightStripEl.style.bottom = '0';
+        lightStripEl.style.height = `${orbCenterBottomPercent}%`;
+        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
       }
 
       if (ended) {
@@ -1086,6 +1116,7 @@ function renderTiles() {
         lightStripEl.style.opacity = '1';
       }
     }
+    });
   });
 
   Array.from(tileDomCache.entries()).forEach(([keyValue, el]) => {
@@ -1218,14 +1249,7 @@ function updateEngineFrame(now) {
   } else {
     tiles.forEach((tile) => {
       // Handle long tiles that were released midway
-      if (isLongTile(tile) && tile.holdReleased && !tile.holdCompleted) {
-        // Mark as completed when it goes off screen
-        if (tile.playing > tile.hlen) {
-          tile.holdCompleted = true;
-          tile.clicked = true;
-          tile.ended = 1;
-        }
-      } else if (tile.holdStarted && !tile.holdCompleted && tile.playing > tile.hlen - 1) {
+      if (tile.holdStarted && !tile.holdCompleted && !tile.holdReleased && tile.playing > (tile.completionPlaying !== undefined ? tile.completionPlaying : tile.hlen - 1)) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
@@ -1242,6 +1266,7 @@ function updateEngineFrame(now) {
       // Don't fail on start tile before game starts
       if (tile.type === -1 && tile.hpos === -1 && !isStarted) return false;
       if (tile.clicked || tile.holdCompleted) return false;
+      if (isLongTile(tile) && tile.holdStarted) return false;
       return getTileTop(tile) > key + 0.05;
     });
     if (missedTile) {

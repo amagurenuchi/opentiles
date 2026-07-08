@@ -151,10 +151,10 @@ body {
   animation: blink-three-times 0.5s ease-in-out 3 !important;
 }
 
-/* Column flash animation for wrong press - light red at tile height */
+/* Column flash animation for wrong press - bright red at tile height */
 @keyframes column-flash-red {
   0%, 100% { background-color: transparent; }
-  50% { background-color: rgba(255, 200, 200, 0.6); }
+  50% { background-color: rgba(255, 0, 0, 0.7); }
 }
 
 .column-flash-red {
@@ -477,10 +477,39 @@ body {
   gap: 20px;
 }
 
-.song-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  border-color: #6366f1;
+.song-card-gold {
+  border-left: 4px solid #ffd700;
+}
+
+.song-card-gold:hover {
+  border-color: #ffd700;
+  box-shadow: 0 10px 25px rgba(255, 215, 0, 0.2);
+}
+
+.song-card-lavender {
+  border-left: 4px solid #e6e6fa;
+}
+
+.song-card-lavender:hover {
+  border-color: #e6e6fa;
+  box-shadow: 0 10px 25px rgba(230, 230, 250, 0.3);
+}
+
+.song-card-number {
+  font-family: var(--font-game);
+  font-weight: 700;
+  font-size: 1.8rem;
+  min-width: 50px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.song-card-gold .song-card-number {
+  color: #ffd700;
+}
+
+.song-card-lavender .song-card-number {
+  color: #9370db;
 }
 
 .song-card:active {
@@ -578,8 +607,21 @@ body {
   white-space: nowrap;
 }
 
-.song-card-play-btn:hover {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+.song-card-gold .song-card-play-btn {
+  background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
+}
+
+.song-card-gold .song-card-play-btn:hover {
+  background: linear-gradient(135deg, #e6c200 0%, #e6a500 100%);
+  transform: scale(1.02);
+}
+
+.song-card-lavender .song-card-play-btn {
+  background: linear-gradient(135deg, #9370db 0%, #7b68ee 100%);
+}
+
+.song-card-lavender .song-card-play-btn:hover {
+  background: linear-gradient(135deg, #8a5fd6 0%, #6a5acd 100%);
   transform: scale(1.02);
 }
 

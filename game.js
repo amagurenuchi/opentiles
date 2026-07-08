@@ -19,6 +19,7 @@ const boardEl = document.getElementById('game-board');
 const tilesContainer = document.getElementById('tiles-container');
 const hitEffectsEl = document.getElementById('hit-effects');
 const scoreDisplay = document.getElementById('score-display');
+const tpsDisplay = document.getElementById('tps-display');
 const starsDisplay = document.getElementById('stars-display');
 const crownsDisplay = document.getElementById('crowns-display');
 const bestDisplay = document.getElementById('best-display');
@@ -275,6 +276,39 @@ async function playMp3Note(noteName, durationMs) {
   }
 }
 
+async function playLoseSound() {
+  const ctx = ensureAudioEngine();
+  if (!ctx) return;
+  const path = 'music/#D-2.mp3';
+  const encodedPath = path.replace(/#/g, '%23');
+  if (audioBufferCache.has(path)) {
+    const buffer = audioBufferCache.get(path);
+    const source = ctx.createBufferSource();
+    const gainNode = ctx.createGain();
+    source.buffer = buffer;
+    gainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+    source.connect(gainNode);
+    gainNode.connect(audioGainNode);
+    source.start(ctx.currentTime);
+    return;
+  }
+  try {
+    const response = await fetch(encodedPath);
+    if (!response.ok) return;
+    const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+    audioBufferCache.set(path, buffer);
+    const source = ctx.createBufferSource();
+    const gainNode = ctx.createGain();
+    source.buffer = buffer;
+    gainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+    source.connect(gainNode);
+    gainNode.connect(audioGainNode);
+    source.start(ctx.currentTime);
+  } catch (err) {
+    console.warn('Failed to load lose sound:', err);
+  }
+}
+
 function queueTimeout(fn, delay) {
   const id = window.setTimeout(fn, delay);
   queuedTimeouts.push(id);
@@ -457,11 +491,20 @@ function populateMusicSelect() {
 function renderSongList() {
   if (!songListContainer) return;
   songListContainer.innerHTML = '';
-  musicCsvData.forEach((song) => {
+  
+  // Sort by Mid in ascending order
+  const sortedSongs = [...musicCsvData].sort((a, b) => a.mid - b.mid);
+  
+  sortedSongs.forEach((song) => {
     const firstSection = song.sections[1] || Object.values(song.sections)[0];
+    const trimmedId = Math.floor(firstSection.id / 100);
+    const isLavender = trimmedId >= 700;
+    const accentClass = isLavender ? 'song-card-lavender' : 'song-card-gold';
+    
     const card = document.createElement('div');
-    card.className = 'song-card';
+    card.className = `song-card ${accentClass}`;
     card.innerHTML = `
+      <div class="song-card-number">${trimmedId}</div>
       <div class="song-card-info-left">
         <div class="song-card-title">${song.musicJson}</div>
         <div class="song-card-artist">${song.musician}</div>
@@ -849,6 +892,42 @@ function flashColumn(colIdx) {
   setTimeout(() => colEl.classList.remove('bg-white/10'), 80);
 }
 
+function blinkTile(tile) {
+  const el = document.querySelector(`[data-tile-id="${tile.id}"]`);
+  if (!el) return;
+  el.classList.add('blink-three-times');
+  setTimeout(() => el.classList.remove('blink-three-times'), 1500);
+}
+
+function flashColumnRed(colIdx, tile) {
+  const colEl = colElements[colIdx];
+  if (!colEl) return;
+  
+  // Calculate the tile's vertical position to match the correct tile's row
+  const tileTopUnits = getTileTop(tile);
+  const tileHeightUnits = tile.hlen;
+  const tileTopPercent = (tileTopUnits / key) * 100;
+  const tileHeightPercent = (tileHeightUnits / key) * 100;
+  
+  // Create a temporary overlay element for the red flash at the correct position
+  const overlay = document.createElement('div');
+  overlay.style.position = 'absolute';
+  overlay.style.left = '0';
+  overlay.style.right = '0';
+  overlay.style.top = `${tileTopPercent}%`;
+  overlay.style.height = `${tileHeightPercent}%`;
+  overlay.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+  overlay.style.pointerEvents = 'none';
+  overlay.style.zIndex = '20';
+  overlay.classList.add('column-flash-red');
+  
+  colEl.appendChild(overlay);
+  
+  setTimeout(() => {
+    overlay.remove();
+  }, 1500);
+}
+
 function finishRun(showLibrary = false) {
   isStarted = false;
   isPaused = true;
@@ -864,11 +943,62 @@ function finishRun(showLibrary = false) {
   }
 }
 
-function failRun() {
-  if (gameBoardWrapper) {
-    gameBoardWrapper.classList.remove('game-playing');
+function failRun(failureType = 'miss', tile = null, colIdx = null) {
+  // Stop the game immediately
+  isPaused = true;
+  isStarted = false;
+  
+  // Play lose sound immediately
+  playLoseSound();
+  
+  if (failureType === 'miss' && tile) {
+    // Scroll back to reveal the missed tile
+    // Calculate target position so the tile's bottom is at the hitline (key - 1)
+    // We want: starthpos - tile.hpos = key - 1
+    // So: starthpos = tile.hpos + key - 1
+    const targetHpos = tile.hpos + key - 1;
+    const scrollDuration = 300;
+    const startHpos = starthpos;
+    const startTime = performance.now();
+    
+    function scrollAnimation(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / scrollDuration, 1);
+      starthpos = startHpos + (targetHpos - startHpos) * progress;
+      
+      if (progress < 1) {
+        requestAnimationFrame(scrollAnimation);
+      } else {
+        // After scroll, blink the tile thrice
+        blinkTile(tile);
+        // Then show results after blink animation completes
+        setTimeout(() => {
+          if (gameBoardWrapper) {
+            gameBoardWrapper.classList.remove('game-playing');
+          }
+          finishRun(false);
+        }, 1500);
+      }
+    }
+    requestAnimationFrame(scrollAnimation);
+  } else if (failureType === 'wrong_hit' && tile && colIdx !== null) {
+    // Flash the column in red at the tile's row position
+    flashColumnRed(colIdx, tile);
+    
+    // Show results after blink animation completes
+    setTimeout(() => {
+      if (gameBoardWrapper) {
+        gameBoardWrapper.classList.remove('game-playing');
+      }
+      finishRun(false);
+    }, 1500);
+  } else {
+    // Fallback to original behavior
+    if (gameBoardWrapper) {
+      gameBoardWrapper.classList.remove('game-playing');
+    }
+    finishRun(false);
   }
-  finishRun(false);
 }
 
 function tileMatchesColumn(tile, colIdx) {
@@ -934,7 +1064,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   // Remove hit window restriction - allow tapping anywhere on-screen
   // Keep column matching and order logic
   if (!tileMatchesColumn(tile, colIdx)) {
-    failRun();
+    failRun('wrong_hit', tile, colIdx);
     return;
   }
   
@@ -1025,6 +1155,17 @@ function handleManualInputUp(colIdx) {
 function updateHUD() {
   scoreDisplay.classList.remove('hidden');
   scoreDisplay.textContent = String(currentScore);
+
+  // Calculate and display current tile falling speed (TPS)
+  // Show for entire duration of gameplay being displayed
+  if (isGameLoaded) {
+    // Current scroll speed in units per second
+    const scrollSpeed = currentBpm / currentBeats / 60;
+    tpsDisplay.classList.remove('hidden');
+    tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
+  } else {
+    tpsDisplay.classList.add('hidden');
+  }
 
   const stage = getStarAndCrownState(speedLevel - 1);
   starsDisplay.textContent = stage.stars ? '✦'.repeat(stage.stars) : '';
@@ -1373,7 +1514,7 @@ function updateEngineFrame(now) {
       return getTileTop(tile) > key + 0.05;
     });
     if (missedTile) {
-      failRun();
+      failRun('miss', missedTile);
     }
   }
 

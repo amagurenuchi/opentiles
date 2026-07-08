@@ -574,7 +574,12 @@ async function loadSongFromData(songData) {
       baseBpm: mergedMusics[0].bpm,
       musics: mergedMusics
     }, `${songData.musicJson} (${songData.musician})`);
-    startGame();
+    
+    // Show game interface but don't start game (wait for START tile)
+    songListScreen.classList.add('hidden');
+    startScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
   } catch (err) {
     console.error(err);
     setSongStatus(`Failed to load ${songData.musicJson}: ${err.message}`);
@@ -584,7 +589,12 @@ async function loadSongFromData(songData) {
 function loadSongFromText(text, label) {
   const parsed = JSON.parse(text);
   loadSongObject(parsed, label);
-  startGame();
+  
+  // Show game interface but don't start game (wait for START tile)
+  songListScreen.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  settingsScreen.classList.add('hidden');
 }
 
 function getDoubleTilePos(arr0) {
@@ -765,7 +775,31 @@ function tileMatchesColumn(tile, colIdx) {
 }
 
 function handleManualInputDown(colIdx, pointerEvent = null) {
-  if (autoplayEnabled || !isStarted || isPaused) return;
+  if (isPaused) return;
+  
+  // Handle start tile separately
+  if (!isStarted) {
+    const startTile = tiles.find(tile => tile.type === -1 && tile.hpos === -1);
+    if (startTile && tileMatchesColumn(startTile, colIdx)) {
+      const tileBottom = getTileBottom(startTile);
+      const hitWindowStart = key - 1.1;
+      const hitWindowEnd = key + 0.25;
+      if (tileBottom >= hitWindowStart && tileBottom <= hitWindowEnd) {
+        startTile.clicked = true;
+        startTile.ended = 1;
+        playTileAudioNow(startTile);
+        isStarted = true;
+        startTime = performance.now();
+        if (pointerEvent) {
+          spawnHitRipple(pointerEvent.clientX, pointerEvent.clientY);
+        }
+        return;
+      }
+    }
+    return;
+  }
+  
+  if (autoplayEnabled) return;
   const tile = getLowestManualTile();
   if (!tile) return;
 
@@ -943,9 +977,9 @@ function renderTiles() {
     startLabelEl.style.color = '#ffffff';
     startLabelEl.style.letterSpacing = '0.1em';
 
-    if (tile.type === -1) {
+    if (tile.type === -1 && tile.hpos === -1) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
-      if (!tile.played) startLabelEl.classList.remove('hidden');
+      if (!tile.played && !isStarted) startLabelEl.classList.remove('hidden');
     } else if (isTapTile(tile) || isDoubleTile(tile)) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
     } else if (isComboTile(tile) && !autoplayEnabled) {
@@ -962,7 +996,7 @@ function renderTiles() {
 
       if (!played) {
         headEl.style.display = 'block';
-        headEl.style.top = `${(-1.35 / tile.hlen) * 100}%`;
+        headEl.style.bottom = '0';
         headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
         headEl.style.backgroundImage = 'url("gameImage/long_head.png")';
       }
@@ -1067,6 +1101,12 @@ function updateEngineFrame(now) {
     tiles.forEach((tile) => {
       switch (tile.type) {
         case -1:
+          // Start tile must be clicked manually even in autoplay mode
+          if (tile.hpos === -1 && !tile.played && !isStarted) {
+            // Don't auto-play the start tile
+            break;
+          }
+          break;
         case 1:
           break;
         case 2:
@@ -1129,6 +1169,8 @@ function updateEngineFrame(now) {
   if (!autoplayEnabled) {
     const missedTile = tiles.find((tile) => {
       if (tile.type === 1) return false;
+      // Don't fail on start tile before game starts
+      if (tile.type === -1 && tile.hpos === -1 && !isStarted) return false;
       if (tile.clicked || tile.holdCompleted) return false;
       return getTileTop(tile) > key + 0.05;
     });
@@ -1364,8 +1406,18 @@ loadSampleJsonBtn?.addEventListener('click', async () => {
 });
 
 clearSongBtn?.addEventListener('click', () => {
-  stopGame(true);
-  setSongStatus('Song cleared. Select another song or load a PT2 JSON file.');
+  resetEngineState();
+  selectedSongData = null;
+  lastLoadedJsonText = '';
+  lastLoadedLabel = '';
+  startScreen.classList.add('hidden');
+  songListScreen.classList.remove('hidden');
+  gameoverScreen.classList.add('hidden');
+  scoreDisplay.textContent = '0';
+  tpsSmallDisplay.textContent = '0.000';
+  starsDisplay.textContent = '';
+  crownsDisplay.textContent = '';
+  setSongStatus('Pattern mode active. Load a PT2 JSON file to play a song.');
 });
 
 document.querySelectorAll('.keybind-setter').forEach((button) => {

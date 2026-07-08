@@ -1886,6 +1886,21 @@ window.addEventListener('pointercancel', (event) => {
   }
 });
 
+// Prevent double-tap zoom on iOS devices
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (event) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) {
+    event.preventDefault();
+  }
+  lastTouchEnd = now;
+}, false);
+
+// Prevent iOS zoom on pinch
+document.addEventListener('gesturestart', (event) => {
+  event.preventDefault();
+}, false);
+
 preloadSprites();
 loadMusicCsv();
 initUi();

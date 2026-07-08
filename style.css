@@ -23,6 +23,8 @@ body {
   user-select: none;
   -webkit-user-select: none;
   text-shadow: 0px 2px 0px rgba(128, 128, 128, 0.3);
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
 }
 
 .font-game {

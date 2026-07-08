@@ -19,7 +19,7 @@
 
   <div class="relative flex h-screen w-full items-center justify-center gap-3">
     <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
-    <div class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
+    <div id="game-board-wrapper" class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
     
     <!-- Columns (4 columns) -->
     <div id="game-board" class="absolute inset-0 flex z-0">
@@ -41,10 +41,7 @@
     <!-- Floating HUD near the top of the board (Score/TPS & Stars) -->
     <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
       <!-- Score display (shown for imported song mode) -->
-      <div id="score-display" class="hidden font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0</div>
-      <!-- TPS display (shown for pattern mode, smaller under score for imported mode) -->
-      <div id="tps-display" class="font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">0.000</div>
-      <div id="tps-small-display" class="hidden font-game text-2xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow mt-1">0.000</div>
+      <div id="score-display" class="hidden font-game text-7xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow">0</div>
       <!-- Stars display -->
       <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
       <div id="crowns-display" class="mt-2 text-2xl drop-shadow select-none"></div>
@@ -85,11 +82,11 @@
             Load Horseman.json
           </button>
           <button id="clear-song-btn" class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]">
-            Pattern Mode
+            Clear Song
           </button>
         </div>
         <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1">
-          No PT2 file loaded. Pattern mode is active.
+          No PT2 file loaded.
         </div>
       </div>
 
@@ -156,39 +153,9 @@
               <span class="text-xs font-bold text-gray-600 uppercase">Autoplay</span>
               <input id="settings-autoplay" type="checkbox" class="h-4 w-4 accent-indigo-600" checked>
             </label>
-            <div class="flex flex-col gap-1">
-              <label for="settings-start-speed" class="text-[10px] font-bold text-gray-500 uppercase">Starting Speed (TPS)</label>
-              <input type="number" id="settings-start-speed" step="0.1" min="0" max="25" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white" value="3.3">
-            </div>
-            <div class="flex flex-col gap-1">
-              <label for="settings-accel" class="text-[10px] font-bold text-gray-500 uppercase">Speed Increase Rate (TPS/s)</label>
-              <input type="number" id="settings-accel" step="0.01" min="0" max="5" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white" value="0.07">
-            </div>
           </div>
         </div>
 
-        <!-- Section: Customizable Patterns -->
-        <div>
-          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Patterns</h3>
-          <div class="flex flex-col gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
-            <div class="flex flex-col gap-1">
-              <label for="settings-pattern-preset" class="text-[10px] font-bold text-gray-500 uppercase">Preset</label>
-              <select id="settings-pattern-preset" class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 bg-white">
-                <option value="single">Pure Single Tiles</option>
-                <option value="long">Only Long Tiles</option>
-                <option value="double">Double Tiles Only</option>
-                <option value="custom">Custom Pattern</option>
-              </select>
-            </div>
-            <div class="flex flex-col gap-1">
-              <label for="settings-custom-pattern" class="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
-                <span>Pattern Format</span>
-                <span class="text-gray-400 normal-case font-normal text-[9px]">1=single, D=double, L3=hold, C3=combo</span>
-              </label>
-              <textarea id="settings-custom-pattern" rows="5" class="px-2.5 py-1.5 rounded-lg border border-gray-300 font-mono text-xs text-gray-800 outline-none focus:border-indigo-500 bg-white resize-y" placeholder="1&#10;1&#10;D&#10;L3&#10;C3"></textarea>
-            </div>
-          </div>
-        </div>
 
       </div>
 
@@ -213,10 +180,6 @@
           <div id="final-crowns" class="text-2xl select-none"></div>
         </div>
         
-        <div class="w-full border-t border-gray-200 pt-3 flex justify-between text-xs text-gray-500">
-          <span>Start TPS: <strong id="final-start-tps" class="text-gray-850">0.000</strong></span>
-          <span>Accel: <strong id="final-accel" class="text-gray-850">0.07</strong></span>
-        </div>
       </div>
 
       <div class="w-full max-w-xs flex flex-col gap-2">
@@ -225,6 +188,21 @@
         </button>
         <button id="home-btn" class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
           Song Library
+        </button>
+      </div>
+    </div>
+
+    <!-- Pause Screen -->
+    <div id="pause-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-35 hidden transition-all duration-300">
+      <h2 class="text-4xl font-black text-gray-900 tracking-tight mb-2 font-game">PAUSED</h2>
+      <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center">Press ESC to resume or choose an option</p>
+      
+      <div class="w-full max-w-xs flex flex-col gap-2">
+        <button id="pause-continue-btn" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-all active:scale-[0.98]">
+          Continue
+        </button>
+        <button id="pause-exit-btn" class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
+          Exit to Song Library
         </button>
       </div>
     </div>

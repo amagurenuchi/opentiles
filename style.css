@@ -51,6 +51,65 @@ body {
   border: 1px solid #e5e7eb;
 }
 
+.game-playing {
+  background-image: url('gameImage/bgani_01.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Long tile hold visual effects */
+.hold-effect-container {
+  position: absolute;
+  pointer-events: none;
+  z-index: 16;
+}
+
+.hold-circle {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  background-image: url('gameImage/circle_light.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0;
+  animation: hold-circle-expand 0.25s ease-out forwards;
+}
+
+.hold-dot {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background-image: url('gameImage/dot_light.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  animation: hold-dot-shrink 0.25s ease-out forwards;
+}
+
+@keyframes hold-circle-expand {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes hold-dot-shrink {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+}
+
 /* Animations without hit flash */
 @keyframes pulse-slow {
   0%, 100% { opacity: 0.8; }
@@ -526,4 +585,9 @@ body {
 
 .song-card-play-btn:active {
   transform: scale(0.98);
+}
+
+/* Pause screen styling */
+#pause-screen {
+  z-index: 35;
 }

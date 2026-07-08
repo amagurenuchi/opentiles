@@ -18,8 +18,6 @@ const pitches = ['A-3', '#A-3', 'B-3', 'C-2', '#C-2', 'D-2', '#D-2', 'E-2', 'F-2
 const boardEl = document.getElementById('game-board');
 const tilesContainer = document.getElementById('tiles-container');
 const hitEffectsEl = document.getElementById('hit-effects');
-const tpsDisplay = document.getElementById('tps-display');
-const tpsSmallDisplay = document.getElementById('tps-small-display');
 const scoreDisplay = document.getElementById('score-display');
 const starsDisplay = document.getElementById('stars-display');
 const crownsDisplay = document.getElementById('crowns-display');
@@ -28,6 +26,7 @@ const startScreen = document.getElementById('start-screen');
 const settingsScreen = document.getElementById('settings-screen');
 const gameoverScreen = document.getElementById('gameover-screen');
 const songListScreen = document.getElementById('song-list-screen');
+const pauseScreen = document.getElementById('pause-screen');
 const songListContainer = document.getElementById('song-list-container');
 const songStatusEl = document.getElementById('song-status');
 const pt2JsonInput = document.getElementById('pt2-json-input');
@@ -35,12 +34,9 @@ const pt2MusicSelect = document.getElementById('pt2-music-select');
 const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
 const clearSongBtn = document.getElementById('clear-song-btn');
 const autoplayToggle = document.getElementById('settings-autoplay');
-const inputStartSpeed = document.getElementById('settings-start-speed');
-const inputAccel = document.getElementById('settings-accel');
-const selectPatternPreset = document.getElementById('settings-pattern-preset');
-const textareaCustomPattern = document.getElementById('settings-custom-pattern');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
+const gameBoardWrapper = document.getElementById('game-board-wrapper');
 
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
@@ -54,6 +50,7 @@ const audioBufferCache = new Map();
 let queuedTimeouts = [];
 let rafId = 0;
 const spriteCache = {};
+let lastHoldEffectTime = 0;
 
 let musicCsvData = [];
 let selectedSongData = null;
@@ -192,6 +189,57 @@ function noteNameToMp3Path(noteName) {
   return `music/${filename}`;
 }
 
+function spawnHoldEffectForTile(tile) {
+  const containerRect = hitEffectsEl.getBoundingClientRect();
+  const boardRect = boardEl.getBoundingClientRect();
+  
+  // Get the active column for this tile
+  const activeCols = getActiveColumns(tile);
+  const colIdx = tile.activeHoldColumn !== undefined ? tile.activeHoldColumn : activeCols[0];
+  
+  if (colIdx === undefined) return;
+  
+  // Calculate horizontal center of the column
+  const colElement = colElements[colIdx];
+  if (!colElement) return;
+  const colRect = colElement.getBoundingClientRect();
+  const centerX = colRect.left + colRect.width / 2;
+  
+  // Use the tap screen Y position where the user tapped the long tile
+  // This matches the position of the long_light.png curve
+  const effectY = (tile.tapScreenY || (boardRect.top + ((key - 1) / key) * boardRect.height)) - 120;
+  
+  const effectContainer = document.createElement('div');
+  effectContainer.className = 'hold-effect-container';
+  effectContainer.style.left = `${centerX - containerRect.left}px`;
+  effectContainer.style.top = `${effectY - containerRect.top}px`;
+  
+  const circle = document.createElement('div');
+  circle.className = 'hold-circle';
+  circle.style.left = '50%';
+  circle.style.top = '50%';
+  
+  const dot = document.createElement('div');
+  dot.className = 'hold-dot';
+  dot.style.left = '50%';
+  dot.style.top = '50%';
+  
+  effectContainer.appendChild(circle);
+  effectContainer.appendChild(dot);
+  hitEffectsEl.appendChild(effectContainer);
+  
+  effectContainer.addEventListener('animationend', () => {
+    effectContainer.remove();
+  });
+  
+  // Also remove after animation completes (0.25s)
+  setTimeout(() => {
+    if (effectContainer.parentNode) {
+      effectContainer.remove();
+    }
+  }, 100);
+}
+
 async function playMp3Note(noteName, durationMs) {
   const ctx = ensureAudioEngine();
   if (!ctx) return;
@@ -208,6 +256,23 @@ async function playMp3Note(noteName, durationMs) {
   source.connect(gainNode);
   gainNode.connect(audioGainNode);
   source.start(startAt);
+  
+  // Spawn hold visual effect if there's an active long tile being held
+  // Use cooldown to treat chords as single notes (chords play notes very close together)
+  const now = performance.now();
+  if (isStarted && !autoplayEnabled && now - lastHoldEffectTime > 50) {
+    const activeLongTile = tiles.find((tile) => 
+      isLongTile(tile) && 
+      tile.holdStarted && 
+      !tile.holdCompleted && 
+      !tile.holdReleased
+    );
+    
+    if (activeLongTile) {
+      spawnHoldEffectForTile(activeLongTile);
+      lastHoldEffectTime = now;
+    }
+  }
 }
 
 function queueTimeout(fn, delay) {
@@ -313,18 +378,10 @@ function preloadSprites() {
 }
 
 function loadSettings() {
-  inputStartSpeed.value = localStorage.getItem('opentile_start_speed') || '3.3';
-  inputAccel.value = localStorage.getItem('opentile_accel_rate') || '0.07';
-  selectPatternPreset.value = localStorage.getItem('opentile_pattern_preset') || 'single';
-  textareaCustomPattern.value = localStorage.getItem('opentile_custom_pattern') || 'script.js engine active';
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
 }
 
 function saveSettingsToStorage() {
-  localStorage.setItem('opentile_start_speed', inputStartSpeed.value);
-  localStorage.setItem('opentile_accel_rate', inputAccel.value);
-  localStorage.setItem('opentile_pattern_preset', selectPatternPreset.value);
-  localStorage.setItem('opentile_custom_pattern', textareaCustomPattern.value);
   if (autoplayToggle) {
     autoplayEnabled = autoplayToggle.checked;
     localStorage.setItem('opentile_autoplay', String(autoplayEnabled));
@@ -580,6 +637,11 @@ async function loadSongFromData(songData) {
     startScreen.classList.add('hidden');
     gameoverScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
+    
+    // Show background immediately when song is loaded
+    if (gameBoardWrapper) {
+      gameBoardWrapper.classList.add('game-playing');
+    }
   } catch (err) {
     console.error(err);
     setSongStatus(`Failed to load ${songData.musicJson}: ${err.message}`);
@@ -595,6 +657,11 @@ function loadSongFromText(text, label) {
   startScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
+  
+  // Show background immediately when song is loaded
+  if (gameBoardWrapper) {
+    gameBoardWrapper.classList.add('game-playing');
+  }
 }
 
 function getDoubleTilePos(arr0) {
@@ -742,6 +809,39 @@ function spawnHitRipple(x, y) {
   ripple.addEventListener('animationend', () => ripple.remove());
 }
 
+function spawnHoldEffect(x, y) {
+  const containerRect = hitEffectsEl.getBoundingClientRect();
+  const effectContainer = document.createElement('div');
+  effectContainer.className = 'hold-effect-container';
+  effectContainer.style.left = `${x - containerRect.left}px`;
+  effectContainer.style.top = `${y - containerRect.top}px`;
+  
+  const circle = document.createElement('div');
+  circle.className = 'hold-circle';
+  circle.style.left = '50%';
+  circle.style.top = '50%';
+  
+  const dot = document.createElement('div');
+  dot.className = 'hold-dot';
+  dot.style.left = '50%';
+  dot.style.top = '50%';
+  
+  effectContainer.appendChild(circle);
+  effectContainer.appendChild(dot);
+  hitEffectsEl.appendChild(effectContainer);
+  
+  effectContainer.addEventListener('animationend', () => {
+    effectContainer.remove();
+  });
+  
+  // Also remove after animation completes (0.25s)
+  setTimeout(() => {
+    if (effectContainer.parentNode) {
+      effectContainer.remove();
+    }
+  }, 250);
+}
+
 function flashColumn(colIdx) {
   const colEl = colElements[colIdx];
   if (!colEl) return;
@@ -756,8 +856,6 @@ function finishRun(showLibrary = false) {
   document.getElementById('final-stars').textContent = starsDisplay.textContent;
   document.getElementById('final-crowns').textContent = crownsDisplay.textContent;
   document.getElementById('final-grade').classList.add('hidden');
-  document.getElementById('final-start-tps').textContent = inputStartSpeed.value || '0.0';
-  document.getElementById('final-accel').textContent = inputAccel.value || '0.0';
   if (showLibrary) {
     gameoverScreen.classList.add('hidden');
     songListScreen.classList.remove('hidden');
@@ -767,6 +865,9 @@ function finishRun(showLibrary = false) {
 }
 
 function failRun() {
+  if (gameBoardWrapper) {
+    gameBoardWrapper.classList.remove('game-playing');
+  }
   finishRun(false);
 }
 
@@ -779,16 +880,21 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   
   // Handle start tile separately
   if (!isStarted) {
-    const startTile = tiles.find(tile => tile.type === -1 && tile.hpos === -1);
+    const startTile = tiles.find(tile => (tile.type === -1 && tile.hpos === -1) || tile.isStartTile);
     if (startTile && tileMatchesColumn(startTile, colIdx)) {
       const tileBottom = getTileBottom(startTile);
       // Allow tapping start tile anywhere on-screen
       if (tileBottom >= 0) {
         startTile.clicked = true;
         startTile.ended = 1;
+        // Clear the isStartTile flag after it's been tapped
+        delete startTile.isStartTile;
         playTileAudioNow(startTile);
         isStarted = true;
         startTime = performance.now();
+        if (gameBoardWrapper) {
+          gameBoardWrapper.classList.add('game-playing');
+        }
         if (pointerEvent) {
           spawnHitRipple(pointerEvent.clientX, pointerEvent.clientY);
         }
@@ -917,22 +1023,12 @@ function handleManualInputUp(colIdx) {
 }
 
 function updateHUD() {
-  const tps = currentBpm / currentBeats / 60;
   scoreDisplay.classList.remove('hidden');
-  tpsSmallDisplay.classList.remove('hidden');
-  tpsDisplay.classList.add('hidden');
   scoreDisplay.textContent = String(currentScore);
-  tpsSmallDisplay.textContent = tps.toFixed(3);
 
   const stage = getStarAndCrownState(speedLevel - 1);
   starsDisplay.textContent = stage.stars ? '✦'.repeat(stage.stars) : '';
   crownsDisplay.textContent = stage.crowns ? '👑'.repeat(stage.crowns) : '';
-
-  if (tps > highScore) {
-    highScore = tps;
-    localStorage.setItem('opentile_highscore', String(highScore));
-    bestDisplay.textContent = `${highScore.toFixed(3)} t/s`;
-  }
 }
 
 function getTileTop(tile) {
@@ -1021,8 +1117,8 @@ function renderTiles() {
     startLabelEl.classList.add('hidden');
     startLabelEl.style.justifyContent = 'center';
     startLabelEl.style.fontFamily = 'var(--font-game)';
-    startLabelEl.style.fontWeight = '900';
-    startLabelEl.style.fontSize = '0.9rem';
+    startLabelEl.style.fontWeight = '500';
+    startLabelEl.style.fontSize = '2.8rem';
     startLabelEl.style.color = '#ffffff';
     startLabelEl.style.letterSpacing = '0.1em';
     startLabelEl.style.display = 'none';
@@ -1032,6 +1128,13 @@ function renderTiles() {
 
     if (tile.type === -1 && tile.hpos === -1) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
+      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
+    } else if (tile.type === 1) {
+      // Rest/blank tile - make entirely invisible
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+    } else if (tile.isStartTile) {
+      // Show START label without changing tile appearance
       if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
     } else if (isTapTile(tile) || isDoubleTile(tile)) {
       let isPlayed = tile.played;
@@ -1317,15 +1420,47 @@ function stopGame(showStart = true) {
   }
   gameoverScreen.classList.add('hidden');
   scoreDisplay.textContent = '0';
-  tpsSmallDisplay.textContent = '0.000';
   starsDisplay.textContent = '';
   crownsDisplay.textContent = '';
 }
 
+function continueFromPause() {
+  // Find the nearest untapped note (skip rest/blank tiles with type === 1)
+  const nearestUntapped = tiles.find(tile => 
+    !tile.clicked && 
+    !tile.played && 
+    tile.type !== -1 &&
+    tile.type !== 1 && // Skip rest/blank tiles
+    tile.hpos !== -1 &&
+    getTileBottom(tile) >= 0
+  );
+
+  if (nearestUntapped) {
+    // Mark this tile as the new START tile without changing its type
+    nearestUntapped.isStartTile = true;
+    
+    // Reset game state to wait for START tile
+    isStarted = false;
+    isPaused = false;
+    pauseScreen.classList.add('hidden');
+  } else {
+    // If no untapped tile found, just resume normally
+    togglePause();
+  }
+}
+
+function exitToSongLibrary() {
+  pauseScreen.classList.add('hidden');
+  stopGame(true);
+}
+
 function togglePause() {
-  if (!isStarted) return;
+  if (!isStarted && !isGameLoaded) return;
   isPaused = !isPaused;
-  if (!isPaused) {
+  if (isPaused) {
+    pauseScreen.classList.remove('hidden');
+  } else {
+    pauseScreen.classList.add('hidden');
     startTime = performance.now();
   }
 }
@@ -1432,10 +1567,7 @@ function initUi() {
   songListScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.classList.remove('hidden');
-  tpsDisplay.classList.add('hidden');
-  tpsSmallDisplay.classList.remove('hidden');
   scoreDisplay.textContent = '0';
-  tpsSmallDisplay.textContent = '0.000';
   loadSettings();
   updateKeybindHints();
 }
@@ -1468,6 +1600,14 @@ document.getElementById('restart-btn')?.addEventListener('click', () => {
 
 document.getElementById('home-btn')?.addEventListener('click', () => {
   stopGame(true);
+});
+
+document.getElementById('pause-continue-btn')?.addEventListener('click', () => {
+  continueFromPause();
+});
+
+document.getElementById('pause-exit-btn')?.addEventListener('click', () => {
+  exitToSongLibrary();
 });
 
 pt2MusicSelect?.addEventListener('change', () => {
@@ -1509,10 +1649,9 @@ clearSongBtn?.addEventListener('click', () => {
   songListScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.textContent = '0';
-  tpsSmallDisplay.textContent = '0.000';
   starsDisplay.textContent = '';
   crownsDisplay.textContent = '';
-  setSongStatus('Pattern mode active. Load a PT2 JSON file to play a song.');
+  setSongStatus('Load a PT2 JSON file to play a song.');
 });
 
 document.querySelectorAll('.keybind-setter').forEach((button) => {
@@ -1538,9 +1677,12 @@ window.addEventListener('keydown', (event) => {
       settingsScreen.classList.add('hidden');
       return;
     }
+    if (!pauseScreen.classList.contains('hidden')) {
+      togglePause();
+      return;
+    }
     if (isStarted || isGameLoaded) {
-      stopGame(true);
-      setSongStatus('Playback stopped.');
+      togglePause();
     }
   }
   if (event.code === 'Space') {

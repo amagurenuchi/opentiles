@@ -346,11 +346,8 @@ body {
   z-index: 45;
 }
 
-/* Show pause button on mobile and tablet during gameplay */
-@media (max-width: 1060px) {
-  #pause-btn.force-show {
-    display: flex !important;
-  }
+#pause-btn.force-show {
+  display: flex !important;
 }
 
 .font-game {

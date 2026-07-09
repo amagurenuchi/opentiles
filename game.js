@@ -70,6 +70,11 @@ let queuedTimeouts = [];
 let rafId = 0;
 const spriteCache = {};
 let lastHoldEffectTime = 0;
+const menuLoopPatternText = '#f2,g2,a2,a2,b2,a2,d2,e2,e2,#f2,e2,#f2,g2,a2,a2,b2,a2,U;d2,b2,a2,#f2,g2,#f2,d2,e2,a2,d2,b2,a2,d2;e2,#f2,e2';
+let menuLoopPatternNotes = [];
+let menuLoopPatternIndex = 0;
+let lastMenuCueTime = 0;
+let pausedWasStarted = false;
 
 let musicCsvData = [];
 let selectedSongData = null;
@@ -123,6 +128,22 @@ let bindingColIdx = null;
 let pendingHitEffects = [];
 let currentGameplayBackgroundIndex = 1;
 let gameplayBackgroundTransitionTimeout = null;
+let gameplayBackgroundTransitionTargetIndex = null;
+
+function updatePauseButtonVisibility() {
+  const pauseBtn = document.getElementById('pause-btn');
+  if (!pauseBtn) return;
+
+  const shouldShow = Boolean(
+    isGameLoaded &&
+    hasStartedGameplay &&
+    isStarted &&
+    !isPaused &&
+    gameBoardWrapper?.classList.contains('game-playing')
+  );
+
+  pauseBtn.classList.toggle('force-show', shouldShow);
+}
 
 function captureCurrentSpeedState() {
   pausedSpeedBpm = currentBpm;
@@ -161,9 +182,18 @@ function updateGameplayBackground() {
   const targetImage = `url("gameImage/bgani_${String(targetBackgroundIndex).padStart(2, '0')}.png")`;
 
   if (targetBackgroundIndex === currentGameplayBackgroundIndex) {
+    if (gameplayBackgroundTransitionTimeout) {
+      clearTimeout(gameplayBackgroundTransitionTimeout);
+      gameplayBackgroundTransitionTimeout = null;
+    }
+    gameplayBackgroundTransitionTargetIndex = null;
     gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
     gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    return;
+  }
+
+  if (gameplayBackgroundTransitionTimeout && gameplayBackgroundTransitionTargetIndex === targetBackgroundIndex) {
     return;
   }
 
@@ -172,6 +202,7 @@ function updateGameplayBackground() {
     gameplayBackgroundTransitionTimeout = null;
   }
 
+  gameplayBackgroundTransitionTargetIndex = targetBackgroundIndex;
   gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
   gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
   gameBoardWrapper.classList.add('game-bg-transition-active');
@@ -181,6 +212,7 @@ function updateGameplayBackground() {
     gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
     gameBoardWrapper.classList.remove('game-bg-transition-active');
     currentGameplayBackgroundIndex = targetBackgroundIndex;
+    gameplayBackgroundTransitionTargetIndex = null;
     gameplayBackgroundTransitionTimeout = null;
   }, 900);
 }
@@ -369,6 +401,75 @@ async function playMp3Note(noteName, durationMs) {
       lastHoldEffectTime = now;
     }
   }
+}
+
+async function loadMenuLoopPattern() {
+  if (menuLoopPatternNotes.length) return menuLoopPatternNotes;
+
+  const firstLine = menuLoopPatternText;
+  menuLoopPatternNotes = firstLine
+    .split(',')
+    .flatMap((segment) => segment.split(';'))
+    .map((token) => token.trim())
+    .filter((token) => token && noteNameToMp3Path(token));
+
+  if (!menuLoopPatternNotes.length) {
+    menuLoopPatternNotes = ['a2'];
+  }
+
+  return menuLoopPatternNotes;
+}
+
+function getNextMenuLoopNote() {
+  if (!menuLoopPatternNotes.length) {
+    menuLoopPatternNotes = ['a2'];
+  }
+
+  const note = menuLoopPatternNotes[menuLoopPatternIndex % menuLoopPatternNotes.length];
+  menuLoopPatternIndex = (menuLoopPatternIndex + 1) % menuLoopPatternNotes.length;
+  return note;
+}
+
+async function playMenuLoopCue() {
+  const now = performance.now();
+  if (now - lastMenuCueTime < 120) return;
+  lastMenuCueTime = now;
+
+  const notes = await loadMenuLoopPattern();
+  if (!notes.length) return;
+  const note = getNextMenuLoopNote();
+  await playMp3Note(note, 120);
+}
+
+async function playLifeIntroSound() {
+  const ctx = ensureAudioEngine();
+  if (!ctx) return;
+
+  const buffer = await getCachedAudioBuffer('Audio/Life');
+  if (!buffer) return;
+
+  const source = ctx.createBufferSource();
+  const gainNode = ctx.createGain();
+  const startAt = ctx.currentTime + 0.01;
+  source.buffer = buffer;
+  gainNode.gain.setValueAtTime(0.75, startAt);
+  source.connect(gainNode);
+  gainNode.connect(audioGainNode);
+  source.start(startAt);
+}
+
+function startSongTransition(songData) {
+  playLifeIntroSound();
+  window.setTimeout(() => {
+    loadSongFromData(songData);
+  }, 1000);
+}
+
+function startSongTextTransition(text, label) {
+  playLifeIntroSound();
+  window.setTimeout(() => {
+    loadSongFromText(text, label);
+  }, 1000);
 }
 
 async function playLoseSound() {
@@ -633,7 +734,7 @@ function createSongCard(song, isFavouriteView = false) {
   `;
 
   const playBtn = card.querySelector('.btn-play');
-  playBtn.addEventListener('click', () => loadSongFromData(song));
+  playBtn.addEventListener('click', () => startSongTransition(song));
 
   const heartBtn = card.querySelector('.heart-button');
   heartBtn.addEventListener('click', (e) => {
@@ -675,7 +776,7 @@ function createChallengeCard(challengeData) {
   `;
 
   const playBtn = card.querySelector('.btn-play');
-  playBtn.addEventListener('click', () => loadSongFromData(challengeData));
+  playBtn.addEventListener('click', () => startSongTransition(challengeData));
 
   return card;
 }
@@ -745,6 +846,7 @@ function resetEngineState() {
   currentSectionIndex = 0;
   currentSectionTileIndex = 0;
   currentGameplayBackgroundIndex = 1;
+  gameplayBackgroundTransitionTargetIndex = null;
   if (gameplayBackgroundTransitionTimeout) {
     clearTimeout(gameplayBackgroundTransitionTimeout);
     gameplayBackgroundTransitionTimeout = null;
@@ -778,6 +880,7 @@ function resetEngineState() {
   tileDomCache.clear();
   tilesContainer.innerHTML = '';
   hitEffectsEl.innerHTML = '';
+  updatePauseButtonVisibility();
   isStarted = false;
   isPaused = false;
   isGameLoaded = false;
@@ -1182,6 +1285,12 @@ function finishRun(showLibrary = false) {
   isStarted = false;
   isPaused = true;
 
+  if (gameBoardWrapper) {
+    gameBoardWrapper.classList.add('game-playing');
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+  }
+  updatePauseButtonVisibility();
+
   if (isChallengeMode) {
     // In challenge mode: save best TPS, display final TPS
     const finalTps = currentBpm / currentBeats / 60;
@@ -1249,6 +1358,12 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   // Play lose sound immediately
   playLoseSound();
   
+  if (gameBoardWrapper) {
+    // Keep the game background visible while the fail animation runs.
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+  }
+  updatePauseButtonVisibility();
+
   if (failureType === 'miss' && tile) {
     // Scroll back to reveal the missed tile
     // Calculate target position so the tile's bottom is at the hitline (key - 1)
@@ -1285,21 +1400,10 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     
     // Show results after blink animation completes
     setTimeout(() => {
-      if (gameBoardWrapper) {
-        gameBoardWrapper.classList.remove('game-playing');
-        gameBoardWrapper.classList.remove('game-bg-transition-active');
-        gameBoardWrapper.style.removeProperty('--game-bg-image-1');
-        gameBoardWrapper.style.removeProperty('--game-bg-image-2');
-      }
       finishRun(false);
     }, 1500);
   } else {
     // Fallback to original behavior
-    if (gameBoardWrapper) {
-      gameBoardWrapper.classList.remove('game-playing');
-      gameBoardWrapper.style.backgroundImage = '';
-      gameBoardWrapper.style.backgroundImage = '';
-    }
     finishRun(false);
   }
 }
@@ -1325,6 +1429,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         if (gameBoardWrapper) {
           gameBoardWrapper.classList.add('game-playing');
           updateGameplayBackground();
+          updatePauseButtonVisibility();
         }
         if (pointerEvent) {
           spawnHitRipple(pointerEvent.clientX, pointerEvent.clientY);
@@ -1526,6 +1631,8 @@ function updateHUD() {
   tpsDisplayNormal?.classList.add('hidden');
   tpsDisplayChallenge?.classList.add('hidden');
 
+  updateGameplayBackground();
+
   if (isChallengeMode) {
     // In challenge mode: hide score, show challenge TPS, hide stars/crowns
     scoreDisplay.classList.add('hidden');
@@ -1549,8 +1656,6 @@ function updateHUD() {
         tpsDisplayNormal.textContent = tpsText;
       }
     }
-
-    updateGameplayBackground();
 
     const stage = getStarAndCrownState(speedLevel - 1);
     if (stage.crowns) {
@@ -1998,10 +2103,7 @@ function startGame() {
   hasStartedGameplay = true;
   isPaused = false;
   startTime = performance.now();
-  
-  // Show pause button during gameplay
-  const pauseBtn = document.getElementById('pause-btn');
-  if (pauseBtn) pauseBtn.classList.add('force-show');
+  updatePauseButtonVisibility();
 }
 
 function stopGame(showStart = true) {
@@ -2022,9 +2124,7 @@ function stopGame(showStart = true) {
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
   
-  // Hide pause button when not in gameplay
-  const pauseBtn = document.getElementById('pause-btn');
-  if (pauseBtn) pauseBtn.classList.remove('force-show');
+  updatePauseButtonVisibility();
 }
 
 function returnToMainMenu() {
@@ -2041,9 +2141,7 @@ function returnToMainMenu() {
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
   
-  // Hide pause button when not in gameplay
-  const pauseBtn = document.getElementById('pause-btn');
-  if (pauseBtn) pauseBtn.classList.remove('force-show');
+  updatePauseButtonVisibility();
 
   if (currentDockTab === 'music') {
     showMusicScreen();
@@ -2076,37 +2174,28 @@ function resetTileForResume(tile) {
 }
 
 function continueFromPause() {
-  tiles.forEach((tile) => delete tile.isStartTile);
+  if (!isPaused) return;
 
-  const initialStart = tiles.find((tile) => tile.type === -1 && tile.hpos === -1 && !tile.played);
   captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
-  if (initialStart && !isStarted) {
-    isPaused = false;
-    pauseScreen.classList.add('hidden');
-    return;
-  }
-
-  const nearestUntapped = getLowestManualTile();
-  if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
-    resetTileForResume(nearestUntapped);
-    nearestUntapped.isStartTile = true;
-    isStarted = false;
-    isPaused = false;
-    pauseScreen.classList.add('hidden');
-    return;
-  }
 
   isPaused = false;
   pauseScreen.classList.add('hidden');
-  if (isStarted) {
-    startTime = performance.now();
+
+  if (gameBoardWrapper) {
+    // Preserve the loaded background when resuming from pause.
+    gameBoardWrapper.classList.add('game-playing');
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
   }
+
+  updatePauseButtonVisibility();
+  playMenuLoopCue();
 }
 
 function exitToSongLibrary() {
   pauseScreen.classList.add('hidden');
+  playMenuLoopCue();
   returnToMainMenu();
 }
 
@@ -2120,10 +2209,31 @@ function togglePause() {
     continueFromPause();
     return;
   }
+
+  clearQueuedTimeouts();
   captureCurrentSpeedState();
+  pausedWasStarted = isStarted;
+  tiles.forEach((tile) => delete tile.isStartTile);
+
+  if (pausedWasStarted) {
+    const nearestUntapped = getLowestManualTile();
+    if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
+      resetTileForResume(nearestUntapped);
+      nearestUntapped.isStartTile = true;
+    }
+  }
+
   isPaused = true;
+  isStarted = false;
   challengeLastAccelerationTime = performance.now();
   pauseScreen.classList.remove('hidden');
+  if (gameBoardWrapper) {
+    // Keep the current gameplay background visible while paused.
+    gameBoardWrapper.classList.add('game-playing');
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+  }
+  updatePauseButtonVisibility();
+  playMenuLoopCue();
 }
 
 function updateKeybindHints() {
@@ -2266,7 +2376,7 @@ function renderHomeScreen() {
   
   if (songToDisplay) {
     welcomeSongTitle.textContent = `${songToDisplay.id}. ${songToDisplay.song_name || songToDisplay.musicJson || 'Unknown Song'}`;
-    welcomePlayBtn.onclick = () => loadSongFromData(songToDisplay);
+    welcomePlayBtn.onclick = () => startSongTransition(songToDisplay);
   } else {
     welcomeSongTitle.textContent = 'No song available';
     welcomePlayBtn.onclick = null;
@@ -2369,9 +2479,7 @@ function setDockView(tab) {
     sharedDock.classList.remove('hidden');
   }
 
-  // Hide pause button when switching to any dock view (not gameplay)
-  const pauseBtn = document.getElementById('pause-btn');
-  if (pauseBtn) pauseBtn.classList.remove('force-show');
+  updatePauseButtonVisibility();
 
   syncTopDockData();
 }
@@ -2452,14 +2560,17 @@ function initUi() {
 
 document.getElementById('song-library-btn')?.addEventListener('click', () => {
   songListScreen.classList.remove('hidden');
+  playMenuLoopCue();
 });
 
 document.getElementById('song-list-settings-btn')?.addEventListener('click', () => {
   settingsScreen.classList.remove('hidden');
+  playMenuLoopCue();
 });
 
 document.getElementById('settings-btn')?.addEventListener('click', () => {
   settingsScreen.classList.remove('hidden');
+  playMenuLoopCue();
 });
 
 document.getElementById('save-settings-btn')?.addEventListener('click', () => {
@@ -2467,13 +2578,14 @@ document.getElementById('save-settings-btn')?.addEventListener('click', () => {
   settingsScreen.classList.add('hidden');
   setDockView(previousDockTabBeforeSettings || 'home');
   setSongStatus(`Settings saved. Autoplay is ${autoplayEnabled ? 'on' : 'off'}.`);
+  playMenuLoopCue();
 });
 
 document.getElementById('restart-btn')?.addEventListener('click', () => {
   if (selectedSongData) {
-    loadSongFromData(selectedSongData);
+    startSongTransition(selectedSongData);
   } else if (lastLoadedJsonText) {
-    loadSongFromText(lastLoadedJsonText, lastLoadedLabel || 'Reloaded song');
+    startSongTextTransition(lastLoadedJsonText, lastLoadedLabel || 'Reloaded song');
   }
 });
 
@@ -2495,18 +2607,22 @@ document.getElementById('pause-btn')?.addEventListener('click', () => {
 
 dockHomeBtn?.addEventListener('click', () => {
   showHomeScreen();
+  playMenuLoopCue();
 });
 
 dockMusicBtn?.addEventListener('click', () => {
   showMusicScreen();
+  playMenuLoopCue();
 });
 
 dockChallengesBtn?.addEventListener('click', () => {
   showChallengesScreen();
+  playMenuLoopCue();
 });
 
 dockSettingsBtn?.addEventListener('click', () => {
   showSettingsScreen();
+  playMenuLoopCue();
 });
 
 document.getElementById('player-name-text-home')?.addEventListener('click', () => {
@@ -2547,7 +2663,7 @@ pt2MusicSelect?.addEventListener('change', () => {
   if (!mid) return;
   const songData = musicCsvData.find((song) => song.mid === mid);
   if (songData) {
-    loadSongFromData(songData);
+    startSongTransition(songData);
   }
 });
 
@@ -2566,7 +2682,7 @@ loadSampleJsonBtn?.addEventListener('click', async () => {
   try {
     const response = await fetch('song/Horseman.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    loadSongFromText(await response.text(), 'Horseman.json');
+    startSongTextTransition(await response.text(), 'Horseman.json');
   } catch (err) {
     setSongStatus(`Could not load Horseman.json: ${err.message}`);
   }
@@ -2592,6 +2708,7 @@ document.querySelectorAll('.keybind-setter').forEach((button) => {
     if (bindingColIdx >= 0) {
       button.textContent = '...';
     }
+    playMenuLoopCue();
   });
 });
 
@@ -2697,6 +2814,22 @@ document.addEventListener('touchend', (event) => {
 document.addEventListener('gesturestart', (event) => {
   event.preventDefault();
 }, false);
+
+document.addEventListener('click', (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) return;
+
+  const interactiveTarget = target.closest('button, .dock-button, .song-card, .heart-button, .btn-play, .keybind-setter');
+  if (!interactiveTarget) return;
+
+  const menuUiContainer = target.closest('#home-screen, #song-list-screen, #challenges-screen, #start-screen, #settings-screen, #shared-dock');
+  if (!menuUiContainer) return;
+
+  const isPlayButton = Boolean(interactiveTarget.closest('.btn-play, #welcome-play-btn'));
+  if (isPlayButton) return;
+
+  playMenuLoopCue();
+}, true);
 
 preloadSprites();
 loadMusicCsv();

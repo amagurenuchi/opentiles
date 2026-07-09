@@ -100,7 +100,7 @@ function lenToNum(len, type) {
 
 function speedGen(sourceInfo) {
   const infoBak = JSON.parse(JSON.stringify(sourceInfo));
-  return function (index = 0) {
+  return function(index = 0) {
     while (index >= infoBak.length) {
       const currentIndex = infoBak.length;
       const { bpm: lastBpm, beats: lastBeats } = infoBak[currentIndex - 1];
@@ -130,7 +130,7 @@ function ensureAudioEngine() {
     audioGainNode.connect(audioContext.destination);
   }
   if (audioContext.state === 'suspended') {
-    audioContext.resume().catch(() => { });
+    audioContext.resume().catch(() => {});
   }
   return audioContext;
 }
@@ -193,46 +193,46 @@ function noteNameToMp3Path(noteName) {
 function spawnHoldEffectForTile(tile) {
   const containerRect = hitEffectsEl.getBoundingClientRect();
   const boardRect = boardEl.getBoundingClientRect();
-
+  
   // Get the active column for this tile
   const activeCols = getActiveColumns(tile);
   const colIdx = tile.activeHoldColumn !== undefined ? tile.activeHoldColumn : activeCols[0];
-
+  
   if (colIdx === undefined) return;
-
+  
   // Calculate horizontal center of the column
   const colElement = colElements[colIdx];
   if (!colElement) return;
   const colRect = colElement.getBoundingClientRect();
   const centerX = colRect.left + colRect.width / 2;
-
+  
   // Use the tap screen Y position where the user tapped the long tile
   // This matches the position of the long_light.png curve
   const effectY = (tile.tapScreenY || (boardRect.top + ((key - 1) / key) * boardRect.height)) - 120;
-
+  
   const effectContainer = document.createElement('div');
   effectContainer.className = 'hold-effect-container';
   effectContainer.style.left = `${centerX - containerRect.left}px`;
   effectContainer.style.top = `${effectY - containerRect.top}px`;
-
+  
   const circle = document.createElement('div');
   circle.className = 'hold-circle';
   circle.style.left = '50%';
   circle.style.top = '50%';
-
+  
   const dot = document.createElement('div');
   dot.className = 'hold-dot';
   dot.style.left = '50%';
   dot.style.top = '50%';
-
+  
   effectContainer.appendChild(circle);
   effectContainer.appendChild(dot);
   hitEffectsEl.appendChild(effectContainer);
-
+  
   effectContainer.addEventListener('animationend', () => {
     effectContainer.remove();
   });
-
+  
   // Also remove after animation completes (0.25s)
   setTimeout(() => {
     if (effectContainer.parentNode) {
@@ -257,18 +257,18 @@ async function playMp3Note(noteName, durationMs) {
   source.connect(gainNode);
   gainNode.connect(audioGainNode);
   source.start(startAt);
-
+  
   // Spawn hold visual effect if there's an active long tile being held
   // Use cooldown to treat chords as single notes (chords play notes very close together)
   const now = performance.now();
   if (isStarted && !autoplayEnabled && now - lastHoldEffectTime > 50) {
-    const activeLongTile = tiles.find((tile) =>
-      isLongTile(tile) &&
-      tile.holdStarted &&
-      !tile.holdCompleted &&
+    const activeLongTile = tiles.find((tile) => 
+      isLongTile(tile) && 
+      tile.holdStarted && 
+      !tile.holdCompleted && 
       !tile.holdReleased
     );
-
+    
     if (activeLongTile) {
       spawnHoldEffectForTile(activeLongTile);
       lastHoldEffectTime = now;
@@ -491,125 +491,34 @@ function populateMusicSelect() {
 function renderSongList() {
   if (!songListContainer) return;
   songListContainer.innerHTML = '';
-
-  const playerNameEl = document.getElementById('player-name');
-  if (playerNameEl) {
-    playerNameEl.textContent = localStorage.getItem('opentile_playername') || 'Player';
-    playerNameEl.onclick = () => {
-      const newName = prompt('Enter new player name:', playerNameEl.textContent);
-      if (newName) {
-        localStorage.setItem('opentile_playername', newName.trim());
-        playerNameEl.textContent = newName.trim();
-      }
-    };
-  }
-
-  let totalPPoints = 0;
-
+  
   // Sort by Mid in ascending order
   const sortedSongs = [...musicCsvData].sort((a, b) => a.mid - b.mid);
-
-  const pPointsEl = document.getElementById('p-points');
-
-  sortedSongs.forEach((song, index) => {
+  
+  sortedSongs.forEach((song) => {
     const firstSection = song.sections[1] || Object.values(song.sections)[0];
     const trimmedId = Math.floor(firstSection.id / 100);
     const isLavender = trimmedId >= 700;
-
-    // Get stored data (using 0 if not played)
-    const bestTps = parseFloat(localStorage.getItem(`opentile_best_tps_${song.mid}`) || '0');
-    const bestScore = parseInt(localStorage.getItem(`opentile_best_score_${song.mid}`) || '0');
-    const stars = parseInt(localStorage.getItem(`opentile_stars_${song.mid}`) || '0');
-    const crowns = parseInt(localStorage.getItem(`opentile_crowns_${song.mid}`) || '0');
-
-    totalPPoints += (stars * 1) + (crowns * 3);
-
+    const accentClass = isLavender ? 'song-card-lavender' : 'song-card-gold';
+    
     const card = document.createElement('div');
-    card.className = `song-card`;
-    
-    // Left side: Rank number and Big Badge
-    // Star SVG
-    const starSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-    // Crown SVG
-    const crownSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>`;
-    
-    const badgeColor = isLavender ? '#9370db' : '#ffd700';
-    const textColor = isLavender ? '#d8b4fe' : '#86efac';
-    const hasCrowns = crowns > 0;
-    const badgeIcon = hasCrowns ? crownSvg : starSvg;
-    const diffLabel = isLavender ? 'Lavender' : 'Standard';
-    
-    // Generate silhouette stars/crowns
-    let progressionHtml = '<div class="song-card-progression">';
-    for (let i = 0; i < 3; i++) {
-      const isEarned = i < stars;
-      progressionHtml += `<svg class="${isEarned ? 'earned' : 'unearned'}" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-    }
-    for (let i = 0; i < 3; i++) {
-      const isEarned = i < crowns;
-      progressionHtml += `<svg class="${isEarned ? 'earned' : 'unearned'}" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>`;
-    }
-    progressionHtml += '</div>';
-
+    card.className = `song-card ${accentClass}`;
     card.innerHTML = `
-      <!-- Left Side: chopped badge & rank -->
-      <div class="song-card-left">
-        <div class="song-card-rank">${index + 1}</div>
-        <div class="song-card-badge" style="background-color: ${badgeColor}">
-          ${badgeIcon}
+      <div class="song-card-number">${trimmedId}</div>
+      <div class="song-card-info-left">
+        <div class="song-card-title">${song.musicJson}</div>
+        <div class="song-card-artist">${song.musician}</div>
+        <div class="song-card-info">
+          <span class="song-card-bpm">${firstSection ? firstSection.bpm : 120} BPM</span>
+          <span class="song-card-sections">${Object.keys(song.sections).length} sections</span>
         </div>
       </div>
-      
-      <!-- Right Side -->
-      <div class="song-card-right">
-        <!-- Top Row -->
-        <div class="song-card-top-row">
-          <div class="song-card-titles">
-            <div class="song-card-title">${song.musicJson}</div>
-            <div class="song-card-musician">${song.musician}</div>
-          </div>
-        </div>
-        
-        <!-- Bottom Row -->
-        <div class="song-card-bottom-row">
-          <!-- Progression (Silhouettes) -->
-          ${progressionHtml}
-          
-          <!-- Stats & Buttons -->
-          <div class="song-card-actions">
-            <!-- Stats -->
-            <div class="song-card-stats">
-              <div class="song-card-tps">${bestTps.toFixed(3)} TPS</div>
-              <div class="song-card-best">
-                <span>Best:</span>
-                <span>${bestScore}</span>
-              </div>
-            </div>
-            
-            <!-- Buttons -->
-            <div class="song-card-btns">
-              <button class="song-card-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-              </button>
-              <button class="song-card-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-              </button>
-              <button class="song-card-btn song-card-play-btn">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <button class="song-card-play-btn">Play</button>
     `;
     const playBtn = card.querySelector('.song-card-play-btn');
     playBtn.addEventListener('click', () => loadSongFromData(song));
     songListContainer.appendChild(card);
   });
-
-  if (pPointsEl) {
-    pPointsEl.textContent = totalPPoints;
-  }
 }
 
 async function loadMusicCsv() {
@@ -765,13 +674,13 @@ async function loadSongFromData(songData) {
       baseBpm: mergedMusics[0].bpm,
       musics: mergedMusics
     }, `${songData.musicJson} (${songData.musician})`);
-
+    
     // Show game interface but don't start game (wait for START tile)
     songListScreen.classList.add('hidden');
     startScreen.classList.add('hidden');
     gameoverScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
-
+    
     // Show background immediately when song is loaded
     if (gameBoardWrapper) {
       gameBoardWrapper.classList.add('game-playing');
@@ -785,13 +694,13 @@ async function loadSongFromData(songData) {
 function loadSongFromText(text, label) {
   const parsed = JSON.parse(text);
   loadSongObject(parsed, label);
-
+  
   // Show game interface but don't start game (wait for START tile)
   songListScreen.classList.add('hidden');
   startScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
-
+  
   // Show background immediately when song is loaded
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
@@ -949,25 +858,25 @@ function spawnHoldEffect(x, y) {
   effectContainer.className = 'hold-effect-container';
   effectContainer.style.left = `${x - containerRect.left}px`;
   effectContainer.style.top = `${y - containerRect.top}px`;
-
+  
   const circle = document.createElement('div');
   circle.className = 'hold-circle';
   circle.style.left = '50%';
   circle.style.top = '50%';
-
+  
   const dot = document.createElement('div');
   dot.className = 'hold-dot';
   dot.style.left = '50%';
   dot.style.top = '50%';
-
+  
   effectContainer.appendChild(circle);
   effectContainer.appendChild(dot);
   hitEffectsEl.appendChild(effectContainer);
-
+  
   effectContainer.addEventListener('animationend', () => {
     effectContainer.remove();
   });
-
+  
   // Also remove after animation completes (0.25s)
   setTimeout(() => {
     if (effectContainer.parentNode) {
@@ -993,13 +902,13 @@ function blinkTile(tile) {
 function flashColumnRed(colIdx, tile) {
   const colEl = colElements[colIdx];
   if (!colEl) return;
-
+  
   // Calculate the tile's vertical position to match the correct tile's row
   const tileTopUnits = getTileTop(tile);
   const tileHeightUnits = tile.hlen;
   const tileTopPercent = (tileTopUnits / key) * 100;
   const tileHeightPercent = (tileHeightUnits / key) * 100;
-
+  
   // Create a temporary overlay element for the red flash at the correct position
   const overlay = document.createElement('div');
   overlay.style.position = 'absolute';
@@ -1011,9 +920,9 @@ function flashColumnRed(colIdx, tile) {
   overlay.style.pointerEvents = 'none';
   overlay.style.zIndex = '20';
   overlay.classList.add('column-flash-red');
-
+  
   colEl.appendChild(overlay);
-
+  
   setTimeout(() => {
     overlay.remove();
   }, 1500);
@@ -1038,10 +947,10 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   // Stop the game immediately
   isPaused = true;
   isStarted = false;
-
+  
   // Play lose sound immediately
   playLoseSound();
-
+  
   if (failureType === 'miss' && tile) {
     // Scroll back to reveal the missed tile
     // Calculate target position so the tile's bottom is at the hitline (key - 1)
@@ -1051,12 +960,12 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     const scrollDuration = 300;
     const startHpos = starthpos;
     const startTime = performance.now();
-
+    
     function scrollAnimation(now) {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / scrollDuration, 1);
       starthpos = startHpos + (targetHpos - startHpos) * progress;
-
+      
       if (progress < 1) {
         requestAnimationFrame(scrollAnimation);
       } else {
@@ -1075,7 +984,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   } else if (failureType === 'wrong_hit' && tile && colIdx !== null) {
     // Flash the column in red at the tile's row position
     flashColumnRed(colIdx, tile);
-
+    
     // Show results after blink animation completes
     setTimeout(() => {
       if (gameBoardWrapper) {
@@ -1098,7 +1007,7 @@ function tileMatchesColumn(tile, colIdx) {
 
 function handleManualInputDown(colIdx, pointerEvent = null) {
   if (isPaused) return;
-
+  
   // Handle start tile separately
   if (!isStarted) {
     const startTile = tiles.find(tile => (tile.type === -1 && tile.hpos === -1) || tile.isStartTile);
@@ -1124,29 +1033,29 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     }
     return;
   }
-
+  
   if (autoplayEnabled) return;
   const tile = getLowestManualTile();
   if (!tile) return;
 
   // Check if there's an active long tile in a different column
-  const activeLongInOtherCol = tiles.find((t) =>
-    isLongTile(t) &&
-    t.holdStarted &&
-    !t.holdCompleted &&
-    !t.holdReleased &&
+  const activeLongInOtherCol = tiles.find((t) => 
+    isLongTile(t) && 
+    t.holdStarted && 
+    !t.holdCompleted && 
+    !t.holdReleased && 
     t.activeHoldColumn !== colIdx
   );
-
+  
   if (activeLongInOtherCol) {
     // Drop the active long tile instead of game over
     activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
     activeLongInOtherCol.holdReleased = true;
     activeLongInOtherCol.played = true;
-
+    
     const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
     currentScore += Math.max(1, Math.ceil(completedHeight));
-
+    
     if (!tileMatchesColumn(tile, colIdx)) {
       return;
     }
@@ -1158,7 +1067,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     failRun('wrong_hit', tile, colIdx);
     return;
   }
-
+  
   // Don't allow tapping long tiles that have been released
   if (isLongTile(tile) && tile.holdReleased) {
     return;
@@ -1203,12 +1112,12 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   if (isLongTile(tile)) {
     // Don't allow re-tapping if already released - just ignore
     if (tile.holdReleased) return;
-
+    
     if (!tile.holdStarted) {
       playTileAudioNow(tile);
       tile.holdStarted = true;
       tile.activeHoldColumn = colIdx;
-
+      
       const el = document.querySelector(`[data-tile-id="${tile.id}"]`);
       if (pointerEvent) {
         tile.tapScreenY = pointerEvent.clientY;
@@ -1237,7 +1146,7 @@ function handleManualInputUp(colIdx) {
     activeLong.holdReleasedAt = activeLong.playing || 0;
     activeLong.holdReleased = true;
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
-
+    
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
     currentScore += Math.max(1, Math.ceil(completedHeight));
   }
@@ -1295,167 +1204,167 @@ function renderTiles() {
       const domKey = `${tile.id}:${cols.join('-')}`;
       visibleKeys.add(domKey);
       let el = tileDomCache.get(domKey);
-      if (!el) {
-        el = document.createElement('div');
-        el.dataset.tileId = String(tile.id);
-        el.dataset.tileKey = domKey;
-        el.style.position = 'absolute';
-        el.style.pointerEvents = 'none';
-        el.style.borderRight = '1px solid rgba(51,65,85,0.45)';
-        el.style.borderBottom = '1px solid rgba(51,65,85,0.45)';
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-        el.style.boxSizing = 'border-box';
-        el.style.backgroundRepeat = 'no-repeat';
-        el.style.backgroundSize = '100% 100%';
-        el.style.overflow = 'visible';
-        el.innerHTML = `
+    if (!el) {
+      el = document.createElement('div');
+      el.dataset.tileId = String(tile.id);
+      el.dataset.tileKey = domKey;
+      el.style.position = 'absolute';
+      el.style.pointerEvents = 'none';
+      el.style.borderRight = '1px solid rgba(51,65,85,0.45)';
+      el.style.borderBottom = '1px solid rgba(51,65,85,0.45)';
+      el.style.display = 'flex';
+      el.style.alignItems = 'center';
+      el.style.justifyContent = 'center';
+      el.style.boxSizing = 'border-box';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.backgroundSize = '100% 100%';
+      el.style.overflow = 'visible';
+      el.innerHTML = `
         <div class="tile-image-layer tile-head"></div>
         <div class="tile-image-layer tile-light-strip"></div>
         <div class="tile-image-layer tile-light-orb"></div>
         <div class="combo-badge hidden"></div>
         <div class="tile-start-label hidden">START</div>
       `;
-        tilesContainer.appendChild(el);
-        tileDomCache.set(domKey, el);
+      tilesContainer.appendChild(el);
+      tileDomCache.set(domKey, el);
+    }
+
+    const leftCol = Math.min(...cols);
+    const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
+    const headEl = el.querySelector('.tile-head');
+    const lightStripEl = el.querySelector('.tile-light-strip');
+    const lightOrbEl = el.querySelector('.tile-light-orb');
+    const comboBadgeEl = el.querySelector('.combo-badge');
+    const startLabelEl = el.querySelector('.tile-start-label');
+
+    el.className = '';
+    el.style.left = `${(leftCol / key) * 100}%`;
+    el.style.width = `${(widthCols / key) * 100}%`;
+    el.style.top = `${(topUnits / key) * 100}%`;
+    el.style.height = `${(tile.hlen / key) * 100}%`;
+    el.style.filter = (tile.type === 3 || tile.type >= 7) ? 'hue-rotate(-90deg)' : 'none';
+    el.style.backgroundColor = 'transparent';
+    el.style.borderTop = 'none';
+    el.style.boxShadow = 'none';
+    el.style.opacity = '1';
+
+    [headEl, lightStripEl, lightOrbEl].forEach((child) => {
+      child.style.position = 'absolute';
+      child.style.left = '0';
+      child.style.right = '0';
+      child.style.backgroundRepeat = 'no-repeat';
+      child.style.backgroundSize = '100% 100%';
+      child.style.pointerEvents = 'none';
+      child.style.display = 'none';
+    });
+
+    comboBadgeEl.classList.add('hidden');
+    startLabelEl.classList.add('hidden');
+    startLabelEl.style.justifyContent = 'center';
+    startLabelEl.style.fontFamily = 'var(--font-game)';
+    startLabelEl.style.fontWeight = '500';
+    startLabelEl.style.fontSize = '2.8rem';
+    startLabelEl.style.color = '#ffffff';
+    startLabelEl.style.letterSpacing = '0.1em';
+    startLabelEl.style.display = 'none';
+    startLabelEl.style.position = 'absolute';
+    startLabelEl.style.inset = '0';
+    startLabelEl.style.alignItems = 'center';
+
+    if (tile.type === -1 && tile.hpos === -1) {
+      el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
+      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
+    } else if (tile.type === 1) {
+      // Rest/blank tile - make entirely invisible
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+    } else if (tile.isStartTile) {
+      // Show START label without changing tile appearance
+      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
+    } else if (isTapTile(tile) || isDoubleTile(tile)) {
+      let isPlayed = tile.played;
+      let isEnded = tile.ended;
+      if (isDoubleTile(tile) && !autoplayEnabled) {
+        const thisCol = cols[0];
+        isPlayed = tile.hitColumns.includes(thisCol);
+        isEnded = isPlayed ? 1 : 0;
+      }
+      el.style.backgroundImage = `url("gameImage/${isPlayed ? getTileFinishImage(isEnded) : 'tile_black'}.png")`;
+    } else if (isComboTile(tile) && !autoplayEnabled) {
+      el.className = 'tile-combo';
+      el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
+      comboBadgeEl.classList.remove('hidden');
+      comboBadgeEl.textContent = String(tile.remainingTaps || tile.taps || 2);
+    } else if (isLongTile(tile) || isComboTile(tile)) {
+      const played = tile.played || tile.clicked;
+      const ended = tile.ended || tile.holdCompleted;
+      const isReleased = isLongTile(tile) && tile.holdReleased;
+      
+      // Use release point if the tile was released midway, otherwise use current progress
+      let progress;
+      if (isReleased) {
+        progress = tile.holdReleasedAt || 0;
+      } else {
+        progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
       }
 
-      const leftCol = Math.min(...cols);
-      const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
-      const headEl = el.querySelector('.tile-head');
-      const lightStripEl = el.querySelector('.tile-light-strip');
-      const lightOrbEl = el.querySelector('.tile-light-orb');
-      const comboBadgeEl = el.querySelector('.combo-badge');
-      const startLabelEl = el.querySelector('.tile-start-label');
+      el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
 
-      el.className = '';
-      el.style.left = `${(leftCol / key) * 100}%`;
-      el.style.width = `${(widthCols / key) * 100}%`;
-      el.style.top = `${(topUnits / key) * 100}%`;
-      el.style.height = `${(tile.hlen / key) * 100}%`;
-      el.style.filter = (tile.type === 3 || tile.type >= 7) ? 'hue-rotate(-90deg)' : 'none';
-      el.style.backgroundColor = 'transparent';
-      el.style.borderTop = 'none';
-      el.style.boxShadow = 'none';
-      el.style.opacity = '1';
-
-      [headEl, lightStripEl, lightOrbEl].forEach((child) => {
-        child.style.position = 'absolute';
-        child.style.left = '0';
-        child.style.right = '0';
-        child.style.backgroundRepeat = 'no-repeat';
-        child.style.backgroundSize = '100% 100%';
-        child.style.pointerEvents = 'none';
-        child.style.display = 'none';
-      });
-
-      comboBadgeEl.classList.add('hidden');
-      startLabelEl.classList.add('hidden');
-      startLabelEl.style.justifyContent = 'center';
-      startLabelEl.style.fontFamily = 'var(--font-game)';
-      startLabelEl.style.fontWeight = '500';
-      startLabelEl.style.fontSize = '2.8rem';
-      startLabelEl.style.color = '#ffffff';
-      startLabelEl.style.letterSpacing = '0.1em';
-      startLabelEl.style.display = 'none';
-      startLabelEl.style.position = 'absolute';
-      startLabelEl.style.inset = '0';
-      startLabelEl.style.alignItems = 'center';
-
-      if (tile.type === -1 && tile.hpos === -1) {
-        el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
-        if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
-      } else if (tile.type === 1) {
-        // Rest/blank tile - make entirely invisible
-        el.style.opacity = '0';
-        el.style.pointerEvents = 'none';
-      } else if (tile.isStartTile) {
-        // Show START label without changing tile appearance
-        if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
-      } else if (isTapTile(tile) || isDoubleTile(tile)) {
-        let isPlayed = tile.played;
-        let isEnded = tile.ended;
-        if (isDoubleTile(tile) && !autoplayEnabled) {
-          const thisCol = cols[0];
-          isPlayed = tile.hitColumns.includes(thisCol);
-          isEnded = isPlayed ? 1 : 0;
-        }
-        el.style.backgroundImage = `url("gameImage/${isPlayed ? getTileFinishImage(isEnded) : 'tile_black'}.png")`;
-      } else if (isComboTile(tile) && !autoplayEnabled) {
-        el.className = 'tile-combo';
-        el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
-        comboBadgeEl.classList.remove('hidden');
-        comboBadgeEl.textContent = String(tile.remainingTaps || tile.taps || 2);
-      } else if (isLongTile(tile) || isComboTile(tile)) {
-        const played = tile.played || tile.clicked;
-        const ended = tile.ended || tile.holdCompleted;
-        const isReleased = isLongTile(tile) && tile.holdReleased;
-
-        // Use release point if the tile was released midway, otherwise use current progress
-        let progress;
-        if (isReleased) {
-          progress = tile.holdReleasedAt || 0;
-        } else {
-          progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
-        }
-
-        el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
-
-        if (!played) {
-          headEl.style.display = 'block';
-          headEl.style.bottom = '0';
-          headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
-          headEl.style.backgroundImage = 'url("gameImage/long_head.png")';
-        }
-
-        if (played && !ended) {
-          let orbCenterBottomPercent = 0;
-
-          // Keep the light orb at the absolute screen position where it was tapped
-          if (tile.tapScreenY && !isReleased) {
-            const tileRect = el.getBoundingClientRect();
-            const tileScreenTop = tileRect.top;
-
-            const orbScreenY = tile.tapScreenY;
-            const orbRelativeY = orbScreenY - tileScreenTop;
-            const orbRelativePercent = (orbRelativeY / tileRect.height) * 100;
-
-            orbCenterBottomPercent = 100 - orbRelativePercent;
-          } else {
-            // Fallback to normal behavior for released tiles or when tapScreenY is not available
-            // Progress is measured from the bottom of the tile up to the hitline
-            const fallbackProgress = Math.max(0, Math.min(tile.hlen, progress + 1));
-            orbCenterBottomPercent = (fallbackProgress / tile.hlen) * 100 - (0.5 / tile.hlen) * 100;
-          }
-
-          // Ensure the strip doesn't overflow the tile boundaries
-          orbCenterBottomPercent = Math.max(0, Math.min(100, orbCenterBottomPercent));
-
-          const orbHeightPercent = (1 / tile.hlen) * 100;
-          const orbBottomPercent = orbCenterBottomPercent - (orbHeightPercent / 2);
-
-          lightOrbEl.style.display = 'block';
-          lightOrbEl.style.height = `${orbHeightPercent}%`;
-          lightOrbEl.style.bottom = `${orbBottomPercent}%`;
-          lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
-
-          lightStripEl.style.display = 'block';
-          lightStripEl.style.bottom = '0';
-          lightStripEl.style.height = `${orbCenterBottomPercent}%`;
-          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
-        }
-
-        if (ended) {
-          lightStripEl.style.display = 'block';
-          lightStripEl.style.top = '0';
-          lightStripEl.style.height = '100%';
-          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
-          lightStripEl.style.opacity = `${Math.max(1 - (tile.ended || 0) / 10, 0)}`;
-        } else {
-          lightStripEl.style.opacity = '1';
-        }
+      if (!played) {
+        headEl.style.display = 'block';
+        headEl.style.bottom = '0';
+        headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
+        headEl.style.backgroundImage = 'url("gameImage/long_head.png")';
       }
+
+      if (played && !ended) {
+        let orbCenterBottomPercent = 0;
+        
+        // Keep the light orb at the absolute screen position where it was tapped
+        if (tile.tapScreenY && !isReleased) {
+          const tileRect = el.getBoundingClientRect();
+          const tileScreenTop = tileRect.top;
+          
+          const orbScreenY = tile.tapScreenY;
+          const orbRelativeY = orbScreenY - tileScreenTop;
+          const orbRelativePercent = (orbRelativeY / tileRect.height) * 100;
+          
+          orbCenterBottomPercent = 100 - orbRelativePercent;
+        } else {
+          // Fallback to normal behavior for released tiles or when tapScreenY is not available
+          // Progress is measured from the bottom of the tile up to the hitline
+          const fallbackProgress = Math.max(0, Math.min(tile.hlen, progress + 1));
+          orbCenterBottomPercent = (fallbackProgress / tile.hlen) * 100 - (0.5 / tile.hlen) * 100;
+        }
+        
+        // Ensure the strip doesn't overflow the tile boundaries
+        orbCenterBottomPercent = Math.max(0, Math.min(100, orbCenterBottomPercent));
+        
+        const orbHeightPercent = (1 / tile.hlen) * 100;
+        const orbBottomPercent = orbCenterBottomPercent - (orbHeightPercent / 2);
+        
+        lightOrbEl.style.display = 'block';
+        lightOrbEl.style.height = `${orbHeightPercent}%`;
+        lightOrbEl.style.bottom = `${orbBottomPercent}%`;
+        lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
+        
+        lightStripEl.style.display = 'block';
+        lightStripEl.style.bottom = '0';
+        lightStripEl.style.height = `${orbCenterBottomPercent}%`;
+        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+      }
+
+      if (ended) {
+        lightStripEl.style.display = 'block';
+        lightStripEl.style.top = '0';
+        lightStripEl.style.height = '100%';
+        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+        lightStripEl.style.opacity = `${Math.max(1 - (tile.ended || 0) / 10, 0)}`;
+      } else {
+        lightStripEl.style.opacity = '1';
+      }
+    }
     });
   });
 
@@ -1663,9 +1572,9 @@ function stopGame(showStart = true) {
 
 function continueFromPause() {
   // Find the nearest untapped note (skip rest/blank tiles with type === 1)
-  const nearestUntapped = tiles.find(tile =>
-    !tile.clicked &&
-    !tile.played &&
+  const nearestUntapped = tiles.find(tile => 
+    !tile.clicked && 
+    !tile.played && 
     tile.type !== -1 &&
     tile.type !== 1 && // Skip rest/blank tiles
     tile.hpos !== -1 &&
@@ -1675,7 +1584,7 @@ function continueFromPause() {
   if (nearestUntapped) {
     // Mark this tile as the new START tile without changing its type
     nearestUntapped.isStartTile = true;
-
+    
     // Reset game state to wait for START tile
     isStarted = false;
     isPaused = false;

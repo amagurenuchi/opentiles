@@ -19,7 +19,8 @@ const boardEl = document.getElementById('game-board');
 const tilesContainer = document.getElementById('tiles-container');
 const hitEffectsEl = document.getElementById('hit-effects');
 const scoreDisplay = document.getElementById('score-display');
-const tpsDisplay = document.getElementById('tps-display');
+const tpsDisplayNormal = document.getElementById('tps-display-normal');
+const tpsDisplayChallenge = document.getElementById('tps-display-challenge');
 const starsDisplay = document.getElementById('stars-display');
 const crownsDisplay = document.getElementById('crowns-display');
 const bestDisplay = document.getElementById('best-display');
@@ -53,6 +54,8 @@ const dockHomeBtn = document.getElementById('dock-home-btn');
 const dockMusicBtn = document.getElementById('dock-music-btn');
 const dockChallengesBtn = document.getElementById('dock-challenges-btn');
 const dockSettingsBtn = document.getElementById('dock-settings-btn');
+let currentDockTab = 'home';
+let previousDockTabBeforeSettings = 'home';
 
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
@@ -102,7 +105,12 @@ let tiles = [];
 let isChallengeMode = false;
 let challengeAcceleration = 0;
 let challengeLastAccelerationTime = 0;
+let challengeBpmOffset = 0;
 let challengeStartTime = 0;
+let hasStartedGameplay = false;
+let preserveCurrentSpeedOnNextFrame = false;
+let pausedSpeedBpm = 120;
+let pausedSpeedBeats = 0.5;
 let tileDomCache = new Map();
 let starterColumn = 0;
 let startTime = 0;
@@ -113,6 +121,69 @@ let nextTileId = 0;
 let activeKeys = { 0: false, 1: false, 2: false, 3: false };
 let bindingColIdx = null;
 let pendingHitEffects = [];
+let currentGameplayBackgroundIndex = 1;
+let gameplayBackgroundTransitionTimeout = null;
+
+function captureCurrentSpeedState() {
+  pausedSpeedBpm = currentBpm;
+  pausedSpeedBeats = currentBeats;
+}
+
+function getEffectiveSpeedState() {
+  if (!hasStartedGameplay) {
+    return { bpm: 0, beats: 0.5 };
+  }
+
+  if (isPaused || !isStarted) {
+    return {
+      bpm: pausedSpeedBpm || currentBpm || 120,
+      beats: pausedSpeedBeats || currentBeats || 0.5
+    };
+  }
+
+  return {
+    bpm: currentBpm || pausedSpeedBpm || 120,
+    beats: currentBeats || pausedSpeedBeats || 0.5
+  };
+}
+
+function getGameplayBackgroundIndex() {
+  if (speedLevel >= 3) return 3;
+  if (speedLevel >= 2) return 2;
+  return 1;
+}
+
+function updateGameplayBackground() {
+  if (!gameBoardWrapper) return;
+
+  const targetBackgroundIndex = getGameplayBackgroundIndex();
+  const currentImage = `url("gameImage/bgani_${String(currentGameplayBackgroundIndex).padStart(2, '0')}.png")`;
+  const targetImage = `url("gameImage/bgani_${String(targetBackgroundIndex).padStart(2, '0')}.png")`;
+
+  if (targetBackgroundIndex === currentGameplayBackgroundIndex) {
+    gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
+    gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+    return;
+  }
+
+  if (gameplayBackgroundTransitionTimeout) {
+    clearTimeout(gameplayBackgroundTransitionTimeout);
+    gameplayBackgroundTransitionTimeout = null;
+  }
+
+  gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
+  gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
+  gameBoardWrapper.classList.add('game-bg-transition-active');
+
+  gameplayBackgroundTransitionTimeout = window.setTimeout(() => {
+    gameBoardWrapper.style.setProperty('--game-bg-image-1', targetImage);
+    gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+    currentGameplayBackgroundIndex = targetBackgroundIndex;
+    gameplayBackgroundTransitionTimeout = null;
+  }, 900);
+}
 
 function unexpected(str) {
   return new SyntaxError(`Unexpected '${str}' at position ${erm.index} (part ${erm.part} track ${erm.track + 1})`);
@@ -590,14 +661,12 @@ function createSongCard(song, isFavouriteView = false) {
 
 function createChallengeCard(challengeData) {
   const bestTps = parseFloat(localStorage.getItem(`opentile_challenge_best_tps_${challengeData.mid}`) || '0', 10);
-  const acceleration = challengeData.acceleration || 0;
 
   const card = document.createElement('div');
   card.className = `song-card challenge-card`;
   card.innerHTML = `
     <div class="song-card-content">
       <div class="song-card-title">${challengeData.musicJson}</div>
-      <div class="song-card-artist">Acceleration: +${acceleration} TPS/0.11s</div>
     </div>
     <div class="song-card-action">
       <div class="best-score-display">Best: ${bestTps.toFixed(3)} TPS</div>
@@ -673,9 +742,20 @@ async function loadMusicCsv() {
 function resetEngineState() {
   clearQueuedTimeouts();
   sheet = [];
-  info = [];
   currentSectionIndex = 0;
   currentSectionTileIndex = 0;
+  currentGameplayBackgroundIndex = 1;
+  if (gameplayBackgroundTransitionTimeout) {
+    clearTimeout(gameplayBackgroundTransitionTimeout);
+    gameplayBackgroundTransitionTimeout = null;
+  }
+  if (gameBoardWrapper) {
+    gameBoardWrapper.classList.remove('game-playing');
+    gameBoardWrapper.classList.remove('game-bg-transition-active');
+    gameBoardWrapper.style.removeProperty('--game-bg-image-1');
+    gameBoardWrapper.style.removeProperty('--game-bg-image-2');
+  }
+  info = [];
   currentScore = 0;
   hpos = 0;
   starthpos = key - 2;
@@ -701,6 +781,11 @@ function resetEngineState() {
   isStarted = false;
   isPaused = false;
   isGameLoaded = false;
+  challengeBpmOffset = 0;
+  hasStartedGameplay = false;
+  preserveCurrentSpeedOnNextFrame = false;
+  pausedSpeedBpm = 120;
+  pausedSpeedBeats = 0.5;
   activeKeys = { 0: false, 1: false, 2: false, 3: false };
   pendingHitEffects = [];
 }
@@ -716,6 +801,8 @@ function loadSongObject(data, label) {
     throw new Error('No musics found in JSON');
   }
   let baseBeats = musics[0].baseBeats || 0.5;
+  const firstSectionBpm = isChallengeMode ? (musics[0]?.bpm || baseBpm || 120) : null;
+  const firstSectionBaseBeats = isChallengeMode ? (musics[0]?.baseBeats || baseBeats || 0.5) : null;
 
   for (const music of musics) {
     erm.part = music.id;
@@ -744,10 +831,12 @@ function loadSongObject(data, label) {
       }
     }
 
+    const sectionBaseBeats = isChallengeMode ? firstSectionBaseBeats : (music.baseBeats || baseBeats || 0.5);
+    const sectionBpm = isChallengeMode ? firstSectionBpm : (music.bpm != null ? music.bpm : baseBpm);
     const realscore = [];
     for (const tile of base) {
       if (tile.type) {
-        const hlenValue = tile.len / music.baseBeats;
+        const hlenValue = tile.len / sectionBaseBeats;
         realscore.push({
           type: Number(tile.type) === 1 && tile.notes.flat().length ? (hlenValue > 1 ? 6 : 2) : tile.type,
           scores: [tile.notes],
@@ -755,16 +844,16 @@ function loadSongObject(data, label) {
         });
       } else if (realscore.length) {
         realscore[realscore.length - 1].scores.push(tile.notes);
-        realscore[realscore.length - 1].hlen += tile.len / music.baseBeats;
+        realscore[realscore.length - 1].hlen += tile.len / sectionBaseBeats;
       }
     }
 
     sheet.push(realscore);
-    if (music.bpm != null) {
+    if (!isChallengeMode && music.bpm != null) {
       baseBpm = music.bpm;
       baseBeats = music.baseBeats;
     }
-    info.push({ bpm: Math.trunc(baseBpm / baseBeats * music.baseBeats), beats: music.baseBeats, id: music.id });
+    info.push({ bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats), beats: sectionBaseBeats, id: music.id });
   }
 
   getSpeed = speedGen(info);
@@ -782,12 +871,15 @@ async function loadSongFromData(songData) {
     // Check if this is a challenge song
     isChallengeMode = (songData.mid === 200001 || songData.mid === 200002);
     if (isChallengeMode) {
-      challengeAcceleration = songData.acceleration || 0;
+      challengeAcceleration = (songData.acceleration || 0) / 10;
       challengeLastAccelerationTime = 0;
+      challengeBpmOffset = 0;
     }
 
     const sectionIds = Object.keys(songData.sections).map(Number).sort((a, b) => a - b);
     const firstSection = songData.sections[sectionIds[0]];
+    const challengeFirstSectionBpm = isChallengeMode ? (firstSection?.bpm || 120) : null;
+    const challengeFirstSectionBeats = isChallengeMode ? (firstSection?.baseBeats || 0.5) : null;
     const response = await fetch(`song/${firstSection.musicJson}.json`, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -803,8 +895,8 @@ async function loadSongFromData(songData) {
       mergedMusics.push({
         ...music,
         id: sectionId,
-        bpm: csvSection.bpm,
-        baseBeats: csvSection.baseBeats || music.baseBeats || 0.5
+        bpm: isChallengeMode ? (csvSection.bpm || challengeFirstSectionBpm || music.bpm || 120) : (csvSection.bpm || music.bpm || 120),
+        baseBeats: isChallengeMode ? (csvSection.baseBeats || challengeFirstSectionBeats || music.baseBeats || 0.5) : (csvSection.baseBeats || music.baseBeats || 0.5)
       });
     });
 
@@ -1086,6 +1178,7 @@ function flashColumnRed(colIdx, tile) {
 }
 
 function finishRun(showLibrary = false) {
+  captureCurrentSpeedState();
   isStarted = false;
   isPaused = true;
 
@@ -1102,10 +1195,6 @@ function finishRun(showLibrary = false) {
       const bestTps = parseFloat(localStorage.getItem(key) || '0', 10);
       if (finalTps > bestTps) {
         localStorage.setItem(key, String(finalTps));
-      }
-      // Save last played song
-      if (selectedSongData.mid) {
-        saveLastPlayed(String(selectedSongData.mid));
       }
     }
 
@@ -1153,6 +1242,7 @@ function finishRun(showLibrary = false) {
 
 function failRun(failureType = 'miss', tile = null, colIdx = null) {
   // Stop the game immediately
+  captureCurrentSpeedState();
   isPaused = true;
   isStarted = false;
   
@@ -1197,6 +1287,9 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     setTimeout(() => {
       if (gameBoardWrapper) {
         gameBoardWrapper.classList.remove('game-playing');
+        gameBoardWrapper.classList.remove('game-bg-transition-active');
+        gameBoardWrapper.style.removeProperty('--game-bg-image-1');
+        gameBoardWrapper.style.removeProperty('--game-bg-image-2');
       }
       finishRun(false);
     }, 1500);
@@ -1204,6 +1297,8 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     // Fallback to original behavior
     if (gameBoardWrapper) {
       gameBoardWrapper.classList.remove('game-playing');
+      gameBoardWrapper.style.backgroundImage = '';
+      gameBoardWrapper.style.backgroundImage = '';
     }
     finishRun(false);
   }
@@ -1225,9 +1320,11 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       if (tileBottom >= 0) {
         delete startTile.isStartTile;
         isStarted = true;
+        hasStartedGameplay = true;
         startTime = performance.now();
         if (gameBoardWrapper) {
           gameBoardWrapper.classList.add('game-playing');
+          updateGameplayBackground();
         }
         if (pointerEvent) {
           spawnHitRipple(pointerEvent.clientX, pointerEvent.clientY);
@@ -1422,31 +1519,38 @@ function handleManualInputUp(colIdx) {
 }
 
 function updateHUD() {
+  const { bpm: effectiveBpm, beats: effectiveBeats } = getEffectiveSpeedState();
+  const scrollSpeed = hasStartedGameplay ? effectiveBpm / effectiveBeats / 60 : 0;
+  const tpsText = `${scrollSpeed.toFixed(3)}`;
+
+  tpsDisplayNormal?.classList.add('hidden');
+  tpsDisplayChallenge?.classList.add('hidden');
+
   if (isChallengeMode) {
-    // In challenge mode: hide score, show TPS, hide stars/crowns
+    // In challenge mode: hide score, show challenge TPS, hide stars/crowns
     scoreDisplay.classList.add('hidden');
     starsDisplay.innerHTML = '';
     crownsDisplay.innerHTML = '';
 
     if (isGameLoaded) {
-      const scrollSpeed = currentBpm / currentBeats / 60;
-      tpsDisplay.classList.remove('hidden');
-      tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
-    } else {
-      tpsDisplay.classList.add('hidden');
+      tpsDisplayChallenge?.classList.remove('hidden');
+      if (tpsDisplayChallenge) {
+        tpsDisplayChallenge.textContent = tpsText;
+      }
     }
   } else {
-    // Normal mode: show score, show TPS, show stars/crowns
+    // Normal mode: show score, show normal TPS, show stars/crowns
     scoreDisplay.classList.remove('hidden');
     scoreDisplay.textContent = String(currentScore);
 
     if (isGameLoaded) {
-      const scrollSpeed = currentBpm / currentBeats / 60;
-      tpsDisplay.classList.remove('hidden');
-      tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
-    } else {
-      tpsDisplay.classList.add('hidden');
+      tpsDisplayNormal?.classList.remove('hidden');
+      if (tpsDisplayNormal) {
+        tpsDisplayNormal.textContent = tpsText;
+      }
     }
+
+    updateGameplayBackground();
 
     const stage = getStarAndCrownState(speedLevel - 1);
     if (stage.crowns) {
@@ -1686,27 +1790,39 @@ function renderTiles() {
 }
 
 function updateEngineFrame(now) {
-  ({ bpm: currentBpm, beats: currentBeats } = getSpeed(speedLevel - 1));
+  const baseSpeed = getSpeed(speedLevel - 1);
+  let nextBpm = currentBpm;
+  let nextBeats = currentBeats;
+  const shouldPreserveSpeed = preserveCurrentSpeedOnNextFrame || isPaused || !hasStartedGameplay;
 
-  // Apply acceleration in challenge mode every 0.11s
+  if (!shouldPreserveSpeed) {
+    nextBpm = baseSpeed.bpm;
+    nextBeats = baseSpeed.beats;
+  } else {
+    nextBpm = pausedSpeedBpm;
+    nextBeats = pausedSpeedBeats;
+  }
+
+  if (preserveCurrentSpeedOnNextFrame) {
+    preserveCurrentSpeedOnNextFrame = false;
+  }
+
+  // Apply acceleration in challenge mode every 0.1s while preserving the current speed baseline.
   if (isChallengeMode && isStarted && !isPaused) {
     if (challengeLastAccelerationTime === 0) {
       challengeLastAccelerationTime = now;
     }
-    const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000; // Convert to seconds
-    if (timeSinceLastAcceleration >= 0.11) {
-      // Apply acceleration: add to BPM
-      // Acceleration is in TPS, so we need to convert to BPM: acceleration * currentBeats * 60
-      const bpmIncrease = challengeAcceleration * currentBeats * 60;
-      currentBpm += bpmIncrease;
-
-      // Update the speed function to reflect the new BPM
-      info = info.map(entry => ({ ...entry, bpm: entry.bpm + bpmIncrease }));
-      getSpeed = speedGen(info);
-
+    const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000;
+    if (timeSinceLastAcceleration >= 0.1) {
+      const bpmIncrease = challengeAcceleration * nextBeats * 60;
+      challengeBpmOffset += bpmIncrease;
       challengeLastAccelerationTime = now;
     }
+    nextBpm += challengeBpmOffset;
   }
+
+  currentBpm = nextBpm;
+  currentBeats = nextBeats;
 
   if (bgLevelPos.length && bgLevelPos[0] < starthpos) {
     bgLevelPos.shift();
@@ -1879,8 +1995,13 @@ function startGame() {
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
   isStarted = true;
+  hasStartedGameplay = true;
   isPaused = false;
   startTime = performance.now();
+  
+  // Show pause button during gameplay
+  const pauseBtn = document.getElementById('pause-btn');
+  if (pauseBtn) pauseBtn.classList.add('force-show');
 }
 
 function stopGame(showStart = true) {
@@ -1891,13 +2012,48 @@ function stopGame(showStart = true) {
   lastLoadedLabel = '';
   if (showStart) {
     startScreen.classList.add('hidden');
-    songListScreen.classList.remove('hidden');
-    renderSongList();
+    songListScreen.classList.add('hidden');
+    challengesScreen.classList.add('hidden');
+    homeScreen.classList.remove('hidden');
+    renderHomeScreen();
   }
   gameoverScreen.classList.add('hidden');
   scoreDisplay.textContent = '0';
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
+  
+  // Hide pause button when not in gameplay
+  const pauseBtn = document.getElementById('pause-btn');
+  if (pauseBtn) pauseBtn.classList.remove('force-show');
+}
+
+function returnToMainMenu() {
+  clearQueuedTimeouts();
+  resetEngineState();
+  selectedSongData = null;
+  lastLoadedJsonText = '';
+  lastLoadedLabel = '';
+  startScreen.classList.add('hidden');
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  scoreDisplay.textContent = '0';
+  starsDisplay.innerHTML = '';
+  crownsDisplay.innerHTML = '';
+  
+  // Hide pause button when not in gameplay
+  const pauseBtn = document.getElementById('pause-btn');
+  if (pauseBtn) pauseBtn.classList.remove('force-show');
+
+  if (currentDockTab === 'music') {
+    showMusicScreen();
+  } else if (currentDockTab === 'challenges') {
+    showChallengesScreen();
+  } else if (currentDockTab === 'settings') {
+    showSettingsScreen();
+  } else {
+    showHomeScreen();
+  }
 }
 
 function resetTileForResume(tile) {
@@ -1923,6 +2079,9 @@ function continueFromPause() {
   tiles.forEach((tile) => delete tile.isStartTile);
 
   const initialStart = tiles.find((tile) => tile.type === -1 && tile.hpos === -1 && !tile.played);
+  captureCurrentSpeedState();
+  preserveCurrentSpeedOnNextFrame = true;
+  challengeLastAccelerationTime = performance.now();
   if (initialStart && !isStarted) {
     isPaused = false;
     pauseScreen.classList.add('hidden');
@@ -1948,16 +2107,22 @@ function continueFromPause() {
 
 function exitToSongLibrary() {
   pauseScreen.classList.add('hidden');
-  stopGame(true);
+  returnToMainMenu();
 }
 
 function togglePause() {
   if (!isGameLoaded) return;
+  if (!hasStartedGameplay) {
+    exitToSongLibrary();
+    return;
+  }
   if (isPaused) {
     continueFromPause();
     return;
   }
+  captureCurrentSpeedState();
   isPaused = true;
+  challengeLastAccelerationTime = performance.now();
   pauseScreen.classList.remove('hidden');
 }
 
@@ -2057,7 +2222,18 @@ function checkPitch(pitch) {
   }
 }
 
+function isChallengeSong(song) {
+  if (!song) return false;
+  const mid = Number(song.mid ?? song.id ?? song);
+  return mid === 200001 || mid === 200002;
+}
+
 function saveLastPlayed(songId) {
+  if (!songId) return;
+
+  const song = musicCsvData.find((entry) => String(entry.mid) === String(songId));
+  if (isChallengeSong(song)) return;
+
   lastPlayedSong = songId;
   localStorage.setItem('opentile_last_played', songId);
 }
@@ -2076,20 +2252,16 @@ function toggleFavourite(songId) {
 }
 
 function renderHomeScreen() {
-  // Update player name
-  const playerNameTextHome = document.getElementById('player-name-text-home');
-  if (playerNameTextHome) playerNameTextHome.textContent = playerName;
-
   // Render welcome back section
   let songToDisplay = null;
-  
+
   if (lastPlayedSong) {
-    songToDisplay = musicCsvData.find(song => String(song.mid) === lastPlayedSong);
+    songToDisplay = musicCsvData.find(song => String(song.mid) === lastPlayedSong && !isChallengeSong(song));
   }
-  
-  // Default to first song if no song played
+
+  // Default to first non-challenge song if no suitable song played
   if (!songToDisplay && musicCsvData.length > 0) {
-    songToDisplay = musicCsvData[0];
+    songToDisplay = musicCsvData.find(song => !isChallengeSong(song)) || musicCsvData[0];
   }
   
   if (songToDisplay) {
@@ -2103,7 +2275,7 @@ function renderHomeScreen() {
   // Render favourite songs
   renderFavouriteSongs();
   
-  // Sync top dock data
+  // Sync top dock data (includes player name sync)
   syncTopDockData();
   
   // Setup scroll rotation
@@ -2148,67 +2320,77 @@ function renderFavouriteSongs() {
   });
 }
 
-function showHomeScreen() {
-  homeScreen.classList.remove('hidden');
-  songListScreen.classList.add('hidden');
-  challengesScreen.classList.add('hidden');
+function updateDockSelection(nextTab) {
+  currentDockTab = nextTab;
+  [dockHomeBtn, dockMusicBtn, dockChallengesBtn, dockSettingsBtn].forEach((button) => button?.classList.remove('selected'));
 
-  // Update dock buttons
-  dockHomeBtn.classList.add('selected');
-  dockMusicBtn.classList.remove('selected');
-  dockChallengesBtn.classList.remove('selected');
-  dockSettingsBtn.classList.remove('selected');
+  if (nextTab === 'home') {
+    dockHomeBtn?.classList.add('selected');
+  } else if (nextTab === 'music') {
+    dockMusicBtn?.classList.add('selected');
+  } else if (nextTab === 'challenges') {
+    dockChallengesBtn?.classList.add('selected');
+  } else if (nextTab === 'settings') {
+    dockSettingsBtn?.classList.add('selected');
+  }
+}
 
-  // Show dock
+function setDockView(tab) {
+  if (tab !== 'settings' && !settingsScreen.classList.contains('hidden')) {
+    saveSettingsToStorage();
+    settingsScreen.classList.add('hidden');
+  }
+
+  if (tab === 'home') {
+    homeScreen.classList.remove('hidden');
+    songListScreen.classList.add('hidden');
+    challengesScreen.classList.add('hidden');
+    updateDockSelection('home');
+    renderHomeScreen();
+  } else if (tab === 'music') {
+    homeScreen.classList.add('hidden');
+    songListScreen.classList.remove('hidden');
+    challengesScreen.classList.add('hidden');
+    updateDockSelection('music');
+    renderSongList();
+  } else if (tab === 'challenges') {
+    homeScreen.classList.add('hidden');
+    songListScreen.classList.add('hidden');
+    challengesScreen.classList.remove('hidden');
+    updateDockSelection('challenges');
+    renderChallenges();
+  } else if (tab === 'settings') {
+    settingsScreen.classList.remove('hidden');
+    updateDockSelection('settings');
+  }
+
   const sharedDock = document.getElementById('shared-dock');
   if (sharedDock) {
     sharedDock.classList.remove('hidden');
   }
 
-  renderHomeScreen();
+  // Hide pause button when switching to any dock view (not gameplay)
+  const pauseBtn = document.getElementById('pause-btn');
+  if (pauseBtn) pauseBtn.classList.remove('force-show');
+
   syncTopDockData();
+}
+
+function showHomeScreen() {
+  setDockView('home');
 }
 
 function showMusicScreen() {
-  homeScreen.classList.add('hidden');
-  songListScreen.classList.remove('hidden');
-  challengesScreen.classList.add('hidden');
-
-  // Update dock buttons
-  dockHomeBtn.classList.remove('selected');
-  dockMusicBtn.classList.add('selected');
-  dockChallengesBtn.classList.remove('selected');
-  dockSettingsBtn.classList.remove('selected');
-
-  // Show dock
-  const sharedDock = document.getElementById('shared-dock');
-  if (sharedDock) {
-    sharedDock.classList.remove('hidden');
-  }
-
-  renderSongList();
-  syncTopDockData();
+  setDockView('music');
 }
 
 function showChallengesScreen() {
-  homeScreen.classList.add('hidden');
-  songListScreen.classList.add('hidden');
-  challengesScreen.classList.remove('hidden');
+  setDockView('challenges');
+}
 
-  // Update dock buttons
-  dockHomeBtn.classList.remove('selected');
-  dockMusicBtn.classList.remove('selected');
-  dockChallengesBtn.classList.add('selected');
-  dockSettingsBtn.classList.remove('selected');
-
-  // Show dock
-  const sharedDock = document.getElementById('shared-dock');
-  if (sharedDock) {
-    sharedDock.classList.remove('hidden');
-  }
-
-  renderChallenges();
-  syncTopDockData();
+function showSettingsScreen() {
+  previousDockTabBeforeSettings = currentDockTab === 'settings' ? previousDockTabBeforeSettings : currentDockTab;
+  setDockView('settings');
 }
 
 function syncTopDockData() {
@@ -2238,6 +2420,23 @@ function syncTopDockData() {
   if (pPointsDisplayHome) pPointsDisplayHome.textContent = String(pPoints);
   if (totalCrownsDisplayHome) totalCrownsDisplayHome.textContent = String(totalCrowns);
   if (totalStarsDisplayHome) totalStarsDisplayHome.textContent = String(totalStars);
+  
+  // Update Challenges tab displays
+  const pPointsDisplayChallenges = document.getElementById('p-points-display-challenges');
+  const totalCrownsDisplayChallenges = document.getElementById('total-crowns-challenges');
+  const totalStarsDisplayChallenges = document.getElementById('total-stars-challenges');
+  
+  if (pPointsDisplayChallenges) pPointsDisplayChallenges.textContent = String(pPoints);
+  if (totalCrownsDisplayChallenges) totalCrownsDisplayChallenges.textContent = String(totalCrowns);
+  if (totalStarsDisplayChallenges) totalStarsDisplayChallenges.textContent = String(totalStars);
+  
+  // Update player name displays across all tabs
+  const playerNameTextHome = document.getElementById('player-name-text-home');
+  const playerNameTextChallenges = document.getElementById('player-name-text-challenges');
+  
+  if (playerNameText) playerNameText.textContent = playerName;
+  if (playerNameTextHome) playerNameTextHome.textContent = playerName;
+  if (playerNameTextChallenges) playerNameTextChallenges.textContent = playerName;
 }
 
 function initUi() {
@@ -2266,6 +2465,7 @@ document.getElementById('settings-btn')?.addEventListener('click', () => {
 document.getElementById('save-settings-btn')?.addEventListener('click', () => {
   saveSettingsToStorage();
   settingsScreen.classList.add('hidden');
+  setDockView(previousDockTabBeforeSettings || 'home');
   setSongStatus(`Settings saved. Autoplay is ${autoplayEnabled ? 'on' : 'off'}.`);
 });
 
@@ -2278,7 +2478,7 @@ document.getElementById('restart-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('home-btn')?.addEventListener('click', () => {
-  stopGame(true);
+  returnToMainMenu();
 });
 
 document.getElementById('pause-continue-btn')?.addEventListener('click', () => {
@@ -2306,26 +2506,33 @@ dockChallengesBtn?.addEventListener('click', () => {
 });
 
 dockSettingsBtn?.addEventListener('click', () => {
-  settingsScreen.classList.remove('hidden');
+  showSettingsScreen();
 });
 
-document.getElementById('player-name-display-home')?.addEventListener('click', () => {
+document.getElementById('player-name-text-home')?.addEventListener('click', () => {
   const newName = prompt('Enter your player name:', playerName);
   if (newName && newName.trim()) {
     playerName = newName.trim();
     localStorage.setItem('opentile_playername', playerName);
-    const playerNameTextHome = document.getElementById('player-name-text-home');
-    if (playerNameText) playerNameText.textContent = playerName;
-    if (playerNameTextHome) playerNameTextHome.textContent = playerName;
+    syncTopDockData();
   }
 });
 
-playerNameDisplay?.addEventListener('click', () => {
+document.getElementById('player-name-text')?.addEventListener('click', () => {
   const newName = prompt('Enter your player name:', playerName);
   if (newName && newName.trim()) {
     playerName = newName.trim();
     localStorage.setItem('opentile_playername', playerName);
-    if (playerNameText) playerNameText.textContent = playerName;
+    syncTopDockData();
+  }
+});
+
+document.getElementById('player-name-text-challenges')?.addEventListener('click', () => {
+  const newName = prompt('Enter your player name:', playerName);
+  if (newName && newName.trim()) {
+    playerName = newName.trim();
+    localStorage.setItem('opentile_playername', playerName);
+    syncTopDockData();
   }
 });
 
@@ -2399,7 +2606,9 @@ window.addEventListener('keydown', (event) => {
   }
   if (event.code === 'Escape') {
     if (!settingsScreen.classList.contains('hidden')) {
+      saveSettingsToStorage();
       settingsScreen.classList.add('hidden');
+      setDockView(previousDockTabBeforeSettings || 'home');
       return;
     }
     if (!pauseScreen.classList.contains('hidden')) {

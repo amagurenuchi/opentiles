@@ -27,8 +27,10 @@ const startScreen = document.getElementById('start-screen');
 const settingsScreen = document.getElementById('settings-screen');
 const gameoverScreen = document.getElementById('gameover-screen');
 const songListScreen = document.getElementById('song-list-screen');
+const challengesScreen = document.getElementById('challenges-screen');
 const pauseScreen = document.getElementById('pause-screen');
 const songListContainer = document.getElementById('song-list-container');
+const challengesContainer = document.getElementById('challenges-container');
 const songStatusEl = document.getElementById('song-status');
 const pt2JsonInput = document.getElementById('pt2-json-input');
 const pt2MusicSelect = document.getElementById('pt2-music-select');
@@ -38,6 +40,19 @@ const autoplayToggle = document.getElementById('settings-autoplay');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
+const playerNameDisplay = document.getElementById('player-name-display');
+const playerNameText = document.getElementById('player-name-text');
+const pPointsDisplay = document.getElementById('p-points-display');
+const totalCrownsDisplay = document.getElementById('total-crowns');
+const totalStarsDisplay = document.getElementById('total-stars');
+const homeScreen = document.getElementById('home-screen');
+const welcomeSongTitle = document.getElementById('welcome-song-title');
+const welcomePlayBtn = document.getElementById('welcome-play-btn');
+const favouriteSongsContainer = document.getElementById('favourite-songs-container');
+const dockHomeBtn = document.getElementById('dock-home-btn');
+const dockMusicBtn = document.getElementById('dock-music-btn');
+const dockChallengesBtn = document.getElementById('dock-challenges-btn');
+const dockSettingsBtn = document.getElementById('dock-settings-btn');
 
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
@@ -61,6 +76,9 @@ let lastLoadedLabel = '';
 let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
 let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
+let playerName = localStorage.getItem('opentile_playername') || 'Player';
+let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
+let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
 let key = 4;
 let songName = '';
 let sheet = [];
@@ -79,6 +97,12 @@ let speedLevel = 1;
 let speedLevelPos = [];
 let warr = new Array(key).fill(0);
 let tiles = [];
+
+// Challenge mode variables
+let isChallengeMode = false;
+let challengeAcceleration = 0;
+let challengeLastAccelerationTime = 0;
+let challengeStartTime = 0;
 let tileDomCache = new Map();
 let starterColumn = 0;
 let startTime = 0;
@@ -413,6 +437,7 @@ function preloadSprites() {
 
 function loadSettings() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
+  if (playerNameText) playerNameText.textContent = playerName;
 }
 
 function saveSettingsToStorage() {
@@ -454,7 +479,8 @@ function parseMusicCsv(csvText) {
         baseBeats: parseFloat(fields[3]) || 0.5,
         ratio: parseFloat(fields[4]) || 0,
         musicJson: fields[5] || '',
-        musician: fields[6] || 'Unknown'
+        musician: fields[6] || 'Unknown',
+        acceleration: parseFloat(fields[7]) || 0
       });
     }
   }
@@ -464,9 +490,11 @@ function parseMusicCsv(csvText) {
     const sectionId = row.id % 100;
     if (!merged.has(row.mid)) {
       merged.set(row.mid, {
+        id: Math.floor(row.id / 100),
         mid: row.mid,
         musicJson: row.musicJson,
         musician: row.musician,
+        acceleration: row.acceleration,
         sections: {}
       });
     }
@@ -488,37 +516,142 @@ function populateMusicSelect() {
   });
 }
 
-function renderSongList() {
+function createSongCard(song, isFavouriteView = false) {
+  const firstSection = song.sections[1] || Object.values(song.sections)[0];
+  const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
+  const stage = getStarAndCrownState(bestLevel - 1);
+  const isRanked = stage.stars >= 3 || stage.crowns > 0;
+  const isFavourite = favouriteSongs.has(String(song.mid));
+
+  let progressHTML = '';
+  if (stage.crowns > 0) {
+    for (let i = 0; i < 3; i++) {
+      progressHTML += `<img src="gameImage/crown.png" class="w-6 h-6 mr-1 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
+    }
+  } else {
+    for (let i = 0; i < 3; i++) {
+      progressHTML += `<img src="gameImage/star.png" class="w-6 h-6 mr-1 ${i < stage.stars ? 'earned' : 'unearned'}">`;
+    }
+  }
+
+  const card = document.createElement('div');
+  card.className = `song-card`;
+  const isPurple = song.id >= 700;
+  card.innerHTML = `
+    <div class="song-card-icon ${isRanked ? `ranked ${isPurple ? 'purple' : ''}` : 'numbered'}">
+      ${isRanked
+        ? `<svg viewBox="0 0 100 100" fill="currentColor"><polygon points="50,0 55,8 65,5 68,15 78,14 79,24 89,25 88,35 97,38 94,48 100,50 94,52 97,62 88,65 89,75 79,76 78,86 68,85 65,95 55,92 50,100 45,92 35,95 32,85 22,86 21,76 11,75 12,65 3,62 6,52 0,50 6,48 3,38 12,35 11,25 21,24 22,14 32,15 35,5 45,8"/></svg><div class="rank-number">${song.id}</div>`
+        : `${song.id}`
+      }
+    </div>
+    <div class="song-card-content">
+      <div class="song-card-title">${song.musicJson}</div>
+      <div class="song-card-artist">${song.musician}</div>
+      <div class="song-card-progress">
+        ${progressHTML}
+      </div>
+    </div>
+    <div class="song-card-action flex items-center gap-2">
+      <button class="heart-button ${isFavourite ? 'favourite' : ''}" data-song-id="${song.mid}">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+        </svg>
+      </button>
+      <button class="btn-play">Play</button>
+    </div>
+  `;
+
+  const playBtn = card.querySelector('.btn-play');
+  playBtn.addEventListener('click', () => loadSongFromData(song));
+
+  const heartBtn = card.querySelector('.heart-button');
+  heartBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFavourite(String(song.mid));
+    heartBtn.classList.toggle('favourite');
+    if (!isFavouriteView) {
+      // Re-render favourite songs if on home screen
+      if (!homeScreen.classList.contains('hidden')) {
+        renderFavouriteSongs();
+      }
+    } else {
+      // Remove card from favourite view if unfavourited
+      if (!favouriteSongs.has(String(song.mid))) {
+        card.remove();
+        if (favouriteSongsContainer.children.length === 0) {
+          favouriteSongsContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>';
+        }
+      }
+    }
+  });
+
+  return card;
+}
+
+function createChallengeCard(challengeData) {
+  const bestTps = parseFloat(localStorage.getItem(`opentile_challenge_best_tps_${challengeData.mid}`) || '0', 10);
+  const acceleration = challengeData.acceleration || 0;
+
+  const card = document.createElement('div');
+  card.className = `song-card challenge-card`;
+  card.innerHTML = `
+    <div class="song-card-content">
+      <div class="song-card-title">${challengeData.musicJson}</div>
+      <div class="song-card-artist">Acceleration: +${acceleration} TPS/0.11s</div>
+    </div>
+    <div class="song-card-action">
+      <div class="best-score-display">Best: ${bestTps.toFixed(3)} TPS</div>
+      <button class="btn-play">Play</button>
+    </div>
+  `;
+
+  const playBtn = card.querySelector('.btn-play');
+  playBtn.addEventListener('click', () => loadSongFromData(challengeData));
+
+  return card;
+}
+
+function renderSongList(searchQuery = '') {
   if (!songListContainer) return;
   songListContainer.innerHTML = '';
-  
+
   // Sort by Mid in ascending order
-  const sortedSongs = [...musicCsvData].sort((a, b) => a.mid - b.mid);
-  
-  sortedSongs.forEach((song) => {
-    const firstSection = song.sections[1] || Object.values(song.sections)[0];
-    const trimmedId = Math.floor(firstSection.id / 100);
-    const isLavender = trimmedId >= 700;
-    const accentClass = isLavender ? 'song-card-lavender' : 'song-card-gold';
-    
-    const card = document.createElement('div');
-    card.className = `song-card ${accentClass}`;
-    card.innerHTML = `
-      <div class="song-card-number">${trimmedId}</div>
-      <div class="song-card-info-left">
-        <div class="song-card-title">${song.musicJson}</div>
-        <div class="song-card-artist">${song.musician}</div>
-        <div class="song-card-info">
-          <span class="song-card-bpm">${firstSection ? firstSection.bpm : 120} BPM</span>
-          <span class="song-card-sections">${Object.keys(song.sections).length} sections</span>
-        </div>
-      </div>
-      <button class="song-card-play-btn">Play</button>
-    `;
-    const playBtn = card.querySelector('.song-card-play-btn');
-    playBtn.addEventListener('click', () => loadSongFromData(song));
-    songListContainer.appendChild(card);
+  let sortedSongs = [...musicCsvData].sort((a, b) => a.mid - b.mid);
+
+  // Filter songs based on search query
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim();
+    sortedSongs = sortedSongs.filter(song =>
+      song.musicJson.toLowerCase().includes(query) ||
+      song.musician.toLowerCase().includes(query)
+    );
+  }
+
+  sortedSongs.forEach((song, index) => {
+    const songCard = createSongCard(song, false);
+    songListContainer.appendChild(songCard);
   });
+
+  // Sync top dock data across both tabs
+  syncTopDockData();
+}
+
+function renderChallenges() {
+  if (!challengesContainer) return;
+  challengesContainer.innerHTML = '';
+
+  // Filter challenge songs (mid 200001 and 200002)
+  const challengeSongs = musicCsvData.filter(song =>
+    song.mid === 200001 || song.mid === 200002
+  );
+
+  challengeSongs.forEach((challenge) => {
+    const challengeCard = createChallengeCard(challenge);
+    challengesContainer.appendChild(challengeCard);
+  });
+
+  // Sync top dock data
+  syncTopDockData();
 }
 
 async function loadMusicCsv() {
@@ -529,6 +662,7 @@ async function loadMusicCsv() {
     musicCsvData = parseMusicCsv(text);
     populateMusicSelect();
     renderSongList();
+    renderHomeScreen();
     setSongStatus(`Loaded ${musicCsvData.length} songs from music_json.csv`);
   } catch (err) {
     console.warn(err);
@@ -644,6 +778,14 @@ function loadSongObject(data, label) {
 async function loadSongFromData(songData) {
   try {
     selectedSongData = songData;
+
+    // Check if this is a challenge song
+    isChallengeMode = (songData.mid === 200001 || songData.mid === 200002);
+    if (isChallengeMode) {
+      challengeAcceleration = songData.acceleration || 0;
+      challengeLastAccelerationTime = 0;
+    }
+
     const sectionIds = Object.keys(songData.sections).map(Number).sort((a, b) => a - b);
     const firstSection = songData.sections[sectionIds[0]];
     const response = await fetch(`song/${firstSection.musicJson}.json`, { cache: 'no-store' });
@@ -674,13 +816,21 @@ async function loadSongFromData(songData) {
       baseBpm: mergedMusics[0].bpm,
       musics: mergedMusics
     }, `${songData.musicJson} (${songData.musician})`);
-    
+
     // Show game interface but don't start game (wait for START tile)
     songListScreen.classList.add('hidden');
+    challengesScreen.classList.add('hidden');
     startScreen.classList.add('hidden');
     gameoverScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
-    
+    homeScreen.classList.add('hidden');
+
+    // Hide dock during gameplay
+    const sharedDock = document.getElementById('shared-dock');
+    if (sharedDock) {
+      sharedDock.classList.add('hidden');
+    }
+
     // Show background immediately when song is loaded
     if (gameBoardWrapper) {
       gameBoardWrapper.classList.add('game-playing');
@@ -700,6 +850,13 @@ function loadSongFromText(text, label) {
   startScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  
+  // Hide dock during gameplay
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.add('hidden');
+  }
   
   // Show background immediately when song is loaded
   if (gameBoardWrapper) {
@@ -931,15 +1088,66 @@ function flashColumnRed(colIdx, tile) {
 function finishRun(showLibrary = false) {
   isStarted = false;
   isPaused = true;
-  document.getElementById('final-score').textContent = String(currentScore);
-  document.getElementById('final-stars').innerHTML = starsDisplay.innerHTML;
-  document.getElementById('final-crowns').innerHTML = crownsDisplay.innerHTML;
-  document.getElementById('final-grade').classList.add('hidden');
-  if (showLibrary) {
-    gameoverScreen.classList.add('hidden');
-    songListScreen.classList.remove('hidden');
+
+  if (isChallengeMode) {
+    // In challenge mode: save best TPS, display final TPS
+    const finalTps = currentBpm / currentBeats / 60;
+    document.getElementById('final-score').textContent = finalTps.toFixed(3);
+    document.getElementById('final-stars').innerHTML = '';
+    document.getElementById('final-crowns').innerHTML = '';
+    document.getElementById('final-grade').classList.add('hidden');
+
+    if (selectedSongData && !autoplayEnabled) {
+      const key = `opentile_challenge_best_tps_${selectedSongData.mid}`;
+      const bestTps = parseFloat(localStorage.getItem(key) || '0', 10);
+      if (finalTps > bestTps) {
+        localStorage.setItem(key, String(finalTps));
+      }
+      // Save last played song
+      if (selectedSongData.mid) {
+        saveLastPlayed(String(selectedSongData.mid));
+      }
+    }
+
+    if (showLibrary) {
+      gameoverScreen.classList.add('hidden');
+      challengesScreen.classList.remove('hidden');
+      renderChallenges(); // Re-render to update UI with new best TPS
+    } else {
+      gameoverScreen.classList.remove('hidden');
+    }
   } else {
-    gameoverScreen.classList.remove('hidden');
+    // Normal mode: save high score level, display score
+    document.getElementById('final-score').textContent = String(currentScore);
+    document.getElementById('final-stars').innerHTML = starsDisplay.innerHTML;
+    document.getElementById('final-crowns').innerHTML = crownsDisplay.innerHTML;
+    document.getElementById('final-grade').classList.add('hidden');
+
+    if (selectedSongData && !autoplayEnabled) {
+      const key = `opentile_highscore_level_${selectedSongData.mid}`;
+      const bestLevel = parseInt(localStorage.getItem(key) || '0', 10);
+      if (speedLevel > bestLevel) {
+        localStorage.setItem(key, String(speedLevel));
+      }
+      // Save last played song
+      if (selectedSongData.mid) {
+        saveLastPlayed(String(selectedSongData.mid));
+      }
+    }
+
+    if (showLibrary) {
+      gameoverScreen.classList.add('hidden');
+      songListScreen.classList.remove('hidden');
+      renderSongList(); // Re-render to update UI with new high score
+    } else {
+      gameoverScreen.classList.remove('hidden');
+    }
+  }
+
+  // Hide dock on results screen
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.add('hidden');
   }
 }
 
@@ -1015,11 +1223,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       const tileBottom = getTileBottom(startTile);
       // Allow tapping start tile anywhere on-screen
       if (tileBottom >= 0) {
-        startTile.clicked = true;
-        startTile.ended = 1;
-        // Clear the isStartTile flag after it's been tapped
         delete startTile.isStartTile;
-        playTileAudioNow(startTile);
         isStarted = true;
         startTime = performance.now();
         if (gameBoardWrapper) {
@@ -1027,6 +1231,58 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         }
         if (pointerEvent) {
           spawnHitRipple(pointerEvent.clientX, pointerEvent.clientY);
+        }
+
+        if (startTile.type === -1 && startTile.hpos === -1) {
+          startTile.clicked = true;
+          startTile.ended = 1;
+          playTileAudioNow(startTile);
+        } else if (isLongTile(startTile)) {
+          playTileAudioNow(startTile);
+          startTile.holdStarted = true;
+          startTile.activeHoldColumn = colIdx;
+          const el = document.querySelector(`[data-tile-id="${startTile.id}"]`);
+          if (pointerEvent) {
+            startTile.tapScreenY = pointerEvent.clientY;
+          } else if (el) {
+            const rect = el.getBoundingClientRect();
+            const unitHeight = rect.height / startTile.hlen;
+            startTile.tapScreenY = rect.bottom - (unitHeight / 2);
+          }
+          if (el && startTile.tapScreenY) {
+            const rect = el.getBoundingClientRect();
+            const unitHeight = rect.height / startTile.hlen;
+            const tapDistFromTop = (startTile.tapScreenY - rect.top) / unitHeight;
+            startTile.completionPlaying = startTile.playing + tapDistFromTop - 0.5;
+            startTile.tapPlaying = startTile.playing;
+          }
+        } else if (startTile.type === 2) {
+          startTile.clicked = true;
+          startTile.ended = 1;
+          playTileAudioNow(startTile);
+          currentScore += 1;
+        } else if (startTile.type === 5) {
+          if (!startTile.hitColumns.includes(colIdx)) {
+            startTile.hitColumns.push(colIdx);
+            playTileAudioNow(startTile);
+            if (startTile.hitColumns.length >= getActiveColumns(startTile).length) {
+              startTile.clicked = true;
+              startTile.ended = 1;
+              currentScore += 4;
+            }
+          }
+        } else if (startTile.type === 3) {
+          playTileAudioNow(startTile);
+          startTile.remainingTaps = Math.max(0, (startTile.remainingTaps || startTile.taps || 2) - 1);
+          if (startTile.remainingTaps <= 0) {
+            startTile.clicked = true;
+            startTile.ended = 1;
+            currentScore += Math.max(2, startTile.taps || 2);
+          }
+        } else {
+          startTile.clicked = true;
+          startTile.ended = 1;
+          playTileAudioNow(startTile);
         }
         return;
       }
@@ -1037,6 +1293,19 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   if (autoplayEnabled) return;
   const tile = getLowestManualTile();
   if (!tile) return;
+
+  if (pointerEvent) {
+    const boardRect = boardEl.getBoundingClientRect();
+    const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
+    const clickRow = Math.floor(clickYRel * key);
+    
+    const tileTopRow = Math.floor(getTileTop(tile));
+    const tileBottomRow = Math.max(tileTopRow, Math.floor(getTileBottom(tile) - 0.01));
+
+    if (clickRow < tileTopRow || clickRow > tileBottomRow) {
+      return;
+    }
+  }
 
   // Check if there's an active long tile in a different column
   const activeLongInOtherCol = tiles.find((t) => 
@@ -1153,27 +1422,40 @@ function handleManualInputUp(colIdx) {
 }
 
 function updateHUD() {
-  scoreDisplay.classList.remove('hidden');
-  scoreDisplay.textContent = String(currentScore);
-
-  // Calculate and display current tile falling speed (TPS)
-  // Show for entire duration of gameplay being displayed
-  if (isGameLoaded) {
-    // Current scroll speed in units per second
-    const scrollSpeed = currentBpm / currentBeats / 60;
-    tpsDisplay.classList.remove('hidden');
-    tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
-  } else {
-    tpsDisplay.classList.add('hidden');
-  }
-
-  const stage = getStarAndCrownState(speedLevel - 1);
-  if (stage.crowns) {
+  if (isChallengeMode) {
+    // In challenge mode: hide score, show TPS, hide stars/crowns
+    scoreDisplay.classList.add('hidden');
     starsDisplay.innerHTML = '';
-    crownsDisplay.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.crowns);
-  } else {
-    starsDisplay.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.stars) : '';
     crownsDisplay.innerHTML = '';
+
+    if (isGameLoaded) {
+      const scrollSpeed = currentBpm / currentBeats / 60;
+      tpsDisplay.classList.remove('hidden');
+      tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
+    } else {
+      tpsDisplay.classList.add('hidden');
+    }
+  } else {
+    // Normal mode: show score, show TPS, show stars/crowns
+    scoreDisplay.classList.remove('hidden');
+    scoreDisplay.textContent = String(currentScore);
+
+    if (isGameLoaded) {
+      const scrollSpeed = currentBpm / currentBeats / 60;
+      tpsDisplay.classList.remove('hidden');
+      tpsDisplay.textContent = `${scrollSpeed.toFixed(3)}`;
+    } else {
+      tpsDisplay.classList.add('hidden');
+    }
+
+    const stage = getStarAndCrownState(speedLevel - 1);
+    if (stage.crowns) {
+      starsDisplay.innerHTML = '';
+      crownsDisplay.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.crowns);
+    } else {
+      starsDisplay.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.stars) : '';
+      crownsDisplay.innerHTML = '';
+    }
   }
 }
 
@@ -1261,6 +1543,7 @@ function renderTiles() {
 
     comboBadgeEl.classList.add('hidden');
     startLabelEl.classList.add('hidden');
+    startLabelEl.classList.remove('tile-start-label-at-head');
     startLabelEl.style.justifyContent = 'center';
     startLabelEl.style.fontFamily = 'var(--font-game)';
     startLabelEl.style.fontWeight = '500';
@@ -1270,18 +1553,26 @@ function renderTiles() {
     startLabelEl.style.display = 'none';
     startLabelEl.style.position = 'absolute';
     startLabelEl.style.inset = '0';
+    startLabelEl.style.top = '0';
+    startLabelEl.style.right = '0';
+    startLabelEl.style.bottom = '0';
+    startLabelEl.style.left = '0';
+    startLabelEl.style.height = 'auto';
     startLabelEl.style.alignItems = 'center';
+
+    const showStartLabel = tile.isStartTile && !tile.played && !isStarted;
+    const showStartLabelAtHead = showStartLabel && isLongTile(tile);
 
     if (tile.type === -1 && tile.hpos === -1) {
       el.style.backgroundImage = `url("gameImage/${tile.played ? getTileFinishImage(tile.ended) : 'tile_start'}.png")`;
-      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
+      if (!tile.played && !isStarted) {
+        startLabelEl.classList.remove('hidden');
+        startLabelEl.style.display = 'flex';
+      }
     } else if (tile.type === 1) {
       // Rest/blank tile - make entirely invisible
       el.style.opacity = '0';
       el.style.pointerEvents = 'none';
-    } else if (tile.isStartTile) {
-      // Show START label without changing tile appearance
-      if (!tile.played && !isStarted) startLabelEl.style.display = 'flex';
     } else if (isTapTile(tile) || isDoubleTile(tile)) {
       let isPlayed = tile.played;
       let isEnded = tile.ended;
@@ -1291,6 +1582,10 @@ function renderTiles() {
         isEnded = isPlayed ? 1 : 0;
       }
       el.style.backgroundImage = `url("gameImage/${isPlayed ? getTileFinishImage(isEnded) : 'tile_black'}.png")`;
+      if (showStartLabel) {
+        startLabelEl.classList.remove('hidden');
+        startLabelEl.style.display = 'flex';
+      }
     } else if (isComboTile(tile) && !autoplayEnabled) {
       el.className = 'tile-combo';
       el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
@@ -1364,6 +1659,20 @@ function renderTiles() {
       } else {
         lightStripEl.style.opacity = '1';
       }
+
+      if (showStartLabelAtHead) {
+        const headHeightPercent = (1.35 / tile.hlen) * 100;
+        startLabelEl.classList.remove('hidden');
+        startLabelEl.classList.add('tile-start-label-at-head');
+        startLabelEl.style.display = 'flex';
+        startLabelEl.style.inset = 'auto';
+        startLabelEl.style.left = '0';
+        startLabelEl.style.right = '0';
+        startLabelEl.style.top = 'auto';
+        startLabelEl.style.bottom = '0';
+        startLabelEl.style.height = `${headHeightPercent}%`;
+        startLabelEl.style.fontSize = '2.8rem';
+      }
     }
     });
   });
@@ -1378,6 +1687,26 @@ function renderTiles() {
 
 function updateEngineFrame(now) {
   ({ bpm: currentBpm, beats: currentBeats } = getSpeed(speedLevel - 1));
+
+  // Apply acceleration in challenge mode every 0.11s
+  if (isChallengeMode && isStarted && !isPaused) {
+    if (challengeLastAccelerationTime === 0) {
+      challengeLastAccelerationTime = now;
+    }
+    const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000; // Convert to seconds
+    if (timeSinceLastAcceleration >= 0.11) {
+      // Apply acceleration: add to BPM
+      // Acceleration is in TPS, so we need to convert to BPM: acceleration * currentBeats * 60
+      const bpmIncrease = challengeAcceleration * currentBeats * 60;
+      currentBpm += bpmIncrease;
+
+      // Update the speed function to reflect the new BPM
+      info = info.map(entry => ({ ...entry, bpm: entry.bpm + bpmIncrease }));
+      getSpeed = speedGen(info);
+
+      challengeLastAccelerationTime = now;
+    }
+  }
 
   if (bgLevelPos.length && bgLevelPos[0] < starthpos) {
     bgLevelPos.shift();
@@ -1512,8 +1841,8 @@ function updateEngineFrame(now) {
   if (!autoplayEnabled) {
     const missedTile = tiles.find((tile) => {
       if (tile.type === 1) return false;
-      // Don't fail on start tile before game starts
-      if (tile.type === -1 && tile.hpos === -1 && !isStarted) return false;
+      // Don't fail while waiting for a START tap
+      if (!isStarted && (tile.isStartTile || (tile.type === -1 && tile.hpos === -1))) return false;
       if (tile.clicked || tile.holdCompleted) return false;
       if (isLongTile(tile) && tile.holdStarted) return false;
       return getTileTop(tile) > key + 0.05;
@@ -1563,6 +1892,7 @@ function stopGame(showStart = true) {
   if (showStart) {
     startScreen.classList.add('hidden');
     songListScreen.classList.remove('hidden');
+    renderSongList();
   }
   gameoverScreen.classList.add('hidden');
   scoreDisplay.textContent = '0';
@@ -1570,28 +1900,49 @@ function stopGame(showStart = true) {
   crownsDisplay.innerHTML = '';
 }
 
-function continueFromPause() {
-  // Find the nearest untapped note (skip rest/blank tiles with type === 1)
-  const nearestUntapped = tiles.find(tile => 
-    !tile.clicked && 
-    !tile.played && 
-    tile.type !== -1 &&
-    tile.type !== 1 && // Skip rest/blank tiles
-    tile.hpos !== -1 &&
-    getTileBottom(tile) >= 0
-  );
+function resetTileForResume(tile) {
+  tile.clicked = false;
+  tile.played = false;
+  tile.audioPlayed = false;
+  tile.ended = 0;
+  tile.holdStarted = false;
+  tile.holdCompleted = false;
+  tile.holdReleased = false;
+  tile.hitColumns = [];
+  delete tile.holdReleasedAt;
+  delete tile.activeHoldColumn;
+  delete tile.tapScreenY;
+  delete tile.tapPlaying;
+  delete tile.completionPlaying;
+  if (tile.type === 3) {
+    tile.remainingTaps = tile.taps || 2;
+  }
+}
 
-  if (nearestUntapped) {
-    // Mark this tile as the new START tile without changing its type
+function continueFromPause() {
+  tiles.forEach((tile) => delete tile.isStartTile);
+
+  const initialStart = tiles.find((tile) => tile.type === -1 && tile.hpos === -1 && !tile.played);
+  if (initialStart && !isStarted) {
+    isPaused = false;
+    pauseScreen.classList.add('hidden');
+    return;
+  }
+
+  const nearestUntapped = getLowestManualTile();
+  if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
+    resetTileForResume(nearestUntapped);
     nearestUntapped.isStartTile = true;
-    
-    // Reset game state to wait for START tile
     isStarted = false;
     isPaused = false;
     pauseScreen.classList.add('hidden');
-  } else {
-    // If no untapped tile found, just resume normally
-    togglePause();
+    return;
+  }
+
+  isPaused = false;
+  pauseScreen.classList.add('hidden');
+  if (isStarted) {
+    startTime = performance.now();
   }
 }
 
@@ -1601,14 +1952,13 @@ function exitToSongLibrary() {
 }
 
 function togglePause() {
-  if (!isStarted && !isGameLoaded) return;
-  isPaused = !isPaused;
+  if (!isGameLoaded) return;
   if (isPaused) {
-    pauseScreen.classList.remove('hidden');
-  } else {
-    pauseScreen.classList.add('hidden');
-    startTime = performance.now();
+    continueFromPause();
+    return;
   }
+  isPaused = true;
+  pauseScreen.classList.remove('hidden');
 }
 
 function updateKeybindHints() {
@@ -1707,12 +2057,195 @@ function checkPitch(pitch) {
   }
 }
 
+function saveLastPlayed(songId) {
+  lastPlayedSong = songId;
+  localStorage.setItem('opentile_last_played', songId);
+}
+
+function saveFavourites() {
+  localStorage.setItem('opentile_favourites', JSON.stringify([...favouriteSongs]));
+}
+
+function toggleFavourite(songId) {
+  if (favouriteSongs.has(songId)) {
+    favouriteSongs.delete(songId);
+  } else {
+    favouriteSongs.add(songId);
+  }
+  saveFavourites();
+}
+
+function renderHomeScreen() {
+  // Update player name
+  const playerNameTextHome = document.getElementById('player-name-text-home');
+  if (playerNameTextHome) playerNameTextHome.textContent = playerName;
+
+  // Render welcome back section
+  let songToDisplay = null;
+  
+  if (lastPlayedSong) {
+    songToDisplay = musicCsvData.find(song => String(song.mid) === lastPlayedSong);
+  }
+  
+  // Default to first song if no song played
+  if (!songToDisplay && musicCsvData.length > 0) {
+    songToDisplay = musicCsvData[0];
+  }
+  
+  if (songToDisplay) {
+    welcomeSongTitle.textContent = `${songToDisplay.id}. ${songToDisplay.song_name || songToDisplay.musicJson || 'Unknown Song'}`;
+    welcomePlayBtn.onclick = () => loadSongFromData(songToDisplay);
+  } else {
+    welcomeSongTitle.textContent = 'No song available';
+    welcomePlayBtn.onclick = null;
+  }
+
+  // Render favourite songs
+  renderFavouriteSongs();
+  
+  // Sync top dock data
+  syncTopDockData();
+  
+  // Setup scroll rotation
+  setupDiscRotation();
+}
+
+let discRotation = 0;
+let lastScrollY = 0;
+
+function setupDiscRotation() {
+  const homeContentContainer = document.getElementById('home-content-container');
+  const welcomeDisc = document.getElementById('welcome-disc');
+  
+  if (!homeContentContainer || !welcomeDisc) return;
+  
+  homeContentContainer.addEventListener('scroll', () => {
+    const currentScrollY = homeContentContainer.scrollTop;
+    const scrollDelta = currentScrollY - lastScrollY;
+    
+    // Rotate based on scroll direction
+    discRotation += scrollDelta * 0.5;
+    welcomeDisc.style.transform = `rotate(${discRotation}deg)`;
+    
+    lastScrollY = currentScrollY;
+  });
+}
+
+function renderFavouriteSongs() {
+  if (!favouriteSongsContainer) return;
+  
+  const favouriteSongsList = musicCsvData.filter(song => favouriteSongs.has(String(song.mid)));
+  
+  if (favouriteSongsList.length === 0) {
+    favouriteSongsContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>';
+    return;
+  }
+
+  favouriteSongsContainer.innerHTML = '';
+  favouriteSongsList.forEach(song => {
+    const songCard = createSongCard(song, true);
+    favouriteSongsContainer.appendChild(songCard);
+  });
+}
+
+function showHomeScreen() {
+  homeScreen.classList.remove('hidden');
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.add('hidden');
+
+  // Update dock buttons
+  dockHomeBtn.classList.add('selected');
+  dockMusicBtn.classList.remove('selected');
+  dockChallengesBtn.classList.remove('selected');
+  dockSettingsBtn.classList.remove('selected');
+
+  // Show dock
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.remove('hidden');
+  }
+
+  renderHomeScreen();
+  syncTopDockData();
+}
+
+function showMusicScreen() {
+  homeScreen.classList.add('hidden');
+  songListScreen.classList.remove('hidden');
+  challengesScreen.classList.add('hidden');
+
+  // Update dock buttons
+  dockHomeBtn.classList.remove('selected');
+  dockMusicBtn.classList.add('selected');
+  dockChallengesBtn.classList.remove('selected');
+  dockSettingsBtn.classList.remove('selected');
+
+  // Show dock
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.remove('hidden');
+  }
+
+  renderSongList();
+  syncTopDockData();
+}
+
+function showChallengesScreen() {
+  homeScreen.classList.add('hidden');
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.remove('hidden');
+
+  // Update dock buttons
+  dockHomeBtn.classList.remove('selected');
+  dockMusicBtn.classList.remove('selected');
+  dockChallengesBtn.classList.add('selected');
+  dockSettingsBtn.classList.remove('selected');
+
+  // Show dock
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.remove('hidden');
+  }
+
+  renderChallenges();
+  syncTopDockData();
+}
+
+function syncTopDockData() {
+  // Calculate total stars and crowns from all songs
+  let totalStars = 0;
+  let totalCrowns = 0;
+  
+  musicCsvData.forEach(song => {
+    const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
+    const stage = getStarAndCrownState(bestLevel - 1);
+    totalStars += stage.stars;
+    totalCrowns += stage.crowns;
+  });
+  
+  const pPoints = totalStars + (totalCrowns * 5);
+  
+  // Update Music tab displays
+  if (pPointsDisplay) pPointsDisplay.textContent = String(pPoints);
+  if (totalCrownsDisplay) totalCrownsDisplay.textContent = String(totalCrowns);
+  if (totalStarsDisplay) totalStarsDisplay.textContent = String(totalStars);
+  
+  // Update Home tab displays
+  const pPointsDisplayHome = document.getElementById('p-points-display-home');
+  const totalCrownsDisplayHome = document.getElementById('total-crowns-home');
+  const totalStarsDisplayHome = document.getElementById('total-stars-home');
+  
+  if (pPointsDisplayHome) pPointsDisplayHome.textContent = String(pPoints);
+  if (totalCrownsDisplayHome) totalCrownsDisplayHome.textContent = String(totalCrowns);
+  if (totalStarsDisplayHome) totalStarsDisplayHome.textContent = String(totalStars);
+}
+
 function initUi() {
   bestDisplay.textContent = `${highScore.toFixed(3)} t/s`;
   startScreen.classList.add('hidden');
-  songListScreen.classList.remove('hidden');
+  songListScreen.classList.add('hidden');
+  homeScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
-  scoreDisplay.classList.remove('hidden');
   scoreDisplay.textContent = '0';
   loadSettings();
   updateKeybindHints();
@@ -1758,6 +2291,48 @@ document.getElementById('pause-exit-btn')?.addEventListener('click', () => {
 
 document.getElementById('pause-btn')?.addEventListener('click', () => {
   togglePause();
+});
+
+dockHomeBtn?.addEventListener('click', () => {
+  showHomeScreen();
+});
+
+dockMusicBtn?.addEventListener('click', () => {
+  showMusicScreen();
+});
+
+dockChallengesBtn?.addEventListener('click', () => {
+  showChallengesScreen();
+});
+
+dockSettingsBtn?.addEventListener('click', () => {
+  settingsScreen.classList.remove('hidden');
+});
+
+document.getElementById('player-name-display-home')?.addEventListener('click', () => {
+  const newName = prompt('Enter your player name:', playerName);
+  if (newName && newName.trim()) {
+    playerName = newName.trim();
+    localStorage.setItem('opentile_playername', playerName);
+    const playerNameTextHome = document.getElementById('player-name-text-home');
+    if (playerNameText) playerNameText.textContent = playerName;
+    if (playerNameTextHome) playerNameTextHome.textContent = playerName;
+  }
+});
+
+playerNameDisplay?.addEventListener('click', () => {
+  const newName = prompt('Enter your player name:', playerName);
+  if (newName && newName.trim()) {
+    playerName = newName.trim();
+    localStorage.setItem('opentile_playername', playerName);
+    if (playerNameText) playerNameText.textContent = playerName;
+  }
+});
+
+const songSearchInput = document.getElementById('song-search-input');
+songSearchInput?.addEventListener('input', (event) => {
+  const query = event.target.value;
+  renderSongList(query);
 });
 
 pt2MusicSelect?.addEventListener('change', () => {
@@ -1828,7 +2403,7 @@ window.addEventListener('keydown', (event) => {
       return;
     }
     if (!pauseScreen.classList.contains('hidden')) {
-      togglePause();
+      continueFromPause();
       return;
     }
     if (isStarted || isGameLoaded) {
@@ -1836,6 +2411,10 @@ window.addEventListener('keydown', (event) => {
     }
   }
   if (event.code === 'Space') {
+    // Don't intercept space if user is typing in an input field
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+      return;
+    }
     togglePause();
     event.preventDefault();
     return;

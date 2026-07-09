@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>OpenTile - Piano Tiles 2 Clone</title>
+  <title>OpenTiles - Piano Tiles 2 Clone</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Custom CSS for fonts and animations -->
@@ -15,223 +16,423 @@
     }
   </style>
 </head>
+
 <body class="h-full select-none bg-[#f3f4f6] overflow-hidden">
 
   <div class="relative flex h-screen w-full items-center justify-center gap-3">
     <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->
-    <div id="game-board-wrapper" class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
-    
-    <!-- Columns (4 columns) -->
-    <div id="game-board" class="absolute inset-0 flex z-0">
-      <div data-col="0" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
-      <div data-col="1" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
-      <div data-col="2" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
-      <div data-col="3" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
-    </div>
+    <div id="game-board-wrapper"
+      class="relative h-full w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
 
-    <!-- Live Tiles Container (overflow-hidden keeps tiles clipped to the board) -->
-    <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+      <!-- Columns (4 columns) -->
+      <div id="game-board" class="absolute inset-0 flex z-0">
+        <div data-col="0" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+        <div data-col="1" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+        <div data-col="2" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+        <div data-col="3" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
+      </div>
 
-    <!-- Score pop effects — no overflow clip so labels can float past board edges -->
-    <div id="score-effects" class="absolute inset-0 pointer-events-none z-[18]"></div>
+      <!-- Live Tiles Container (overflow-hidden keeps tiles clipped to the board) -->
+      <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
 
-    <!-- Hit effect ripples -->
-    <div id="hit-effects" class="absolute inset-0 pointer-events-none z-[15] overflow-hidden"></div>
+      <!-- Score pop effects — no overflow clip so labels can float past board edges -->
+      <div id="score-effects" class="absolute inset-0 pointer-events-none z-[18]"></div>
 
-    <!-- Floating HUD near the top of the board (Score/TPS & Stars) -->
-    <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
-      <!-- Score display (shown for imported song mode) -->
-      <div id="score-display" class="hidden font-game text-7xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow">0</div>
-      <!-- TPS display -->
-      <div id="tps-display" class="hidden font-game text-2xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow mt-1">0.000</div>
-      <!-- Stars display -->
-      <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
-      <div id="crowns-display" class="mt-2 text-2xl drop-shadow select-none"></div>
-      <!-- Star animation display (positioned at same height as score) -->
-      <div id="star-animation-display" class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow"></div>
-      <div id="crown-animation-display" class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow"></div>
-    </div>
+      <!-- Hit effect ripples -->
+      <div id="hit-effects" class="absolute inset-0 pointer-events-none z-[15] overflow-hidden"></div>
 
-    <!-- Pause Button (Mobile and Tablet only) -->
-    <button id="pause-btn" class="absolute top-4 left-4 p-3 rounded-xl text-gray-700 pointer-events-auto z-25 hover:text-gray-900 transition-all active:scale-95">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-      </svg>
-    </button>
-
-    <!-- Keybind Hints Overlay (Desktop only, hidden on mobile) -->
-    <div class="absolute bottom-4 left-0 right-0 flex pointer-events-none justify-around sm:opacity-50 opacity-0 z-10">
-      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">D</span></div>
-      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">F</span></div>
-      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">J</span></div>
-      <div class="w-1/4 flex justify-center"><span class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">K</span></div>
-    </div>
-
-    <!-- Screens overlay (Start Screen, Settings Modal, Game Over) -->
-    
-    <!-- Start Screen -->
-    <div id="start-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
-      <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game">
-        RAINING TILES
-      </h1>
-      <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs">Tap the black tiles in order. Don't touch any white space!</p>
-
-      <!-- Song Import -->
-      <div class="w-full max-w-xs mb-5 flex flex-col gap-2">
-        <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Piano Tiles 2 JSON</label>
-        <input id="pt2-json-input" type="file" accept=".json,application/json" class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-gray-800 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
-        <div class="flex flex-col gap-1">
-          <label for="pt2-music-select" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Music Entry</label>
-          <select id="pt2-music-select" class="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
-            <option value="">Load a PT2 JSON first</option>
-          </select>
+      <!-- Floating HUD near the top of the board (Score/TPS & Stars) -->
+      <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
+        <!-- Score display (shown for imported song mode) -->
+        <div id="score-display"
+          class="hidden font-game text-7xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow">0
         </div>
-        <div class="flex gap-2">
-          <button id="load-sample-json-btn" class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-all active:scale-[0.98]">
-            Load Horseman.json
-          </button>
-          <button id="clear-song-btn" class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]">
-            Clear Song
-          </button>
+        <!-- TPS display -->
+        <div id="tps-display"
+          class="hidden font-game text-2xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow mt-1">
+          0.000</div>
+        <!-- Stars display -->
+        <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
+        <div id="crowns-display" class="mt-2 text-2xl drop-shadow select-none"></div>
+        <!-- Star animation display (positioned at same height as score) -->
+        <div id="star-animation-display"
+          class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">
         </div>
-        <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1">
-          No PT2 file loaded.
+        <div id="crown-animation-display"
+          class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">
         </div>
       </div>
 
-      <!-- High Score Info -->
-      <div class="mb-6 flex gap-4 text-xs text-gray-500">
-        <span>Best: <strong id="best-display" class="text-gray-800">0.000 t/s</strong></span>
-      </div>
-
-      <!-- Play Button -->
-      <div class="w-full max-w-xs mb-8 flex flex-col gap-2.5">
-        <button id="song-library-btn" class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-          Song Library
-        </button>
-      </div>
-
-      <div class="flex gap-4">
-        <button id="settings-btn" class="p-3 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-600 transition-all active:scale-95">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.43l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- Settings Panel -->
-    <div id="settings-screen" class="absolute inset-0 flex flex-col items-center p-6 bg-white/95 backdrop-blur-md z-50 hidden transition-all duration-300 overflow-y-auto">
-      <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6 mt-4">Settings</h2>
-      
-      <!-- Scrollable container -->
-      <div class="w-full max-w-xs flex flex-col gap-6 mb-8">
-        
-        <!-- Section: Keybinds -->
-        <div>
-          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Keybinds</h3>
-          <div class="flex flex-col gap-2">
-            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-              <span class="text-xs font-medium text-gray-700">Col 1</span>
-              <button data-col-idx="0" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">D</button>
-            </div>
-            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-              <span class="text-xs font-medium text-gray-700">Col 2</span>
-              <button data-col-idx="1" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">F</button>
-            </div>
-            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-              <span class="text-xs font-medium text-gray-700">Col 3</span>
-              <button data-col-idx="2" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">J</button>
-            </div>
-            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-              <span class="text-xs font-medium text-gray-700">Col 4</span>
-              <button data-col-idx="3" class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">K</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section: Speed Customize -->
-        <div>
-          <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Customize Speed</h3>
-          <div class="flex flex-col gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
-            <label class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
-              <span class="text-xs font-bold text-gray-600 uppercase">Autoplay</span>
-              <input id="settings-autoplay" type="checkbox" class="h-4 w-4 accent-indigo-600" checked>
-            </label>
-          </div>
-        </div>
-
-
-      </div>
-
-      <button id="save-settings-btn" class="w-full max-w-xs py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98] mb-6">
-        Save & Close
+      <!-- Pause Button (Mobile and Tablet only) -->
+      <button id="pause-btn"
+        class="absolute top-4 left-4 p-3 rounded-xl text-gray-700 pointer-events-auto z-[45] hover:text-gray-900 transition-all active:scale-95">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
+          class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+        </svg>
       </button>
-    </div>
 
-    <!-- Game Over Screen -->
-    <div id="gameover-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
-      <h2 class="text-4xl font-black text-rose-600 tracking-tight mb-2 font-game">GAME OVER</h2>
-      <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center">Better luck next time!</p>
-      
-      <div class="w-full max-w-xs bg-gray-50 border border-gray-200 p-4 rounded-2xl mb-8 flex flex-col items-center">
-        <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Final Score</span>
-        <div class="flex items-center gap-2 mb-2">
-          <span id="final-score" class="font-game text-5xl font-black text-[#ff6b6b]">0</span>
-          <span id="final-grade" class="hidden font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow">E</span>
+      <!-- Keybind Hints Overlay (Desktop only, hidden on mobile) -->
+      <div
+        class="absolute bottom-4 left-0 right-0 flex pointer-events-none justify-around sm:opacity-50 opacity-0 z-10">
+        <div class="w-1/4 flex justify-center"><span
+            class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">D</span>
         </div>
-        <div class="flex gap-2 mb-4">
-          <div id="final-stars" class="text-2xl select-none"></div>
-          <div id="final-crowns" class="text-2xl select-none"></div>
+        <div class="w-1/4 flex justify-center"><span
+            class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">F</span>
         </div>
-        
+        <div class="w-1/4 flex justify-center"><span
+            class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">J</span>
+        </div>
+        <div class="w-1/4 flex justify-center"><span
+            class="key-hint px-2.5 py-1 rounded bg-white/90 border border-gray-300 text-xs font-semibold text-gray-600">K</span>
+        </div>
       </div>
 
-      <div class="w-full max-w-xs flex flex-col gap-2">
-        <button id="restart-btn" class="w-full py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98]">
-          Play Again
-        </button>
-        <button id="home-btn" class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
-          Song Library
-        </button>
-      </div>
-    </div>
+      <!-- Screens overlay (Start Screen, Settings Modal, Game Over) -->
 
-    <!-- Pause Screen -->
-    <div id="pause-screen" class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-35 hidden transition-all duration-300">
-      <h2 class="text-4xl font-black text-gray-900 tracking-tight mb-2 font-game">PAUSED</h2>
-      <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center">Press ESC to resume or choose an option</p>
-      
-      <div class="w-full max-w-xs flex flex-col gap-2">
-        <button id="pause-continue-btn" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-all active:scale-[0.98]">
-          Continue
-        </button>
-        <button id="pause-exit-btn" class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
-          Exit to Song Library
-        </button>
-      </div>
-    </div>
+      <!-- Start Screen -->
+      <div id="start-screen"
+        class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
+        <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game">
+          RAINING TILES
+        </h1>
+        <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs">Tap the black tiles in order. Don't touch
+          any white space!</p>
 
-    <!-- Song List Screen -->
-    <div id="song-list-screen" class="absolute inset-0 flex flex-col bg-gray-50 z-40 transition-all duration-300">
-      <div class="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm">
-        <h2 class="text-xl font-bold text-gray-900">Song Library</h2>
-        <div class="flex items-center gap-2">
-          <button id="song-list-settings-btn" class="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 transition-all">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M10.34 1.866a1.2 1.2 0 0 1 1.32 0l1.196.7a1.2 1.2 0 0 0 1.353-.087l1.088-.894a1.2 1.2 0 0 1 1.66.173l.456 1.323a1.2 1.2 0 0 0 1.08.734l1.377.196a1.2 1.2 0 0 1 .988 1.328l-.228 1.363a1.2 1.2 0 0 0 .543 1.128l1.196.7a1.2 1.2 0 0 1 .173 1.66l-.894 1.088a1.2 1.2 0 0 0-.087 1.353l.7 1.196a1.2 1.2 0 0 1-.173 1.66l-1.323.456a1.2 1.2 0 0 0-.734 1.08l-.196 1.377a1.2 1.2 0 0 1-1.328.988l-1.363-.228a1.2 1.2 0 0 0-1.128.543l-.7 1.196a1.2 1.2 0 0 1-1.66.173l-1.088-.894a1.2 1.2 0 0 0-1.353-.087l-1.196.7a1.2 1.2 0 0 1-1.66-.173l-.456-1.323a1.2 1.2 0 0 0-1.08-.734l-1.377-.196a1.2 1.2 0 0 1-.988-1.328l.228-1.363a1.2 1.2 0 0 0-.543-1.128l-1.196-.7a1.2 1.2 0 0 1-.173-1.66l.894-1.088a1.2 1.2 0 0 0 .087-1.353l-.7-1.196a1.2 1.2 0 0 1 .173-1.66l1.323-.456a1.2 1.2 0 0 0 .734-1.08l.196-1.377a1.2 1.2 0 0 1 1.328-.988l1.363.228a1.2 1.2 0 0 0 1.128-.543ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+        <!-- Song Import -->
+        <div class="w-full max-w-xs mb-5 flex flex-col gap-2">
+          <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Piano Tiles 2 JSON</label>
+          <input id="pt2-json-input" type="file" accept=".json,application/json"
+            class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-gray-800 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
+          <div class="flex flex-col gap-1">
+            <label for="pt2-music-select"
+              class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Music Entry</label>
+            <select id="pt2-music-select"
+              class="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+              <option value="">Load a PT2 JSON first</option>
+            </select>
+          </div>
+          <div class="flex gap-2">
+            <button id="load-sample-json-btn"
+              class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-all active:scale-[0.98]">
+              Load Horseman.json
+            </button>
+            <button id="clear-song-btn"
+              class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]">
+              Clear Song
+            </button>
+          </div>
+          <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1">
+            No PT2 file loaded.
+          </div>
+        </div>
+
+        <!-- High Score Info -->
+        <div class="mb-6 flex gap-4 text-xs text-gray-500">
+          <span>Best: <strong id="best-display" class="text-gray-800">0.000 t/s</strong></span>
+        </div>
+
+        <!-- Play Button -->
+        <div class="w-full max-w-xs mb-8 flex flex-col gap-2.5">
+          <button id="song-library-btn"
+            class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+              stroke="currentColor" class="w-5 h-5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+            Song Library
+          </button>
+        </div>
+
+        <div class="flex gap-4">
+          <button id="settings-btn"
+            class="p-3 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-600 transition-all active:scale-95">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8"
+              stroke="currentColor" class="w-5 h-5">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.43l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             </svg>
           </button>
         </div>
       </div>
-      <div id="song-list-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-        <!-- Song cards will be rendered here -->
+
+      <!-- Settings Panel -->
+      <div id="settings-screen"
+        class="absolute inset-0 flex flex-col items-center p-6 bg-white/95 backdrop-blur-md z-50 hidden transition-all duration-300 overflow-y-auto">
+        <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6 mt-4">Settings</h2>
+
+        <!-- Scrollable container -->
+        <div class="w-full max-w-xs flex flex-col gap-6 mb-8">
+
+          <!-- Section: Keybinds -->
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Keybinds</h3>
+            <div class="flex flex-col gap-2">
+              <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                <span class="text-xs font-medium text-gray-700">Col 1</span>
+                <button data-col-idx="0"
+                  class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">D</button>
+              </div>
+              <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                <span class="text-xs font-medium text-gray-700">Col 2</span>
+                <button data-col-idx="1"
+                  class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">F</button>
+              </div>
+              <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                <span class="text-xs font-medium text-gray-700">Col 3</span>
+                <button data-col-idx="2"
+                  class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">J</button>
+              </div>
+              <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                <span class="text-xs font-medium text-gray-700">Col 4</span>
+                <button data-col-idx="3"
+                  class="keybind-setter px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs transition-all min-w-[50px]">K</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Speed Customize -->
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 pl-1">Customize Speed</h3>
+            <div class="flex flex-col gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+              <label
+                class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                <span class="text-xs font-bold text-gray-600 uppercase">Autoplay</span>
+                <input id="settings-autoplay" type="checkbox" class="h-4 w-4 accent-indigo-600" checked>
+              </label>
+            </div>
+          </div>
+
+
+        </div>
+
+        <button id="save-settings-btn"
+          class="w-full max-w-xs py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98] mb-6">
+          Save & Close
+        </button>
       </div>
-    </div>
+
+      <!-- Game Over Screen -->
+      <div id="gameover-screen"
+        class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
+        <h2 class="text-4xl font-black text-rose-600 tracking-tight mb-2 font-game">GAME OVER</h2>
+        <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center">Better luck next time!</p>
+
+        <div class="w-full max-w-xs bg-gray-50 border border-gray-200 p-4 rounded-2xl mb-8 flex flex-col items-center">
+          <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Final Score</span>
+          <div class="flex items-center gap-2 mb-2">
+            <span id="final-score" class="font-game text-5xl font-black text-[#ff6b6b]">0</span>
+            <span id="final-grade"
+              class="hidden font-game text-2xl font-black text-white px-2 py-0.5 rounded shadow">E</span>
+          </div>
+          <div class="flex gap-2 mb-4">
+            <div id="final-stars" class="text-2xl select-none"></div>
+            <div id="final-crowns" class="text-2xl select-none"></div>
+          </div>
+
+        </div>
+
+        <div class="w-full max-w-xs flex flex-col gap-2">
+          <button id="restart-btn"
+            class="w-full py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98]">
+            Play Again
+          </button>
+          <button id="home-btn"
+            class="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-semibold text-sm transition-all active:scale-[0.98]">
+            Song Library
+          </button>
+        </div>
+      </div>
+
+      <!-- Pause Screen -->
+      <div id="pause-screen" class="pause-screen hidden">
+        <h2 class="pause-screen-title">Game Paused</h2>
+        <div class="pause-screen-actions">
+          <button id="pause-exit-btn" class="pause-screen-btn" type="button">Quit</button>
+          <button id="pause-continue-btn" class="pause-screen-btn" type="button">Resume</button>
+        </div>
+      </div>
+
+      <!-- Song List Screen -->
+      <div id="song-list-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300">
+        <div class="flex items-center justify-between p-4 shadow-sm relative z-10">
+          <!-- Left: Player Name and P-Points (50% width) -->
+          <div id="player-name-display" class="flex items-center justify-between w-1/2 px-4 py-2 bg-gray-700 rounded-xl cursor-pointer hover:bg-gray-600 transition-colors shadow-sm">
+            <span id="player-name-text" class="text-white font-bold text-sm">Player</span>
+            <div class="flex flex-col items-center">
+              <span class="text-white text-[10px] font-semibold">P-Points</span>
+              <span id="p-points-display" class="text-white font-bold text-xl">5963</span>
+            </div>
+          </div>
+
+          <!-- Right: Crowns and Stars (50% width) -->
+          <div class="flex items-center justify-end gap-2 w-1/2 px-2">
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <span id="total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
+              <span id="total-stars" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+        </div>
+
+
+
+        <div id="song-list-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0 pb-32">
+          <!-- Song cards will be rendered here -->
+        </div>
+
+        <!-- Search Bar -->
+        <div class="absolute bottom-24 left-4 right-4 z-20">
+          <div class="bg-white/80 backdrop-blur-md rounded-2xl border border-white/50 shadow-lg flex items-center px-4 py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-gray-400 mr-3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input type="text" id="song-search-input" placeholder="Type to search..." class="flex-1 bg-transparent outline-none text-gray-700 placeholder-gray-400 text-sm">
+          </div>
+        </div>
+      </div>
+
+      <!-- Challenges Screen -->
+      <div id="challenges-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
+        <div class="flex items-center justify-between p-4 shadow-sm relative z-10">
+          <!-- Left: Player Name and P-Points (50% width) -->
+          <div id="player-name-display-challenges" class="flex items-center justify-between w-1/2 px-4 py-2 bg-gray-700 rounded-xl cursor-pointer hover:bg-gray-600 transition-colors shadow-sm">
+            <span id="player-name-text-challenges" class="text-white font-bold text-sm">Player</span>
+            <div class="flex flex-col items-center">
+              <span class="text-white text-[10px] font-semibold">P-Points</span>
+              <span id="p-points-display-challenges" class="text-white font-bold text-xl">5963</span>
+            </div>
+          </div>
+
+          <!-- Right: Crowns and Stars (50% width) -->
+          <div class="flex items-center justify-end gap-2 w-1/2 px-2">
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <span id="total-crowns-challenges" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
+              <span id="total-stars-challenges" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="challenges-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0 pb-32">
+          <!-- Challenge cards will be rendered here -->
+        </div>
+      </div>
+
+      <!-- Home Screen -->
+      <div id="home-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
+        <div class="flex items-center justify-between p-4 shadow-sm relative z-10">
+          <!-- Left: Player Name and P-Points (50% width) -->
+          <div id="player-name-display-home" class="flex items-center justify-between w-1/2 px-4 py-2 bg-gray-700 rounded-xl cursor-pointer hover:bg-gray-600 transition-colors shadow-sm">
+            <span id="player-name-text-home" class="text-white font-bold text-sm">Player</span>
+            <div class="flex flex-col items-center">
+              <span class="text-white text-[10px] font-semibold">P-Points</span>
+              <span id="p-points-display-home" class="text-white font-bold text-xl">5963</span>
+            </div>
+          </div>
+          
+          <!-- Right: Crowns and Stars (50% width) -->
+          <div class="flex items-center justify-end gap-2 w-1/2 px-2">
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <span id="total-crowns-home" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-700 rounded-lg px-3 py-1.5 shadow-sm">
+              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
+              <span id="total-stars-home" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="home-content-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 relative z-0 pb-32">
+          <!-- Welcome back card -->
+          <div id="welcome-card" class="rounded-2xl p-6 flex flex-col items-center justify-center min-h-[200px]">
+            <div id="welcome-disc" class="w-64 h-64 rounded-full bg-gray-300 flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-32 h-32 text-gray-500">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+            </div>
+            <h3 id="welcome-song-title" class="text-gray-800 font-bold text-lg mb-4 text-center">No song played yet</h3>
+            <button id="welcome-play-btn" class="px-8 py-3 bg-blue-400 hover:bg-blue-500 text-white font-bold rounded-full transition-all active:scale-95 shadow-md">
+              Play
+            </button>
+          </div>
+
+          <!-- Latest changes card -->
+          <div class="bg-gray-100 rounded-2xl p-4">
+            <h3 class="text-gray-800 font-bold text-sm mb-3">Latest changes:</h3>
+            <div class="space-y-2">
+              <div class="text-gray-600 text-xs">
+                <span class="font-semibold">v0.0.0</span> - Placeholder update
+              </div>
+            </div>
+          </div>
+
+          <!-- Favourite songs card -->
+          <div class="bg-gray-100 rounded-2xl p-4">
+            <h3 class="text-gray-800 font-bold text-sm mb-3">Your favourite songs</h3>
+            <div id="favourite-songs-container" class="flex flex-col gap-3">
+              <!-- Favourite song cards will be rendered here -->
+              <p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shared Navigation Dock (outside all screens) -->
+      <div id="shared-dock" class="absolute bottom-0 left-0 right-0 z-50">
+        <div class="bg-white/70 backdrop-blur-lg border-t border-white/60 shadow-xl p-3 flex justify-around items-center">
+          <!-- Home Button (Selected) -->
+          <div id="dock-home-btn" class="dock-button selected flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="blue">
+            <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center mb-1 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white">
+                <path d="M11.47 3.84a.75.75 0 011.06 0l8.99 8.99a.75.75 0 11-1.06 1.06L12 5.28l-8.47 8.47a.75.75 0 11-1.06-1.06l8.99-8.99z" />
+                <path d="M12 5.43l-8 8V20a2 2 0 002 2h4v-5a2 2 0 012-2h0a2 2 0 012 2v5h4a2 2 0 002-2v-6.57l-8-8z" />
+              </svg>
+            </div>
+            <span class="text-[11px] font-bold tracking-tight">Home</span>
+          </div>
+
+          <!-- Music Button -->
+          <div id="dock-music-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="pink">
+            <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-pink-500">
+                <path fill-rule="evenodd" d="M19.36 4.31a1.5 1.5 0 00-1.89-.96l-9 2.5A1.5 1.5 0 007.5 7.3v8.5a3.5 3.5 0 101.5 2.87V9.75l9-2.5v6.42a3.5 3.5 0 101.5 2.88V5.75a1.5 1.5 0 00-.14-.44zM10.5 18.25a2 2 0 11-4 0 2 2 0 014 0zm9 0a2 2 0 11-4 0 2 2 0 014 0z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <span class="text-[11px] font-bold tracking-tight">Music</span>
+          </div>
+
+          <!-- Challenges Button -->
+          <div id="dock-challenges-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="purple">
+            <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-purple-500">
+                <path fill-rule="evenodd" d="M5.166 2.621C4.693 2.565 4.15 2.5 3.5 2.5A1.5 1.5 0 002 4v.75c0 3.018 2.057 5.61 4.954 6.347C7.632 12.35 8.761 13 10 13h4c1.24 0 2.368-.65 3.046-1.903C19.943 10.36 22 7.768 22 4.75V4a1.5 1.5 0 00-1.5-1.5c-.65 0-1.193.065-1.666.121a8.914 8.914 0 00-1.947.466A8.93 8.93 0 0015.344 1.5a10.978 10.978 0 00-6.688 0 8.93 8.93 0 00-1.543 1.59 8.914 8.914 0 00-1.947-.466zM4.5 4.17c-.439-.034-.847-.07-1.218-.088C3.393 4.07 3.5 4.102 3.5 4v.75c0 2.228 1.487 4.158 3.593 4.753A10.15 10.15 0 014.5 4.17zm15 0c.439-.034-.847-.07-1.218-.088.111.013.007.045.007-.053v.75c0 2.228-1.487 4.158-3.593 4.753a10.15 10.15 0 002.368-5.362zM10.5 14.5c-1.393 0-2.673.54-3.618 1.423a.75.75 0 00.41 1.309h9.416a.75.75 0 00.41-1.309A5.02 5.02 0 0013.5 14.5h-3zM7 21a.75.75 0 00-.75.75v.5A1.75 1.75 0 008 24h8a1.75 1.75 0 001.75-1.75v-.5A.75.75 0 0017 21H7z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <span class="text-[11px] font-bold tracking-tight">Challenges</span>
+          </div>
+
+          <!-- Settings Button -->
+          <div id="dock-settings-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="green">
+            <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm relative">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-green-500">
+                <path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 00-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 00-2.282.819l-.922 1.597a1.875 1.875 0 00.432 2.385l1.093.896c.12.098.197.253.197.422 0 .223-.024-.444-.069.661-.045.217.183-.398.382-.463l-1.352.441A1.875 1.875 0 002.25 14.93l.922 1.597a1.875 1.875 0 002.164 1.05l1.3-.393c.12-.036.257-.021.365.048.337.215.698.397 1.078.537.182.067.319.23.334.423l.178 1.428A1.875 1.875 0 0010.457 21.5h1.842a1.875 1.875 0 001.867-1.688l.178-1.428c.015-.193.152-.356.334-.423.38-.14.741-.322 1.078-.537.108-.069.245-.084.365-.048l1.3.393a1.875 1.875 0 002.164-1.05l.922-1.597a1.875 1.875 0 00-.432-2.385l-1.093-.896c-.12-.098-.197-.253-.197-.422 0-.223.024-.444.069-.661.045-.217.183-.398.382-.463l1.352-.441a1.875 1.875 0 001.127-1.74v-1.842a1.875 1.875 0 00-1.127-1.74l-1.352-.441c-.199-.065-.337-.246-.382-.463a8.9 8.9 0 00-.069-.661c0-.169.077-.324.197-.422l1.093-.896a1.875 1.875 0 00.432-2.385l-.922-1.597a1.875 1.875 0 00-2.282-.819l-1.018.382c-.116.043-.284.032-.45-.083a7.493 7.493 0 00-.986-.57c-.182-.088-.277-.228-.297-.348l-.178-1.072A1.875 1.875 0 0012.92 2.25h-1.842zM12 15a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+              </svg>
+              <div class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
+            </div>
+            <span class="text-[11px] font-bold tracking-tight">Settings</span>
+          </div>
+        </div>
+      </div>
 
     </div>
   </div>
@@ -239,4 +440,5 @@
   <!-- Game Logic Script -->
   <script type="module" src="game.js?v=2"></script>
 </body>
+
 </html>

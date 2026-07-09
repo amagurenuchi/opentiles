@@ -1280,7 +1280,7 @@ function flashColumnRed(colIdx, tile) {
   }, 1500);
 }
 
-function finishRun(showLibrary = false) {
+async function finishRun(showLibrary = false) {
   captureCurrentSpeedState();
   isStarted = false;
   isPaused = true;
@@ -1338,7 +1338,9 @@ function finishRun(showLibrary = false) {
       songListScreen.classList.remove('hidden');
       renderSongList(); // Re-render to update UI with new high score
     } else {
-      gameoverScreen.classList.remove('hidden');
+      // Do not show the legacy gameover screen for normal results.
+      // The newer `results-screen` will be used below.
+      gameoverScreen.classList.add('hidden');
     }
   }
 
@@ -1346,6 +1348,192 @@ function finishRun(showLibrary = false) {
   const sharedDock = document.getElementById('shared-dock');
   if (sharedDock) {
     sharedDock.classList.add('hidden');
+  }
+
+  // Populate results screen if available
+  const resultsScreen = document.getElementById('results-screen');
+  if (resultsScreen) {
+    try {
+      const titleEl = document.getElementById('results-song-title');
+      const artistEl = document.getElementById('results-song-artist');
+      const scoreEl = document.getElementById('results-score');
+      const tpsEl = document.getElementById('results-tps');
+      const lapsEl = document.getElementById('results-laps');
+      const playerNameEl = document.getElementById('results-player-name');
+      const ppointsEl = document.getElementById('results-p-points');
+      const totalCrownsEl = document.getElementById('results-total-crowns');
+      const totalStarsEl = document.getElementById('results-total-stars');
+
+      if (selectedSongData) {
+        const num = selectedSongData.id ?? selectedSongData.mid ?? '';
+        const displayTitle = `${num ? String(num) + '. ' : ''}${selectedSongData.musicJson}`;
+        if (titleEl) titleEl.textContent = displayTitle;
+        if (artistEl) artistEl.textContent = `${selectedSongData.musician || ''}`;
+      }
+
+      if (isChallengeMode) {
+        const finalTps = currentBpm / currentBeats / 60;
+        if (tpsEl) tpsEl.textContent = `${finalTps.toFixed(3)} TPS`;
+        if (scoreEl) scoreEl.textContent = finalTps.toFixed(3);
+        if (lapsEl) lapsEl.textContent = `${Math.max(0, Math.floor(currentScore || 0))} Laps`;
+        // challenge mode: no stars/crowns display
+        const medalsEl = document.getElementById('results-medals');
+        if (medalsEl) medalsEl.innerHTML = '';
+      } else {
+        if (tpsEl) tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} TPS`;
+        if (scoreEl) scoreEl.textContent = String(currentScore || 0);
+        if (lapsEl) lapsEl.textContent = `${Math.max(0, Math.floor(speedLevel || 0))} Laps`;
+
+        // compute stars/crowns earned for this play based on speedLevel
+        const stage = getStarAndCrownState((speedLevel || 1) - 1);
+        const medalsEl = document.getElementById('results-medals');
+        // helper to play result audio depending on stage
+        async function playResultAudioSequence() {
+          const ctx = ensureAudioEngine();
+          if (!ctx) return;
+          let audioPath = null;
+          if (stage.crowns && stage.crowns > 0) {
+            if (stage.crowns === 1) audioPath = 'Audio/OneCrown';
+            else if (stage.crowns === 2) audioPath = 'Audio/TwoCrown';
+            else audioPath = 'Audio/ThreeCrown';
+          } else {
+            const s = stage.stars || 0;
+            if (s === 0) audioPath = 'Audio/FailPage';
+            else if (s === 1) audioPath = 'Audio/PassPageOne';
+            else if (s === 2) audioPath = 'Audio/PassPageTwo';
+            else audioPath = 'Audio/PassPageThree';
+          }
+
+          async function playFile(base) {
+            const buffer = await getCachedAudioBuffer(base);
+            if (!buffer) return;
+            const source = ctx.createBufferSource();
+            const gainNode = ctx.createGain();
+            const startAt = ctx.currentTime + 0.01;
+            source.buffer = buffer;
+            gainNode.gain.setValueAtTime(1.0, startAt);
+            source.connect(gainNode);
+            gainNode.connect(audioGainNode);
+            source.start(startAt);
+            return new Promise((resolve) => {
+              source.onended = () => resolve();
+              // fallback timeout
+              setTimeout(resolve, (buffer.duration || 0) * 1000 + 100);
+            });
+          }
+
+          if (audioPath) {
+            await playFile(audioPath);
+          }
+
+          // check and play NewBest if score is a new best for this song
+          if (selectedSongData) {
+            const mid = String(selectedSongData.mid || selectedSongData.id || '');
+            const scoreKey = `opentile_best_score_${mid}`;
+            const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
+            const numericScore = Number(currentScore || 0);
+            if (numericScore > prev) {
+              localStorage.setItem(scoreKey, String(numericScore));
+              // play NewBest audio
+              await playFile('Audio/NewBest');
+            }
+          }
+        }
+
+        if (medalsEl) {
+          medalsEl.innerHTML = '';
+          // always render 3 icons; fill achieved ones normally, unachieved as silhouettes
+          const useCrowns = stage.crowns && stage.crowns > 0;
+          const achieved = useCrowns ? stage.crowns : (stage.stars || 0);
+          for (let i = 1; i <= 3; i++) {
+            const img = document.createElement('img');
+            img.src = useCrowns ? 'gameImage/crown.png' : 'gameImage/star.png';
+            img.alt = useCrowns ? 'crown' : 'star';
+            img.className = 'inline-block';
+            if (i > achieved) img.classList.add('medal-silhouette');
+            medalsEl.appendChild(img);
+          }
+          // play the result audio sequence (do not block UI)
+          playResultAudioSequence().catch(() => {});
+        }
+      }
+
+      if (playerNameEl) playerNameEl.textContent = playerName || 'Player';
+      if (ppointsEl) ppointsEl.textContent = pPointsDisplay ? pPointsDisplay.textContent : (pPointsDisplay || '0');
+      if (totalCrownsEl) totalCrownsEl.textContent = totalCrownsDisplay ? totalCrownsDisplay.textContent : '0';
+      if (totalStarsEl) totalStarsEl.textContent = totalStarsDisplay ? totalStarsDisplay.textContent : '0';
+
+      // Show results screen and hide other overlays
+      gameoverScreen.classList.add('hidden');
+      startScreen.classList.add('hidden');
+      songListScreen.classList.add('hidden');
+      challengesScreen.classList.add('hidden');
+      settingsScreen.classList.add('hidden');
+      homeScreen.classList.add('hidden');
+
+      resultsScreen.classList.remove('hidden');
+
+      // Hook up buttons
+      const backBtn = document.getElementById('results-back-btn');
+      const homeBtn = document.getElementById('results-home-btn');
+      const favBtn = document.getElementById('results-fav-btn');
+      if (backBtn) {
+        backBtn.onclick = () => {
+          // Play life intro immediately, disable button to prevent double-press
+          backBtn.disabled = true;
+          backBtn.classList.add('opacity-50');
+          playLifeIntroSound();
+
+          // Reinitialize state now so UI shows fresh board once loaded
+          resetEngineState();
+
+          setTimeout(() => {
+            // hide results and load the song data (which will show the game UI)
+            resultsScreen.classList.add('hidden');
+            if (selectedSongData) {
+              loadSongFromData(selectedSongData);
+            } else {
+              returnToMainMenu();
+            }
+
+            // re-enable button for future use (if results shown again)
+            backBtn.disabled = false;
+            backBtn.classList.remove('opacity-50');
+          }, 1000);
+        };
+      }
+      if (homeBtn) {
+        homeBtn.onclick = () => {
+          // play menu loop cue for feedback
+          try { playMenuLoopCue(); } catch (e) {}
+          resultsScreen.classList.add('hidden');
+          returnToMainMenu();
+        };
+      }
+      if (favBtn) {
+        // set initial favourite state
+        try {
+          if (selectedSongData && favouriteSongs.has(String(selectedSongData.mid))) {
+            favBtn.classList.add('favourite');
+          } else {
+            favBtn.classList.remove('favourite');
+          }
+        } catch (e) {}
+
+        favBtn.onclick = () => {
+          if (!selectedSongData) return;
+          // play menu loop cue for feedback
+          try { playMenuLoopCue(); } catch (e) {}
+          const id = String(selectedSongData.mid);
+          toggleFavourite(id);
+          favBtn.classList.toggle('favourite', favouriteSongs.has(id));
+          // update other UI that may show favourites
+          renderFavouriteSongs();
+        };
+      }
+    } catch (err) {
+      console.warn('Failed populating results screen', err);
+    }
   }
 }
 
@@ -2601,8 +2789,18 @@ document.getElementById('pause-exit-btn')?.addEventListener('click', () => {
   exitToSongLibrary();
 });
 
-document.getElementById('pause-btn')?.addEventListener('click', () => {
+document.getElementById('pause-btn')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
   togglePause();
+});
+
+document.getElementById('pause-btn')?.addEventListener('pointerup', (event) => {
+  if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+    event.preventDefault();
+    event.stopPropagation();
+    togglePause();
+  }
 });
 
 dockHomeBtn?.addEventListener('click', () => {

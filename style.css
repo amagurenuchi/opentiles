@@ -344,6 +344,9 @@ body {
 #pause-btn {
   display: none;
   z-index: 45;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 #pause-btn.force-show {
@@ -794,6 +797,96 @@ body {
 .grade-AAA {
   background-color: #a200e6 !important;
   color: #ffffff !important;
+}
+
+/* Results screen styles (white background, top-bar inherits .screen-top-bar) */
+#results-screen {
+  background: #ffffff;
+  color: #111827; /* dark text */
+}
+
+#results-screen .results-content {
+  transform: translateY(-10px);
+}
+
+#results-screen .results-rank {
+  letter-spacing: 0.12em;
+}
+
+#results-screen #results-score {
+  font-size: clamp(3rem, 12vw, 6rem);
+  line-height: 0.9;
+}
+
+#results-screen #results-subtext {
+  font-weight: 700;
+}
+
+#results-screen #results-medals img {
+  width: 81px; /* 50% bigger */
+  height: 81px;
+}
+
+/* silhouette for unearned medals */
+.medal-silhouette {
+  opacity: 0.25;
+  filter: grayscale(1) brightness(0.8);
+}
+
+/* push song title down slightly from top bar */
+#results-song-title {
+  margin-top: 60px;
+  text-align: center;
+}
+
+#results-screen .screen-top-bar-text {
+  color: #111827 !important;
+}
+
+#results-screen button {
+  cursor: pointer;
+}
+
+/* Results dock (bottom) */
+.results-dock {
+  border: 1px solid rgba(0,0,0,0.06);
+}
+
+.results-dock-btn {
+  border-radius: 14px;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.results-dock-center {
+  border-radius: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* Dock fixed to bottom of results screen */
+#results-screen .results-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(6px + env(safe-area-inset-bottom));
+  margin-left: auto;
+  margin-right: auto;
+  width: min(100%, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px; /* restore inner padding to match reference */
+}
+
+#results-screen .results-dock-btn[disabled] {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .grade-AAA-plus {

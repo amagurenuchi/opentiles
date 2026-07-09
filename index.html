@@ -69,9 +69,9 @@
 
       <!-- Pause Button (Mobile and Tablet only) -->
       <button id="pause-btn"
-        class="absolute top-0 left-0 p-4 rounded-none rounded-br-xl text-gray-700 pointer-events-auto z-[45] hover:text-gray-900 transition-all active:scale-95">
+        class="absolute top-0 left-0 p-4 sm:p-5 md:p-6 rounded-none rounded-br-xl text-gray-700 pointer-events-auto z-[45] hover:text-gray-900 transition-all active:scale-95">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-          class="w-8 h-8">
+          class="w-8 h-8 sm:w-10 sm:h-10 md:w-16 md:h-16">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
         </svg>
       </button>
@@ -250,6 +250,86 @@
           </button>
         </div>
       </div>
+
+      <!-- Results Screen (styled like the provided mockup) -->
+      <div id="results-screen" class="absolute inset-0 flex flex-col items-center p-6 z-40 hidden transition-all duration-300">
+        <!-- Reuse the existing top bar markup for consistency -->
+        <div class="screen-top-bar w-full max-w-[680px] mt-2">
+          <div class="screen-top-bar-left">
+            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
+              <div class="screen-top-bar-profile-inner">
+                <span id="results-player-name" class="screen-top-bar-text font-bold text-sm">Player</span>
+                <div class="screen-top-bar-points">
+                  <span class="screen-top-bar-text text-[10px] font-semibold">P-Points</span>
+                  <span id="results-p-points" class="screen-top-bar-text font-bold text-xl">5963</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screen-top-bar-right">
+            <div class="screen-top-bar-box">
+              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <span id="results-total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+            <div class="screen-top-bar-box">
+              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
+              <span id="results-total-stars" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-1 flex flex-col w-full">
+          <div class="w-full max-w-[520px] mx-auto">
+            <!-- Song title (number + title) appears directly under the top bar -->
+            <div id="results-song-title" class="font-game text-2xl font-bold mb-3 text-center">3. Nocturne Op. 55 No. 1</div>
+
+            <!-- Medals (always render 3 icons; unearned ones are shown as silhouettes) -->
+            <div class="mb-6 flex justify-center items-center gap-6" id="results-medals">
+              <!-- medals injected here -->
+            </div>
+
+            <!-- Score area centered vertically in screen -->
+            <div class="flex-1 flex items-center justify-center">
+              <div class="w-full flex items-center justify-center gap-8 px-4">
+                <div id="results-tps" class="text-2xl font-game">0.000 TPS</div>
+                <div id="results-main-score" class="text-center">
+                  <div id="results-score" class="font-game text-8xl font-bold">0</div>
+                  <div id="results-subtext" class="text-xl font-game mt-2">New Best!</div>
+                </div>
+                <div id="results-laps" class="text-lg">0 Laps</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-full mb-6 px-4">
+          <div class="results-dock mx-auto max-w-[520px] rounded-xl bg-gray-200/80 backdrop-blur-md p-4 flex justify-between items-center">
+            <button id="results-home-btn" class="results-dock-btn flex items-center justify-center bg-white rounded-2xl w-16 h-14 shadow-sm">
+              <!-- back arrow icon -->
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6 text-gray-800">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            <button id="results-back-btn" class="results-dock-center flex items-center justify-center bg-white rounded-3xl px-6 py-3 shadow-md font-game font-bold text-lg">
+              Retry
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6 ml-2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-3.354-6.646M21 3v6h-6" />
+              </svg>
+            </button>
+
+            <button id="results-fav-btn" class="results-dock-btn heart-button flex items-center justify-center bg-white rounded-2xl w-16 h-14 shadow-sm">
+              <!-- heart icon -->
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6 text-gray-800">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.172 7.172a4 4 0 015.656 0L12 10.343l3.172-3.171a4 4 0 115.656 5.656L12 21.657 3.172 12.828a4 4 0 010-5.656z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      
 
       <!-- Pause Screen -->
       <div id="pause-screen" class="pause-screen hidden">

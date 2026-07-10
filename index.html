@@ -219,6 +219,48 @@
         </div>
       </div>
 
+      <!-- Shared Top Bar (single instance used across screens) -->
+      <div id="shared-top-bar" class="absolute top--9 left-0 right-0 z-[60] flex justify-center pointer-events-auto pointer-events">
+        <div class="screen-top-bar w-full max-w-[680px] mt-2">
+          <div class="screen-top-bar-left">
+            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
+              <div class="screen-top-bar-profile-inner">
+                <span id="player-name-text" class="screen-top-bar-text font-bold text-sm">Player</span>
+                <div class="screen-top-bar-points">
+                  <span class="screen-top-bar-text text-[10px] font-semibold">P-Points</span>
+                  <span id="p-points-display" class="screen-top-bar-text font-bold text-xl">5963</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screen-top-bar-right">
+            <button type="button" class="screen-top-bar-box life-display-trigger" aria-label="Open energy supply">
+              <span class="life-display-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                </svg>
+              </span>
+              <div class="life-display-body">
+                <div class="life-display-main">
+                  <span id="life-count" class="life-display-count">21</span>
+                  <span class="life-display-plus">+</span>
+                </div>
+                <div id="life-timer" class="life-display-timer">03:05</div>
+              </div>
+            </button>
+            <div class="screen-top-bar-box">
+              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <span id="total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+            <div class="screen-top-bar-box">
+              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
+              <span id="total-stars" class="text-yellow-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Game Over Screen -->
       <div id="gameover-screen"
         class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
@@ -253,31 +295,7 @@
 
       <!-- Results Screen (styled like the provided mockup) -->
       <div id="results-screen" class="absolute inset-0 flex flex-col items-center p-6 z-40 hidden transition-all duration-300">
-        <!-- Reuse the existing top bar markup for consistency -->
-        <div class="screen-top-bar w-full max-w-[680px] mt-2">
-          <div class="screen-top-bar-left">
-            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
-              <div class="screen-top-bar-profile-inner">
-                <span id="results-player-name" class="screen-top-bar-text font-bold text-sm">Player</span>
-                <div class="screen-top-bar-points">
-                  <span class="screen-top-bar-text text-[10px] font-semibold">P-Points</span>
-                  <span id="results-p-points" class="screen-top-bar-text font-bold text-xl">5963</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="screen-top-bar-right">
-            <div class="screen-top-bar-box">
-              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
-              <span id="results-total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-            <div class="screen-top-bar-box">
-              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
-              <span id="results-total-stars" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-          </div>
-        </div>
+        <!-- top bar moved to shared #shared-top-bar -->
 
         <div class="flex-1 flex flex-col w-full">
           <div class="w-full max-w-[520px] mx-auto">
@@ -342,30 +360,7 @@
 
       <!-- Song List Screen -->
       <div id="song-list-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300">
-        <div class="screen-top-bar">
-          <div class="screen-top-bar-left">
-            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
-              <div class="screen-top-bar-profile-inner">
-                <span id="player-name-text" class="screen-top-bar-text text-white font-bold text-sm">Player</span>
-                <div class="screen-top-bar-points">
-                  <span class="screen-top-bar-text text-white text-[10px] font-semibold">P-Points</span>
-                  <span id="p-points-display" class="screen-top-bar-text text-white font-bold text-xl">5963</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="screen-top-bar-right">
-            <div class="screen-top-bar-box">
-              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
-              <span id="total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-            <div class="screen-top-bar-box">
-              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
-              <span id="total-stars" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-          </div>
-        </div>
+        <!-- top bar moved to shared #shared-top-bar -->
 
 
 
@@ -386,30 +381,7 @@
 
       <!-- Challenges Screen -->
       <div id="challenges-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
-        <div class="screen-top-bar">
-          <div class="screen-top-bar-left">
-            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
-              <div class="screen-top-bar-profile-inner">
-                <span id="player-name-text-challenges" class="screen-top-bar-text text-white font-bold text-sm">Player</span>
-                <div class="screen-top-bar-points">
-                  <span class="screen-top-bar-text text-white text-[10px] font-semibold">P-Points</span>
-                  <span id="p-points-display-challenges" class="screen-top-bar-text text-white font-bold text-xl">5963</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="screen-top-bar-right">
-            <div class="screen-top-bar-box">
-              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
-              <span id="total-crowns-challenges" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-            <div class="screen-top-bar-box">
-              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
-              <span id="total-stars-challenges" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-          </div>
-        </div>
+        <!-- top bar moved to shared #shared-top-bar -->
 
         <div id="challenges-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0 pb-32">
           <!-- Challenge cards will be rendered here -->
@@ -418,41 +390,16 @@
 
       <!-- Home Screen -->
       <div id="home-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
-        <div class="screen-top-bar">
-          <div class="screen-top-bar-left">
-            <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
-              <div class="screen-top-bar-profile-inner">
-                <span id="player-name-text-home" class="screen-top-bar-text text-white font-bold text-sm">Player</span>
-                <div class="screen-top-bar-points">
-                  <span class="screen-top-bar-text text-white text-[10px] font-semibold">P-Points</span>
-                  <span id="p-points-display-home" class="screen-top-bar-text text-white font-bold text-xl">5963</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="screen-top-bar-right">
-            <div class="screen-top-bar-box">
-              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
-              <span id="total-crowns-home" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-            <div class="screen-top-bar-box">
-              <img src="gameImage/star.png" class="w-5 h-5" alt="Star">
-              <span id="total-stars-home" class="text-yellow-400 font-bold text-sm">0</span>
-            </div>
-          </div>
-        </div>
+        <!-- top bar moved to shared #shared-top-bar -->
 
         <div id="home-content-container" class="flex-1 min-h-0 w-full overflow-y-auto p-4 flex flex-col gap-4 relative z-0 pb-32">
           <!-- Welcome back card -->
           <div id="welcome-card" class="w-full rounded-2xl p-6 flex flex-col items-center justify-center min-h-[200px]">
-            <div id="welcome-disc" class="w-64 h-64 rounded-full bg-gray-300 flex items-center justify-center mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-32 h-32 text-gray-500">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
+            <div id="welcome-disc" class="w-64 h-64 rounded-full bg-gray-300 flex items-center justify-center mb-4 overflow-hidden">
+              <img src="gameImage/collect_cd_1014.png" alt="Welcome disc" class="w-full h-full object-cover">
             </div>
             <h3 id="welcome-song-title" class="text-gray-800 font-bold text-lg mb-4 text-center">No song played yet</h3>
-            <button id="welcome-play-btn" class="px-8 py-3 bg-blue-400 hover:bg-blue-500 text-white font-bold rounded-full transition-all active:scale-95 shadow-md">
+            <button id="welcome-play-btn" class="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full transition-all active:scale-95 shadow-md">
               Play
             </button>
           </div>
@@ -478,14 +425,178 @@
         </div>
       </div>
 
+      <div id="life-modal" class="life-modal hidden" aria-hidden="true">
+        <div class="life-modal-backdrop" data-close-life-modal="true"></div>
+        <div class="life-modal-panel">
+          <button id="life-modal-close-btn" type="button" class="life-modal-close" aria-label="Close energy supply">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6 18 18M18 6 6 18" />
+            </svg>
+          </button>
+
+          <div class="life-modal-header">
+            <h2 class="life-modal-title">Energy Supply</h2>
+
+            <div class="life-modal-status">
+              <div class="life-modal-status-stack">
+                <div class="life-display life-display-large life-display-counter-only">
+                  <span class="life-display-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <div class="life-display-body">
+                    <div class="life-display-main">
+                      <span id="life-modal-count" class="life-display-count">21</span>
+                    </div>
+                  </div>
+                </div>
+                <div id="life-modal-timer" class="life-modal-timer-pill">Time to next life: 03:18</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="life-modal-body">
+            <button type="button" class="life-purchase-row" data-life-amount="15" data-life-cost="0">
+              <div class="life-purchase-cost">
+                <span class="life-note-icon">Free</span>
+                <span class="life-purchase-price">FREE</span>
+              </div>
+              <div class="life-purchase-pack">
+                <div class="life-pack-icons life-pack-icons-1">
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                </div>
+                <span class="life-purchase-qty">x 15</span>
+              </div>
+            </button>
+
+            <button type="button" class="life-purchase-row" data-life-amount="50" data-life-cost="1">
+              <div class="life-purchase-cost">
+                <span class="life-note-icon">P</span>
+                <span class="life-purchase-price">x 1</span>
+              </div>
+              <div class="life-purchase-pack">
+                <div class="life-pack-icons life-pack-icons-1">
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                </div>
+                <span class="life-purchase-qty">x 50</span>
+              </div>
+            </button>
+
+            <button type="button" class="life-purchase-row" data-life-amount="200" data-life-cost="3">
+              <div class="life-purchase-cost">
+                <span class="life-note-icon">P</span>
+                <span class="life-purchase-price">x 3</span>
+              </div>
+              <div class="life-purchase-pack">
+                <div class="life-pack-icons life-pack-icons-3">
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                </div>
+                <span class="life-purchase-qty">x 200</span>
+              </div>
+            </button>
+
+            <button type="button" class="life-purchase-row" data-life-amount="1000" data-life-cost="15">
+              <div class="life-purchase-cost">
+                <span class="life-note-icon">P</span>
+                <span class="life-purchase-price">x 15</span>
+              </div>
+              <div class="life-purchase-pack">
+                <div class="life-pack-icons life-pack-icons-5">
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                  <span class="life-pack-heart">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+                    </svg>
+                  </span>
+                </div>
+                <span class="life-purchase-qty">x 1000</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="revive-modal" class="revive-modal hidden" aria-hidden="true">
+        <div class="revive-modal-backdrop" data-close-revive-modal="true"></div>
+        <div class="revive-modal-panel">
+          <div class="revive-modal-header">
+            <div class="revive-modal-ring">
+              <span class="revive-modal-ring-text">x <span id="revive-remaining-count">3</span></span>
+            </div>
+          </div>
+          <div class="revive-modal-body">
+            <h2 class="revive-modal-title">Continue?</h2>
+            <p class="revive-modal-subtitle">Use one revive to resume gameplay. Tap the START tile to continue.</p>
+            <div id="revive-countdown-text" class="revive-countdown-text">Auto end in 10s</div>
+            <div id="revive-progress-row" class="revive-progress-row"></div>
+            <div class="revive-status-row">
+              <img src="gameImage/crown.png" alt="Crown" class="revive-status-icon">
+              <div>
+                <div class="revive-status-label">Remaining</div>
+                <div class="revive-status-value"><span id="revive-remaining-count-duplicate">3</span> / 3</div>
+              </div>
+            </div>
+            <div class="revive-modal-actions">
+              <button id="revive-cancel-btn" type="button" class="revive-modal-btn revive-cancel-btn">End Run</button>
+              <button id="revive-continue-btn" type="button" class="revive-modal-btn revive-continue-btn">Revive</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Shared Navigation Dock (outside all screens) -->
       <div id="shared-dock" class="absolute bottom-0 left-0 right-0 z-50">
         <div class="bg-white/70 backdrop-blur-lg border-t border-white/60 shadow-xl p-3 flex justify-around items-center">
           <!-- Home Button (Selected) -->
           <div id="dock-home-btn" class="dock-button selected flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="blue">
             <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="w-6 h-6 text-blue-500">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5 12 3l9 7.5M5.25 9.75V21h13.5V9.75" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-blue-500">
+                <!-- Filled house silhouette with chimney -->
+                <path d="M11.03 2.59a1.5 1.5 0 0 1 1.94 0l7 6.12A1.5 1.5 0 0 1 20.5 10v9.5A1.5 1.5 0 0 1 19 21H5a1.5 1.5 0 0 1-1.5-1.5V10a1.5 1.5 0 0 1 .53-1.14l7-6.27Z" opacity="0.15"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 12 12 4l9 8"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 11v8.5A.5.5 0 0 0 5.5 20h4v-4.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5V20h4.5a.5.5 0 0 0 .5-.5V11"/>
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight">Home</span>
@@ -494,8 +605,13 @@
           <!-- Music Button -->
           <div id="dock-music-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="pink">
             <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="w-6 h-6 text-pink-500">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 18.75V6.75a1.5 1.5 0 0 1 1.5-1.5h1.5a1.5 1.5 0 0 1 1.5 1.5v12M9 18.75a2.25 2.25 0 1 0 0 4.5m0-4.5a2.25 2.25 0 1 1 0 4.5m6-6.75v-3m0 0V4.5a1.5 1.5 0 0 1 1.5-1.5h1.5a1.5 1.5 0 0 1 1.5 1.5v8.25m-3 0a2.25 2.25 0 1 0 0 4.5m0-4.5a2.25 2.25 0 1 1 0 4.5" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-pink-500">
+                <!-- Double eighth note -->
+                <path d="M9 17.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" opacity="0.9"/>
+                <path d="M19 15.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" opacity="0.9"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M9 17.5V7l10-2.5v2.5"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M9 9.5l10-2.5"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M19 15.5V6.5"/>
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight">Music</span>
@@ -504,8 +620,19 @@
           <!-- Challenges Button -->
           <div id="dock-challenges-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="purple">
             <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="w-6 h-6 text-purple-500">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5h7.5m-7.5 0a2.25 2.25 0 0 0-2.25 2.25V8.25A2.25 2.25 0 0 0 8.25 10.5h7.5A2.25 2.25 0 0 0 18 8.25V6.75A2.25 2.25 0 0 0 15.75 4.5m-7.5 0v3m7.5-3v3M6.75 10.5l.75 8.25a1.5 1.5 0 0 0 1.5 1.25h6a1.5 1.5 0 0 0 1.5-1.25l.75-8.25" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-purple-500">
+                <!-- Trophy cup body (filled) -->
+                <path d="M8 3h8v8.5a4 4 0 0 1-8 0V3Z" opacity="0.15"/>
+                <!-- Trophy outline -->
+                <path fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" d="M8 3h8v8.5a4 4 0 0 1-8 0V3Z"/>
+                <!-- Handles -->
+                <path fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" d="M8 5.5H5.5a2.1 2.1 0 0 0 0 4.2H8"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" d="M16 5.5h2.5a2.1 2.1 0 0 1 0 4.2H16"/>
+                <!-- Stem & base -->
+                <path fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" d="M12 15.5v2.5"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" d="M8.5 18h7"/>
+                <!-- Star inside cup -->
+                <path d="M12 5.5l.55 1.65h1.73l-1.4 1 .54 1.65L12 8.85l-1.42 1 .54-1.65-1.4-1h1.73Z"/>
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight">Challenges</span>
@@ -514,9 +641,17 @@
           <!-- Settings Button -->
           <div id="dock-settings-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="green">
             <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm relative ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="w-6 h-6 text-green-500">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.43l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-green-500">
+                <!-- Three vertical sliders (tune/equaliser icon) -->
+                <!-- Left slider -->
+                <line x1="4" y1="6" x2="4" y2="18"/>
+                <circle cx="4" cy="10" r="2" fill="currentColor" stroke="none"/>
+                <!-- Middle slider -->
+                <line x1="12" y1="4" x2="12" y2="20"/>
+                <circle cx="12" cy="15" r="2" fill="currentColor" stroke="none"/>
+                <!-- Right slider -->
+                <line x1="20" y1="6" x2="20" y2="18"/>
+                <circle cx="20" cy="9" r="2" fill="currentColor" stroke="none"/>
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight">Settings</span>

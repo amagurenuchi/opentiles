@@ -126,6 +126,9 @@ let warr = new Array(key).fill(0);
 let tiles = [];
 let reviveCountdownInterval = null;
 let reviveCountdownRemaining = 0;
+let reviveCountdownStartedAt = 0;
+let reviveCountdownDurationMs = 0;
+let reviveAwaitingStart = false;
 const REVIVE_COUNTDOWN_SECONDS = 10;
 
 // Challenge mode variables
@@ -382,46 +385,82 @@ function clearReviveCountdown() {
 }
 
 function updateReviveCountdownDisplay() {
-  const countdownEl = document.getElementById('revive-countdown-text');
-  if (!countdownEl) return;
-  countdownEl.textContent = reviveCountdownRemaining > 0
-    ? `Auto end in ${reviveCountdownRemaining}s`
-    : 'Auto ending...';
+  const countdownEl = document.getElementById('revive-countdown-ring-text');
+  const ringEl = document.getElementById('revive-modal-ring');
+  const progressPercent = REVIVE_COUNTDOWN_SECONDS > 0
+    ? Math.max(0, (reviveCountdownRemaining / REVIVE_COUNTDOWN_SECONDS) * 100)
+    : 0;
+
+  if (countdownEl) {
+    countdownEl.textContent = reviveCountdownRemaining > 0 ? Math.ceil(reviveCountdownRemaining).toString() : '0';
+  }
+
+  if (ringEl) {
+    ringEl.style.setProperty('--revive-progress', `${progressPercent}%`);
+    ringEl.classList.toggle('revive-ring-warning', reviveCountdownRemaining <= 3);
+  }
+}
+
+function getTileScoreValue(tile) {
+  if (!tile) return 0;
+  if (tile.type === 2) return 1;
+  if (tile.type === 5) return 4;
+  if (tile.type === 3) return Math.max(2, tile.taps || 2);
+  if (tile.type === 6) return Math.round(tile.hlen) + 1;
+  return Math.round(tile.hlen) + 1;
+}
+
+function getNextRewardInfo(scoreValue = 0) {
+  const sectionCount = Array.isArray(sheet) ? sheet.length : 0;
+  const nextRewardLevel = Math.max(1, Math.min(sectionCount, (normalSongAwardLevel || 1)));
+  let cumulativeScore = 0;
+
+  for (let sectionIndex = 0; sectionIndex < nextRewardLevel; sectionIndex += 1) {
+    const sectionTiles = Array.isArray(sheet?.[sectionIndex]) ? sheet[sectionIndex] : [];
+    cumulativeScore += sectionTiles.reduce((sum, tile) => sum + getTileScoreValue(tile), 0);
+  }
+
+  const remaining = Math.max(0, cumulativeScore - scoreValue);
+  const nextStage = getStarAndCrownState((normalSongAwardLevel || 1));
+  const iconName = nextStage.crowns > 0 ? 'crown' : 'star';
+  const iconCount = nextStage.crowns > 0 ? nextStage.crowns : nextStage.stars;
+
+  return { remaining, iconName, iconCount };
 }
 
 function updateReviveModalProgress() {
   const progressRow = document.getElementById('revive-progress-row');
   if (!progressRow) return;
+
   let progressHtml = '';
   if (isChallengeMode || isClassicMode) {
     progressHtml = '<div class="revive-progress-label">Resume and keep your current run.</div>';
   } else {
     const currentStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-    const nextStage = getStarAndCrownState(normalSongAwardLevel || 1);
+
     if (currentStage.crowns === 3) {
       progressHtml = '<div class="revive-progress-label">Maximum crowns reached for this song.</div>';
     } else {
-      const useCrowns = nextStage.crowns > 0;
-      const iconName = useCrowns ? 'crown' : 'star';
-      const iconCount = useCrowns ? nextStage.crowns : nextStage.stars;
-      const label = `Need 1 more section to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
-      const icons = Array.from({ length: 3 }, (_, i) => `
-        <img src="gameImage/${iconName}.png" class="revive-progress-icon ${i < iconCount ? 'filled' : 'unfilled'}" alt="${iconName}">`)
-        .join('');
+      const rewardInfo = getNextRewardInfo(Number(currentScore || 0));
+      const icons = Array.from({ length: 3 }, (_, i) => `<img src="gameImage/${rewardInfo.iconName}.png" class="revive-progress-icon ${i < rewardInfo.iconCount ? 'filled' : 'unfilled'}" alt="${rewardInfo.iconName}">`).join('');
       progressHtml = `
-        <div class="revive-progress-icons">${icons}</div>
-        <div class="revive-progress-label">${label}</div>`;
+        <div class="revive-progress-label">Need <span class="revive-progress-value">${rewardInfo.remaining}</span> to reach</div>
+        <div class="revive-progress-icons">${icons}</div>`;
     }
   }
+
   progressRow.innerHTML = progressHtml;
 }
 
 function startReviveCountdown() {
   clearReviveCountdown();
+  reviveCountdownStartedAt = performance.now();
+  reviveCountdownDurationMs = REVIVE_COUNTDOWN_SECONDS * 1000;
   reviveCountdownRemaining = REVIVE_COUNTDOWN_SECONDS;
   updateReviveCountdownDisplay();
   reviveCountdownInterval = window.setInterval(() => {
-    reviveCountdownRemaining -= 1;
+    const elapsedMs = performance.now() - reviveCountdownStartedAt;
+    reviveCountdownRemaining = Math.max(0, (reviveCountdownDurationMs - elapsedMs) / 1000);
     updateReviveCountdownDisplay();
     if (reviveCountdownRemaining <= 0) {
       clearReviveCountdown();
@@ -429,7 +468,7 @@ function startReviveCountdown() {
         cancelRevivePrompt();
       }
     }
-  }, 1000);
+  }, 50);
 }
 
 function openReviveModal() {
@@ -462,6 +501,7 @@ function cancelRevivePrompt() {
   revivePendingType = null;
   revivePendingTile = null;
   revivePendingColIdx = null;
+  reviveAwaitingStart = false;
   finishRun(false);
 }
 
@@ -477,7 +517,9 @@ function resumeAfterRevive() {
   revivePendingType = null;
   revivePendingColIdx = null;
   revivePendingTile = null;
+  reviveAwaitingStart = true;
 
+  resetInputState();
   captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
@@ -1346,6 +1388,7 @@ function resetEngineState() {
   pausedSpeedBeats = 0.5;
   resetInputState();
   pendingHitEffects = [];
+  reviveAwaitingStart = false;
 }
 
 function loadSongObject(data, label) {
@@ -2456,7 +2499,7 @@ function maybeGrantNormalSongAward(tile) {
 }
 
 function handleManualInputDown(colIdx, pointerEvent = null) {
-  if (isPaused) return;
+  if (isPaused && !reviveAwaitingStart) return;
   
   // Handle start tile separately
   if (!isStarted) {
@@ -2466,6 +2509,8 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       // Allow tapping start tile anywhere on-screen
       if (tileBottom >= 0) {
         delete startTile.isStartTile;
+        reviveAwaitingStart = false;
+        isPaused = false;
         isStarted = true;
         hasStartedGameplay = true;
         startTime = performance.now();

@@ -562,22 +562,12 @@
         <div class="revive-modal-backdrop" data-close-revive-modal="true"></div>
         <div class="revive-modal-panel">
           <div class="revive-modal-header">
-            <div class="revive-modal-ring">
-              <span class="revive-modal-ring-text">x <span id="revive-remaining-count">3</span></span>
+            <div id="revive-modal-ring" class="revive-modal-ring">
+              <span class="revive-modal-ring-text"><span id="revive-countdown-ring-text">10s</span></span>
             </div>
           </div>
           <div class="revive-modal-body">
-            <h2 class="revive-modal-title">Continue?</h2>
-            <p class="revive-modal-subtitle">Use one revive to resume gameplay. Tap the START tile to continue.</p>
-            <div id="revive-countdown-text" class="revive-countdown-text">Auto end in 10s</div>
             <div id="revive-progress-row" class="revive-progress-row"></div>
-            <div class="revive-status-row">
-              <img src="gameImage/crown.png" alt="Crown" class="revive-status-icon">
-              <div>
-                <div class="revive-status-label">Remaining</div>
-                <div class="revive-status-value"><span id="revive-remaining-count-duplicate">3</span> / 3</div>
-              </div>
-            </div>
             <div class="revive-modal-actions">
               <button id="revive-cancel-btn" type="button" class="revive-modal-btn revive-cancel-btn">End Run</button>
               <button id="revive-continue-btn" type="button" class="revive-modal-btn revive-continue-btn">Revive</button>

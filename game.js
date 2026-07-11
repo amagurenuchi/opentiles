@@ -39,6 +39,10 @@ const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
 const clearSongBtn = document.getElementById('clear-song-btn');
 const autoplayToggle = document.getElementById('settings-autoplay');
 const reviveSlowdownToggle = document.getElementById('settings-revive-slowdown');
+const customSpeedInput = document.getElementById('settings-custom-speed');
+const customSpeedDisplay = document.getElementById('custom-speed-display');
+const customSongUpload = document.getElementById('custom-song-upload');
+const customSongStatus = document.getElementById('custom-song-status');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
@@ -105,6 +109,9 @@ let reviveSlowdownStartTime = 0;
 let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
+let customStartingSpeed = parseInt(localStorage.getItem('opentile_custom_speed') || '0', 10); // 0 = disabled, 1-16 maps to 2-18 t/s
+let customSongData = null;
+let customSongLabel = '';
 let key = 4;
 let songName = '';
 let sheet = [];
@@ -776,27 +783,93 @@ function lenToNum(len, type) {
   return Array.from(len).reduce((sum, char) => sum + ((type ? beatsMap : restMap)[char] || 0), 0);
 }
 
-function speedGen(sourceInfo) {
+function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplier = null) {
   const infoBak = JSON.parse(JSON.stringify(sourceInfo));
+  const customSectionMultiplier = customSectionSpeedMultiplier != null ? customSectionSpeedMultiplier : 1;
+
+  const buildEntry = (index) => {
+    if (index === 0) {
+      const firstEntry = sourceInfo[0] || infoBak[0];
+      return {
+        bpm: customStartBpm ?? firstEntry?.bpm ?? 120,
+        beats: firstEntry?.beats ?? 0.5
+      };
+    }
+
+    const sourceEntry = sourceInfo[index % sourceInfo.length] || infoBak[index - 1];
+    const beats = sourceEntry?.beats ?? 0.5;
+    const sectionTps = sourceEntry?.bpm != null
+      ? calculateTpsFromBpm(sourceEntry.bpm, beats)
+      : calculateTpsFromBpm(infoBak[index - 1]?.bpm ?? 120, beats);
+    const effectiveTps = customSectionMultiplier !== 1 ? sectionTps * customSectionMultiplier : sectionTps;
+    return {
+      bpm: Math.trunc(calculateBpmFromTps(effectiveTps, beats)),
+      beats
+    };
+  };
+
+  if (infoBak.length > 0) {
+    infoBak[0] = buildEntry(0);
+    for (let index = 1; index < infoBak.length; index++) {
+      infoBak[index] = buildEntry(index);
+    }
+  }
+
   return function(index = 0) {
     while (index >= infoBak.length) {
       const currentIndex = infoBak.length;
-      const { bpm: lastBpm, beats: lastBeats } = infoBak[currentIndex - 1];
+      const previousEntry = infoBak[currentIndex - 1];
+      const { bpm: lastBpm, beats: lastBeats } = previousEntry || { bpm: 120, beats: 0.5 };
       const currentBeatsValue = sourceInfo[currentIndex % sourceInfo.length].beats;
       const loopTimes = Math.floor(currentIndex / sourceInfo.length);
-      const newBpm = getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes);
+      let newBpm = getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes);
+      if (currentIndex > 0 && customSectionMultiplier !== 1) {
+        const originalTps = calculateTpsFromBpm(newBpm, currentBeatsValue);
+        const effectiveTps = originalTps * customSectionMultiplier;
+        newBpm = Math.trunc(calculateBpmFromTps(effectiveTps, currentBeatsValue));
+      }
       infoBak[currentIndex] = { bpm: newBpm, beats: currentBeatsValue };
     }
     return infoBak[index];
   };
 }
 
+function getRuntimeSpeed(index) {
+  if (customStartingSpeed > 0 && !isChallengeMode) {
+    const baseSpeed = getSpeed(index);
+    const customStartTps = (customStartingSpeed + 1);
+    const sectionIndex = Math.max(0, index);
+    const forcedTps = customStartTps + (sectionIndex * 0.5);
+    return {
+      bpm: Math.trunc(calculateBpmFromTps(forcedTps, baseSpeed.beats)),
+      beats: baseSpeed.beats
+    };
+  }
+  return getSpeed(index);
+}
+
 function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
   const tpm = lastBpm / lastBeats;
   const effectiveLoopTimes = isChallengeMode && loopTimes > 1 ? 1 : loopTimes;
+
+  if (customStartingSpeed > 0 && !isChallengeMode) {
+    const customStartTps = (customStartingSpeed + 1);
+    const sectionIndex = loopTimes * 0 + 1;
+    const forcedTps = customStartTps + ((sectionIndex - 1) * 0.5);
+    return Math.trunc(calculateBpmFromTps(forcedTps, currentBeatsValue));
+  }
+
   const constant = effectiveLoopTimes < 3 ? 100 : 130;
   const factor = Math.max(1.3 - (tpm - constant) * 0.001, 1.04);
   return Math.trunc(factor * tpm * currentBeatsValue);
+}
+
+function calculateBpmFromTps(tps, beats) {
+  return Math.round(tps * beats * 60);
+}
+
+function calculateTpsFromBpm(bpm, beats) {
+  return bpm / beats / 60;
 }
 
 function ensureAudioEngine() {
@@ -1192,6 +1265,44 @@ function loadSettings() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
   if (playerNameText) playerNameText.textContent = playerName;
+  updateTpsDisplayColor();
+}
+
+function updateTpsDisplayColor() {
+  const displays = [tpsDisplayNormal, tpsDisplayChallenge].filter(Boolean);
+  const hasCustomSpeed = customStartingSpeed > 0;
+  const hasAutoplay = autoplayEnabled;
+  let colorClass = 'text-[#ff6b6b]';
+
+  if (hasCustomSpeed && hasAutoplay) {
+    colorClass = 'text-yellow-100';
+  } else if (hasCustomSpeed) {
+    colorClass = 'text-yellow-300';
+  } else if (hasAutoplay) {
+    colorClass = 'text-white';
+  }
+
+  displays.forEach((display) => {
+    display.classList.remove('text-[#ff6b6b]', 'text-yellow-300', 'text-white', 'text-yellow-100');
+    display.classList.add(colorClass);
+  });
+}
+
+function updateSettingsUI() {
+  if (customSpeedInput) {
+    customSpeedInput.value = customStartingSpeed;
+    if (customStartingSpeed === 0) {
+      customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
+      customSpeedDisplay.classList.remove('text-indigo-600');
+    } else {
+      const tps = customStartingSpeed + 1;
+      customSpeedDisplay.textContent = `${tps} t/s`;
+      customSpeedDisplay.classList.add('text-indigo-600');
+    }
+  }
+  if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
+  if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  updateTpsDisplayColor();
 }
 
 function saveSettingsToStorage() {
@@ -1203,6 +1314,11 @@ function saveSettingsToStorage() {
     reviveSlowdownEnabled = reviveSlowdownToggle.checked;
     localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
   }
+  if (customSpeedInput) {
+    customStartingSpeed = parseInt(customSpeedInput.value, 10);
+    localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
+  }
+  updateTpsDisplayColor();
 }
 
 function parseMusicCsv(csvText) {
@@ -1269,9 +1385,71 @@ function populateMusicSelect() {
     const firstSection = song.sections[1] || Object.values(song.sections)[0];
     const option = document.createElement('option');
     option.value = String(song.mid);
-    option.textContent = `${song.musicJson} (${song.musician}) - ${firstSection ? firstSection.bpm : 120} BPM`;
+    const localizedSongName = i18n ? i18n.getSongName(song.musicJson) : song.musicJson;
+    const localizedArtistName = i18n ? i18n.getArtistName(song.musician) : song.musician;
+    option.textContent = `${localizedSongName} (${localizedArtistName}) - ${firstSection ? firstSection.bpm : 120} BPM`;
     pt2MusicSelect.appendChild(option);
   });
+}
+
+function createCustomSongCard() {
+  const card = document.createElement('div');
+  card.className = 'song-card custom-song-card';
+  
+  if (customSongData && customSongLabel) {
+    // Display loaded custom song
+    card.innerHTML = `
+      <div class="song-card-icon ranked">
+        <svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M50 4 C54 4 56 8 58 10 C61 7 65 6 68 8 C71 10 70 14 71 17 C75 16 79 17 81 20 C83 23 81 27 80 30 C84 30 87 32 88 36 C89 40 86 43 84 46 C88 47 90 50 90 50 C90 50 88 53 84 54 C86 57 89 60 88 64 C87 68 84 70 80 70 C81 73 83 77 81 80 C79 83 75 84 71 83 C70 86 71 90 68 92 C65 94 61 93 58 90 C56 92 54 96 50 96 C46 96 44 92 42 90 C39 93 35 94 32 92 C29 90 30 86 29 83 C25 84 21 83 19 80 C17 77 19 73 20 70 C16 70 13 68 12 64 C11 60 14 57 16 54 C12 53 10 50 10 50 C10 50 12 47 16 46 C14 43 11 40 12 36 C13 32 16 30 20 30 C18 27 16 23 18 20 C20 17 24 16 28 17 C29 14 28 10 31 8 C34 6 38 7 41 10 C43 8 46 4 50 4 Z"/><circle cx="50" cy="50" r="22" fill="white" opacity="0.25"/></svg>
+        <div class="rank-number" style="color: #e879f9;">0</div>
+      </div>
+      <div class="song-card-content">
+        <div class="song-card-title" style="color: #e879f9;">Custom Song</div>
+        <div class="song-card-artist">${customSongLabel}</div>
+        <div class="song-card-progress"></div>
+      </div>
+      <div class="song-card-action flex items-center gap-2">
+        <button class="btn-load">Load</button>
+        <button class="btn-play">Play</button>
+      </div>
+    `;
+
+    const playBtn = card.querySelector('.btn-play');
+    playBtn.addEventListener('click', () => {
+      if (customSongData) {
+        loadSongFromText(JSON.stringify(customSongData), customSongLabel);
+      }
+    });
+
+    const loadBtn = card.querySelector('.btn-load');
+    loadBtn.addEventListener('click', () => {
+      customSongUpload?.click();
+    });
+  } else {
+    // Display upload prompt
+    card.innerHTML = `
+      <div class="song-card-icon ranked" style="opacity: 0.5;">
+        <svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M50 4 C54 4 56 8 58 10 C61 7 65 6 68 8 C71 10 70 14 71 17 C75 16 79 17 81 20 C83 23 81 27 80 30 C84 30 87 32 88 36 C89 40 86 43 84 46 C88 47 90 50 90 50 C90 50 88 53 84 54 C86 57 89 60 88 64 C87 68 84 70 80 70 C81 73 83 77 81 80 C79 83 75 84 71 83 C70 86 71 90 68 92 C65 94 61 93 58 90 C56 92 54 96 50 96 C46 96 44 92 42 90 C39 93 35 94 32 92 C29 90 30 86 29 83 C25 84 21 83 19 80 C17 77 19 73 20 70 C16 70 13 68 12 64 C11 60 14 57 16 54 C12 53 10 50 10 50 C10 50 12 47 16 46 C14 43 11 40 12 36 C13 32 16 30 20 30 C18 27 16 23 18 20 C20 17 24 16 28 17 C29 14 28 10 31 8 C34 6 38 7 41 10 C43 8 46 4 50 4 Z"/><circle cx="50" cy="50" r="22" fill="white" opacity="0.25"/></svg>
+        <div class="rank-number" style="color: #e879f9;">0</div>
+      </div>
+      <div class="song-card-content">
+        <div class="song-card-title" style="color: #a78bfa;">Upload Custom Song</div>
+        <div class="song-card-artist">No song loaded</div>
+        <div class="song-card-progress"></div>
+      </div>
+      <div class="song-card-action flex items-center gap-2">
+        <button class="btn-load">Load</button>
+        <button class="btn-play" disabled style="opacity: 0.5; cursor: not-allowed;">Play</button>
+      </div>
+    `;
+
+    const loadBtn = card.querySelector('.btn-load');
+    loadBtn.addEventListener('click', () => {
+      customSongUpload?.click();
+    });
+  }
+
+  return card;
 }
 
 function createSongCard(song, isFavouriteView = false) {
@@ -1280,6 +1458,8 @@ function createSongCard(song, isFavouriteView = false) {
   const stage = getStarAndCrownState(bestLevel - 1);
   const isRanked = stage.stars >= 3 || stage.crowns > 0;
   const isFavourite = favouriteSongs.has(String(song.mid));
+  const localizedSongName = i18n ? i18n.getSongName(song.musicJson) : song.musicJson;
+  const localizedArtistName = i18n ? i18n.getArtistName(song.musician) : song.musician;
 
   let progressHTML = '';
   if (stage.crowns > 0) {
@@ -1303,8 +1483,8 @@ function createSongCard(song, isFavouriteView = false) {
       }
     </div>
     <div class="song-card-content">
-      <div class="song-card-title">${song.musicJson}</div>
-      <div class="song-card-artist">${song.musician}</div>
+      <div class="song-card-title">${localizedSongName}</div>
+      <div class="song-card-artist">${localizedArtistName}</div>
       <div class="song-card-progress">
         ${progressHTML}
       </div>
@@ -1360,9 +1540,10 @@ function createChallengeCard(challengeData) {
 
   const card = document.createElement('div');
   card.className = `song-card challenge-card`;
+  const localizedSongName = i18n ? i18n.getSongName(challengeData.musicJson) : challengeData.musicJson;
   card.innerHTML = `
     <div class="song-card-content">
-      <div class="song-card-title">${challengeData.musicJson}</div>
+      <div class="song-card-title">${localizedSongName}</div>
       <div class="song-card-progress">
         ${rewardMarkup}
       </div>
@@ -1388,6 +1569,10 @@ function renderSongList(searchQuery = '') {
   if (!songListContainer) return;
   songListContainer.innerHTML = '';
 
+  // Always add custom song slot as song #0 - either with loaded song or as upload placeholder
+  const customCard = createCustomSongCard();
+  songListContainer.insertBefore(customCard, songListContainer.firstChild);
+
   // Sort by Mid in ascending order and exclude challenge songs from the normal list
   let sortedSongs = [...musicCsvData]
     .filter(song => !isChallengeSong(song))
@@ -1396,10 +1581,17 @@ function renderSongList(searchQuery = '') {
   // Filter songs based on search query
   if (searchQuery.trim()) {
     const query = searchQuery.toLowerCase().trim();
-    sortedSongs = sortedSongs.filter(song =>
-      song.musicJson.toLowerCase().includes(query) ||
-      song.musician.toLowerCase().includes(query)
-    );
+    sortedSongs = sortedSongs.filter(song => {
+      const originalName = song.musicJson.toLowerCase();
+      const localizedSongName = i18n ? i18n.getSongName(song.musicJson).toLowerCase() : originalName;
+      const musicianName = song.musician.toLowerCase();
+      const localizedArtistName = i18n ? i18n.getArtistName(song.musician).toLowerCase() : musicianName;
+      
+      return originalName.includes(query) ||
+             localizedSongName.includes(query) ||
+             musicianName.includes(query) ||
+             localizedArtistName.includes(query);
+    });
   }
 
   sortedSongs.forEach((song, index) => {
@@ -1431,6 +1623,10 @@ function renderChallenges() {
 
 async function loadMusicCsv() {
   try {
+    if (typeof i18n !== 'undefined' && i18n.loadTranslations) {
+      await i18n.loadTranslations();
+    }
+
     const response = await fetch('music_json.csv');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
@@ -1598,16 +1794,29 @@ function loadSongObject(data, label) {
     info.push({ bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats), beats: sectionBaseBeats, id: music.id });
   }
 
-  getSpeed = speedGen(info);
-  currentBpm = info[0].bpm;
-  currentBeats = info[0].beats;
+  // Calculate custom BPM if custom starting speed is set
+  let customBpmOverride = null;
+  let customSectionSpeedMultiplier = null;
+  if (customStartingSpeed > 0 && !isChallengeMode) {
+    const customTps = customStartingSpeed + 1; // value 1-16 maps to 2-18 t/s
+    const originalFirstSectionTps = info[0] ? calculateTpsFromBpm(info[0].bpm, info[0].beats) : 0;
+    customBpmOverride = calculateBpmFromTps(customTps, info[0].beats);
+    if (originalFirstSectionTps > 0) {
+      customSectionSpeedMultiplier = customTps / originalFirstSectionTps;
+    }
+  }
+
+  getSpeed = speedGen(info, customBpmOverride, customSectionSpeedMultiplier);
+  currentBpm = getSpeed(0).bpm;
+  currentBeats = getSpeed(0).beats;
   if (isChallengeMode) {
     challengeBaseBpm = currentBpm;
     challengeBaseBeats = currentBeats;
   }
   songName = label;
   isGameLoaded = true;
-  setSongStatus(`Loaded ${label} with ${sheet.length} sections`);
+  const localizedSongName = i18n ? i18n.getSongName(label) : label;
+  setSongStatus(`Loaded ${localizedSongName} with ${sheet.length} sections`);
   computeSectionScoreThresholds();
 }
 
@@ -1684,10 +1893,11 @@ async function loadSongFromData(songData) {
       throw new Error('No matching music sections found');
     }
 
+    const localizedArtistName = i18n ? i18n.getArtistName(songData.musician) : songData.musician;
     loadSongObject({
       baseBpm: mergedMusics[0].bpm,
       musics: mergedMusics
-    }, `${songData.musicJson} (${songData.musician})`);
+    }, `${songData.musicJson} (${localizedArtistName})`);
 
     // Show game interface but don't start game (wait for START tile)
     songListScreen.classList.add('hidden');
@@ -1715,7 +1925,8 @@ async function loadSongFromData(songData) {
     }
   } catch (err) {
     console.error(err);
-    setSongStatus(`Failed to load ${songData.musicJson}: ${err.message}`);
+    const localizedSongName = i18n ? i18n.getSongName(songData.musicJson) : songData.musicJson;
+    setSongStatus(`Failed to load ${localizedSongName}: ${err.message}`);
   }
 }
 
@@ -2199,7 +2410,7 @@ async function finishRun(showLibrary = false) {
     if (finalCrownsEl) finalCrownsEl.innerHTML = rewardState && rewardState.crowns > 0 ? renderRewardIcons(rewardState, 'w-8 h-8 mr-1') : '';
     document.getElementById('final-grade').classList.add('hidden');
 
-    if (selectedSongData && !autoplayEnabled) {
+    if (selectedSongData && !autoplayEnabled && customStartingSpeed === 0) {
       const key = `opentile_challenge_best_tps_${selectedSongData.mid}`;
       const bestTps = parseFloat(localStorage.getItem(key) || '0', 10);
       if (finalTps > bestTps) {
@@ -2221,7 +2432,7 @@ async function finishRun(showLibrary = false) {
     const finalCrownsEl = document.getElementById('final-crowns');
     document.getElementById('final-score').textContent = String(classicTappedTiles);
 
-    if (selectedSongData && !autoplayEnabled) {
+    if (selectedSongData && !autoplayEnabled && customStartingSpeed === 0) {
       const key = `opentile_classic_challenge_best_tiles_${selectedSongData.mid}`;
       const bestTiles = parseFloat(localStorage.getItem(key) || '0', 10);
       if (classicTappedTiles > bestTiles) {
@@ -2246,7 +2457,7 @@ async function finishRun(showLibrary = false) {
     document.getElementById('final-crowns').innerHTML = crownsDisplay.innerHTML;
     document.getElementById('final-grade').classList.add('hidden');
 
-    if (selectedSongData && !autoplayEnabled) {
+    if (selectedSongData && !autoplayEnabled && customStartingSpeed === 0) {
       const key = `opentile_highscore_level_${selectedSongData.mid}`;
       const bestLevel = parseInt(localStorage.getItem(key) || '0', 10);
       // Save the higher of the current run's award level vs the stored best.
@@ -2318,9 +2529,11 @@ async function finishRun(showLibrary = false) {
       if (selectedSongData) {
         const num = selectedSongData.id ?? selectedSongData.mid ?? '';
         const shouldPrefixTitle = !isChallengeMode && !isClassicMode;
-        const displayTitle = `${shouldPrefixTitle && num ? String(num) + '. ' : ''}${selectedSongData.musicJson}`;
+        const localizedSongName = i18n ? i18n.getSongName(selectedSongData.musicJson) : selectedSongData.musicJson;
+        const localizedArtistName = i18n ? i18n.getArtistName(selectedSongData.musician) : selectedSongData.musician;
+        const displayTitle = `${shouldPrefixTitle && num ? String(num) + '. ' : ''}${localizedSongName}`;
         if (titleEl) titleEl.textContent = displayTitle;
-        if (artistEl) artistEl.textContent = `${selectedSongData.musician || ''}`;
+        if (artistEl) artistEl.textContent = localizedArtistName || '';
       }
 
       if (isChallengeMode) {
@@ -2676,7 +2889,7 @@ function maybeGrantNormalSongAward(tile) {
   tile.awardGranted = true;
   // Persist the score at which this level was reached so the revive modal
   // can display the score gap to the next award tier.
-  if (selectedSongData) {
+  if (selectedSongData && customStartingSpeed === 0) {
     const mid = String(selectedSongData.mid || selectedSongData.id || '');
     if (mid) {
       const scoreAtLevelKey = `opentile_score_at_level_${mid}_${normalSongAwardLevel}`;
@@ -3010,6 +3223,7 @@ function updateNormalSongAwardDisplay() {
 }
 
 function updateHUD() {
+  updateTpsDisplayColor();
   const { bpm: effectiveBpm, beats: effectiveBeats } = getEffectiveSpeedState();
   // Use the cached active combo tile (set once per engine frame) for TPS display.
   const displayBpm = (preslowdownBpm > 0 && cachedActiveComboTile) ? preslowdownBpm : effectiveBpm;
@@ -3315,7 +3529,7 @@ function updateEngineFrame(now) {
       nextBpm = currentBpm;
       nextBeats = currentBeats;
     } else {
-      const baseSpeed = getSpeed(speedLevel - 1);
+      const baseSpeed = getRuntimeSpeed(speedLevel - 1);
       nextBpm = baseSpeed.bpm;
       nextBeats = baseSpeed.beats;
     }
@@ -4118,6 +4332,17 @@ function toggleFavourite(songId) {
   saveFavourites();
 }
 
+function getLocalizedSongDisplayName(song) {
+  if (!song) return '';
+
+  const songKey = song.musicJson || song.title || '';
+  if (typeof i18n !== 'undefined' && i18n.getSongName) {
+    return i18n.getSongName(songKey, songKey);
+  }
+
+  return songKey;
+}
+
 function renderHomeScreen() {
   // Render welcome back section
   let songToDisplay = null;
@@ -4132,12 +4357,22 @@ function renderHomeScreen() {
   }
   
   if (songToDisplay) {
-    welcomeSongTitle.textContent = `${songToDisplay.id}. ${songToDisplay.song_name || songToDisplay.musicJson || 'Unknown Song'}`;
-    welcomePlayBtn.textContent = 'Play';
+    const localizedSongName = getLocalizedSongDisplayName(songToDisplay);
+    welcomeSongTitle.textContent = `${songToDisplay.id}. ${localizedSongName}`;
+    welcomePlayBtn.textContent = i18n ? i18n.t('btn_play') : 'Play';
     welcomePlayBtn.onclick = () => startSongTransition(songToDisplay);
   } else {
-    welcomeSongTitle.textContent = 'No song available';
-    welcomePlayBtn.textContent = 'Play';
+    // Show "Loading songs..." if music data hasn't loaded yet
+    if (musicCsvData.length === 0) {
+      welcomeSongTitle.textContent = 'Loading songs...';
+    } else if (!lastPlayedSong) {
+      // Only show "No song played yet" if songs are loaded but none have been played
+      welcomeSongTitle.textContent = i18n ? i18n.t('msg_no_song_played') : 'No song played yet';
+    } else {
+      // Last played song exists but wasn't found in data (maybe deleted)
+      welcomeSongTitle.textContent = 'Song not found';
+    }
+    welcomePlayBtn.textContent = i18n ? i18n.t('btn_play') : 'Play';
     welcomePlayBtn.onclick = null;
   }
 
@@ -4146,6 +4381,11 @@ function renderHomeScreen() {
   
   // Sync top dock data (includes player name sync)
   syncTopDockData();
+  
+  // Update translations for dynamic content
+  if (typeof i18n !== 'undefined' && i18n.updateUITranslations) {
+    i18n.updateUITranslations();
+  }
   
   // Setup scroll rotation
   setupDiscRotation();
@@ -4157,19 +4397,50 @@ let lastScrollY = 0;
 function setupDiscRotation() {
   const homeContentContainer = document.getElementById('home-content-container');
   const welcomeDisc = document.getElementById('welcome-disc');
-  
-  if (!homeContentContainer || !welcomeDisc) return;
-  
-  homeContentContainer.addEventListener('scroll', () => {
+  const welcomeCard = document.getElementById('welcome-card');
+  const welcomeActions = document.getElementById('welcome-actions');
+  const welcomeSongTitle = document.getElementById('welcome-song-title');
+  const welcomePlayBtn = document.getElementById('welcome-play-btn');
+
+  if (!homeContentContainer || !welcomeDisc || !welcomeCard || !welcomeActions || !welcomeSongTitle || !welcomePlayBtn) return;
+
+  const updateWelcomeCardLayout = (scrollTop) => {
+    const stickyStart = 0;
+    const collapseRange = 220;
+    const progress = Math.max(0, Math.min(1, (scrollTop - stickyStart) / collapseRange));
+
+    const cardPadding = 1.5 - progress * 0.3;
+    const cardMinHeight = 25 - progress * 4;
+    const titleSize = 2 - progress * 0.6;
+    const buttonPaddingY = 0.75 - progress * 0.2;
+    const buttonPaddingX = 2 - progress * 0.5;
+    const buttonFontSize = 1 - progress * 0.15;
+
+    welcomeCard.style.setProperty('--welcome-card-padding', `${cardPadding.toFixed(2)}rem`);
+    welcomeCard.style.setProperty('--welcome-card-min-height', `${cardMinHeight.toFixed(2)}rem`);
+    welcomeActions.style.setProperty('--welcome-title-size', `${titleSize.toFixed(2)}rem`);
+    welcomeActions.style.setProperty('--welcome-button-padding', `${buttonPaddingY.toFixed(2)}rem ${buttonPaddingX.toFixed(2)}rem`);
+    welcomeActions.style.setProperty('--welcome-button-font-size', `${buttonFontSize.toFixed(2)}rem`);
+  };
+
+  const syncScrollState = () => {
     const currentScrollY = homeContentContainer.scrollTop;
     const scrollDelta = currentScrollY - lastScrollY;
-    
-    // Rotate based on scroll direction
+
     discRotation += scrollDelta * 0.5;
     welcomeDisc.style.transform = `rotate(${discRotation}deg)`;
-    
+
+    updateWelcomeCardLayout(currentScrollY);
+
+    const actionsTop = welcomeActions.getBoundingClientRect().top;
+    const containerTop = homeContentContainer.getBoundingClientRect().top;
+    welcomeActions.classList.toggle('is-stuck', actionsTop <= containerTop + 1);
+
     lastScrollY = currentScrollY;
-  });
+  };
+
+  homeContentContainer.addEventListener('scroll', syncScrollState, { passive: true });
+  updateWelcomeCardLayout(homeContentContainer.scrollTop);
 }
 
 function renderFavouriteSongs() {
@@ -4178,7 +4449,8 @@ function renderFavouriteSongs() {
   const favouriteSongsList = musicCsvData.filter(song => favouriteSongs.has(String(song.mid)));
   
   if (favouriteSongsList.length === 0) {
-    favouriteSongsContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>';
+    const noFavouritesMsg = i18n ? i18n.t('msg_no_favourites') : 'No favourite songs yet. Tap the heart on any song to add it here!';
+    favouriteSongsContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${noFavouritesMsg}</p>`;
     return;
   }
 
@@ -4229,6 +4501,7 @@ function setDockView(tab) {
     updateDockSelection('challenges');
     renderChallenges();
   } else if (tab === 'settings') {
+    updateSettingsUI();
     settingsScreen.classList.remove('hidden');
     updateDockSelection('settings');
   }
@@ -4334,11 +4607,13 @@ document.getElementById('song-library-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('song-list-settings-btn')?.addEventListener('click', () => {
+  updateSettingsUI();
   settingsScreen.classList.remove('hidden');
   playMenuLoopCue();
 });
 
 document.getElementById('settings-btn')?.addEventListener('click', () => {
+  updateSettingsUI();
   settingsScreen.classList.remove('hidden');
   playMenuLoopCue();
 });
@@ -4487,6 +4762,45 @@ pt2JsonInput?.addEventListener('change', async (event) => {
     loadSongFromText(text, file.name);
   } catch (err) {
     setSongStatus(`Failed to load ${file.name}: ${err.message}`);
+  }
+});
+
+customSongUpload?.addEventListener('change', async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    customSongData = parsed;
+    customSongLabel = file.name.replace(/\.json$/i, '');
+    customSongStatus.textContent = `✓ Loaded: ${customSongLabel}`;
+    customSongStatus.classList.add('text-green-600');
+    setSongStatus(`Custom song loaded: ${customSongLabel}`);
+    
+    // Update the custom song card in the DOM
+    const existingCard = document.querySelector('.custom-song-card');
+    if (existingCard) {
+      const newCard = createCustomSongCard();
+      existingCard.replaceWith(newCard);
+    }
+  } catch (err) {
+    customSongData = null;
+    customSongLabel = '';
+    customSongStatus.textContent = `✗ Failed to load: ${err.message}`;
+    customSongStatus.classList.remove('text-green-600');
+    setSongStatus(`Failed to load custom song: ${err.message}`);
+  }
+});
+
+customSpeedInput?.addEventListener('input', (event) => {
+  const value = parseInt(event.target.value, 10);
+  if (value === 0) {
+    customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
+    customSpeedDisplay.classList.remove('text-indigo-600');
+  } else {
+    const tps = value + 1; // value 1-16 maps to 2-18 t/s
+    customSpeedDisplay.textContent = `${tps} t/s`;
+    customSpeedDisplay.classList.add('text-indigo-600');
   }
 });
 
@@ -4705,4 +5019,20 @@ document.addEventListener('click', (event) => {
 preloadSprites();
 loadMusicCsv();
 initUi();
+
+// Listen for language changes to update song displays (after functions are defined)
+document.addEventListener('languageChanged', () => {
+  if (typeof renderSongList === 'function') renderSongList();
+  if (typeof renderHomeScreen === 'function') renderHomeScreen();
+  if (typeof renderFavouriteSongs === 'function') renderFavouriteSongs();
+  if (typeof populateMusicSelect === 'function') populateMusicSelect();
+});
+
+// Listen for language changes to update song displays
+document.addEventListener('languageChanged', () => {
+  renderSongList();
+  renderHomeScreen();
+  renderFavouriteSongs();
+  populateMusicSelect();
+});
 rafId = requestAnimationFrame(frame);

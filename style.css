@@ -12,6 +12,7 @@
   --font-game: 'Futura Condensed', 'Fira Sans Condensed', sans-serif;
   --font-ui: 'Futura Condensed', 'Outfit', sans-serif;
   --top-bar-offset: 4rem;
+  --dock-offset: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
 body {
@@ -173,6 +174,10 @@ body {
   #shared-dock > div {
     padding: 4.8rem !important;
   }
+
+  :root {
+    --dock-offset: calc(15rem + env(safe-area-inset-bottom));
+  }
 }
 
 /* Smaller score on mobile and PC */
@@ -271,6 +276,30 @@ body {
 #gameover-screen,
 #settings-screen {
   padding-top: var(--top-bar-offset);
+}
+
+/* Reserve space above the shared bottom dock on tab screens */
+#home-screen,
+#song-list-screen,
+#challenges-screen,
+#settings-screen {
+  padding-bottom: var(--dock-offset);
+  box-sizing: border-box;
+}
+
+#home-content-container,
+#song-list-container,
+#challenges-container,
+#settings-screen .settings-scroll-panel {
+  padding-bottom: 1rem;
+}
+
+#song-list-container {
+  padding-bottom: 4.5rem;
+}
+
+#song-search-bar {
+  bottom: calc(var(--dock-offset) + 0.75rem);
 }
 
 .screen-top-bar-points {
@@ -2141,6 +2170,32 @@ body {
   transform: scale(0.95);
 }
 
+.btn-load {
+  background: #6366f1;
+  /* indigo */
+  color: white;
+  font-weight: bold;
+  font-family: var(--font-ui);
+  font-size: 1.1rem;
+  padding: 8px 32px;
+  border-radius: 9999px;
+  /* pill shape */
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+  transition: transform 0.1s;
+}
+
+.btn-load:active {
+  transform: scale(0.95);
+}
+
+.btn-load:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Header bar styling for song list screen */
 #song-list-screen > div:first-child {
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
@@ -2256,10 +2311,10 @@ body {
 #welcome-disc {
   background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
   border: none;
-  transition: transform 0.1s ease-out;
-  width: clamp(8rem, 46vw, 14rem) !important;
+  transition: transform 0.1s ease-out, width 0.2s ease, height 0.2s ease;
+  width: var(--welcome-disc-size) !important;
+  height: var(--welcome-disc-size) !important;
   max-width: 100%;
-  height: auto !important;
   aspect-ratio: 1 / 1 !important;
   border-radius: 50% !important;
   flex-shrink: 0;
@@ -2269,15 +2324,56 @@ body {
 }
 
 #welcome-card {
+  --welcome-card-padding: 1.5rem;
+  --welcome-card-min-height: 25rem;
+  --welcome-disc-size: clamp(8rem, 46vw, 14rem);
+  position: relative;
+  z-index: 1;
   text-shadow: none;
-  overflow: hidden;
-  padding: 1.5rem;
+  overflow: visible;
+  box-sizing: border-box;
+  padding: var(--welcome-card-padding) var(--welcome-card-padding) 0;
+  min-height: var(--welcome-card-min-height);
+  margin-bottom: -1rem;
+  transition: padding 0.2s ease, min-height 0.2s ease, box-shadow 0.2s ease;
+}
+
+#welcome-actions {
+  --welcome-title-size: 2rem;
+  --welcome-button-padding: 0.75rem 2rem;
+  --welcome-button-font-size: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-top: 1rem;
+  padding: 0.5rem 0 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: padding 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#welcome-actions.is-stuck {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 @media (max-width: 640px) {
   #welcome-card {
-    padding: 1rem;
+    --welcome-card-padding: 1rem;
     min-height: auto;
+    margin-bottom: -0.75rem;
+  }
+
+  #welcome-actions {
+    margin-top: 0.75rem;
   }
 
   #welcome-disc {
@@ -2290,14 +2386,18 @@ body {
 }
 
 #welcome-song-title {
-  font-size: 2rem;
+  font-size: var(--welcome-title-size);
   font-weight: 800;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: font-size 0.2s ease;
 }
 
 #welcome-play-btn {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.3);
+  padding: var(--welcome-button-padding);
+  font-size: var(--welcome-button-font-size);
+  transition: padding 0.2s ease, font-size 0.2s ease, transform 0.2s ease;
 }
 
 #welcome-play-btn:hover {

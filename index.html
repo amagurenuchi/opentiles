@@ -9,6 +9,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Custom CSS for fonts and animations -->
   <link rel="stylesheet" href="style.css">
+  <!-- Internationalization -->
+  <script src="i18n.js"></script>
   <style>
     /* Prevent default touch actions like double-tap to zoom or scrolling on mobile game board */
     #game-board {
@@ -98,43 +100,52 @@
       <!-- Start Screen -->
       <div id="start-screen"
         class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
-        <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game">
+        <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 text-center font-game" data-i18n="game_title">
           RAINING TILES
         </h1>
-        <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs">Tap the black tiles in order. Don't touch
+        <p class="text-gray-500 text-xs sm:text-sm mb-8 text-center max-w-xs" data-i18n="game_instructions">Tap the black tiles in order. Don't touch
           any white space!</p>
 
         <!-- Song Import -->
         <div class="w-full max-w-xs mb-5 flex flex-col gap-2">
-          <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Piano Tiles 2 JSON</label>
+          <div>
+            <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_custom_song">Custom Song</label>
+            <input id="custom-song-upload" type="file" accept=".json,application/json"
+              class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-indigo-700 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
+            <div id="custom-song-status" class="text-[10px] leading-snug text-gray-500 px-1 mt-1" data-i18n="status_no_custom_song">
+              No custom song loaded.
+            </div>
+          </div>
+
+          <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_pt2_json">Piano Tiles 2 JSON</label>
           <input id="pt2-json-input" type="file" accept=".json,application/json"
             class="block w-full text-xs text-gray-600 file:mr-3 file:rounded-xl file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-gray-800 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2">
           <div class="flex flex-col gap-1">
             <label for="pt2-music-select"
-              class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Music Entry</label>
+              class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_music_entry">Music Entry</label>
             <select id="pt2-music-select"
               class="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
-              <option value="">Load a PT2 JSON first</option>
+              <option value="" data-i18n="placeholder_load_pt2">Load a PT2 JSON first</option>
             </select>
           </div>
           <div class="flex gap-2">
             <button id="load-sample-json-btn"
-              class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-all active:scale-[0.98]">
+              class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs transition-all active:scale-[0.98]" data-i18n="btn_load_horseman">
               Load Horseman.json
             </button>
             <button id="clear-song-btn"
-              class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]">
+              class="flex-1 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold text-xs transition-all active:scale-[0.98]" data-i18n="btn_clear_song">
               Clear Song
             </button>
           </div>
-          <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1">
+          <div id="song-status" class="text-[10px] leading-snug text-gray-500 px-1" data-i18n="status_no_pt2">
             No PT2 file loaded.
           </div>
         </div>
 
         <!-- High Score Info -->
         <div class="mb-6 flex gap-4 text-xs text-gray-500">
-          <span>Best: <strong id="best-display" class="text-gray-800">0.000 t/s</strong></span>
+          <span data-i18n="label_best">Best:</span> <strong id="best-display" class="text-gray-800">0.000 t/s</strong>
         </div>
 
         <!-- Play Button -->
@@ -145,7 +156,7 @@
               stroke="currentColor" class="w-5 h-5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
-            Song Library
+            <span data-i18n="btn_song_library">Song Library</span>
           </button>
         </div>
 
@@ -168,37 +179,37 @@
         <div class="h-full flex flex-col bg-white/95 backdrop-blur-md overflow-hidden">
           <div class="flex items-center justify-between px-4 py-4 border-b border-gray-200/80 bg-white/80 backdrop-blur-sm">
             <div>
-              <h2 class="text-xl font-black tracking-tight text-gray-900">Settings</h2>
-              <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500">Preferences</p>
+              <h2 class="text-xl font-black tracking-tight text-gray-900" data-i18n="title_settings">Settings</h2>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500" data-i18n="subtitle_preferences">Preferences</p>
             </div>
             <button id="save-settings-btn"
-              class="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]">
+              class="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]" data-i18n="btn_save">
               Save
             </button>
           </div>
 
-          <div class="flex-1 overflow-y-auto px-4 py-4 pb-32">
+          <div class="settings-scroll-panel flex-1 overflow-y-auto px-4 py-4">
             <div class="mx-auto flex w-full max-w-xs flex-col gap-6">
               <div>
-                <h3 class="mb-2 pl-1 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Keybinds</h3>
+                <h3 class="mb-2 pl-1 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400" data-i18n="section_keybinds">Keybinds</h3>
                 <div class="flex flex-col gap-2">
                   <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-                    <span class="text-xs font-medium text-gray-700">Col 1</span>
+                    <span class="text-xs font-medium text-gray-700" data-i18n="label_col_1">Col 1</span>
                     <button data-col-idx="0"
                       class="keybind-setter min-w-[50px] rounded-lg bg-gray-800 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-gray-700">D</button>
                   </div>
                   <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-                    <span class="text-xs font-medium text-gray-700">Col 2</span>
+                    <span class="text-xs font-medium text-gray-700" data-i18n="label_col_2">Col 2</span>
                     <button data-col-idx="1"
                       class="keybind-setter min-w-[50px] rounded-lg bg-gray-800 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-gray-700">F</button>
                   </div>
                   <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-                    <span class="text-xs font-medium text-gray-700">Col 3</span>
+                    <span class="text-xs font-medium text-gray-700" data-i18n="label_col_3">Col 3</span>
                     <button data-col-idx="2"
                       class="keybind-setter min-w-[50px] rounded-lg bg-gray-800 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-gray-700">J</button>
                   </div>
                   <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-                    <span class="text-xs font-medium text-gray-700">Col 4</span>
+                    <span class="text-xs font-medium text-gray-700" data-i18n="label_col_4">Col 4</span>
                     <button data-col-idx="3"
                       class="keybind-setter min-w-[50px] rounded-lg bg-gray-800 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-gray-700">K</button>
                   </div>
@@ -206,16 +217,41 @@
               </div>
 
               <div>
-                <h3 class="mb-2 pl-1 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Customize Speed</h3>
+                <h3 class="mb-2 pl-1 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400" data-i18n="section_customize_speed">Customize Speed</h3>
                 <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
                   <label class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-gray-600">Autoplay</span>
+                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-gray-600" data-i18n="label_autoplay">Autoplay</span>
                     <input id="settings-autoplay" type="checkbox" class="h-4 w-4 accent-indigo-600" checked>
                   </label>
                   <label class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-gray-600">Revive Slowdown</span>
+                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-gray-600" data-i18n="label_revive_slowdown">Revive Slowdown</span>
                     <input id="settings-revive-slowdown" type="checkbox" class="h-4 w-4 accent-indigo-600" checked>
                   </label>
+                  <label class="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-bold uppercase tracking-[0.2em] text-gray-600" data-i18n="label_custom_start_speed">Custom Start Speed</span>
+                      <span id="custom-speed-display" class="text-xs font-semibold text-indigo-600">Disabled</span>
+                    </div>
+                    <input id="settings-custom-speed" type="range" min="0" max="16" value="0" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    <div class="flex justify-between text-[9px] text-gray-500 px-1">
+                      <span data-i18n="label_disabled">Disabled</span>
+                      <span>6</span>
+                      <span>10</span>
+                      <span>13</span>
+                      <span data-i18n="label_tiles_per_sec">17 t/s</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <h3 class="mb-2 pl-1 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400" data-i18n="section_language">Language</h3>
+                <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <select id="language-selector" class="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -229,9 +265,9 @@
           <div class="screen-top-bar-left">
             <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
               <div class="screen-top-bar-profile-inner">
-                <span id="player-name-text" class="screen-top-bar-text font-bold text-sm">Player</span>
+                <span id="player-name-text" class="screen-top-bar-text font-bold text-sm" data-i18n="default_player_name">Player</span>
                 <div class="screen-top-bar-points">
-                  <span class="screen-top-bar-text text-[10px] font-semibold">P-Points</span>
+                  <span class="screen-top-bar-text text-[10px] font-semibold" data-i18n="label_p_points">P-Points</span>
                   <span id="p-points-display" class="screen-top-bar-text font-bold text-xl">5963</span>
                 </div>
               </div>
@@ -239,7 +275,7 @@
           </div>
 
           <div class="screen-top-bar-right">
-            <button type="button" class="screen-top-bar-box life-display-trigger" aria-label="Open energy supply">
+            <button type="button" class="screen-top-bar-box life-display-trigger" data-i18n-aria-label="aria_open_energy">
               <span class="life-display-icon">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
@@ -254,7 +290,7 @@
               </div>
             </button>
             <div class="screen-top-bar-box">
-              <img src="gameImage/crown.png" class="w-5 h-5" alt="Crown">
+              <img src="gameImage/crown.png" class="w-5 h-5" data-i18n-alt="alt_crown">
               <span id="total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
             </div>
             <div class="screen-top-bar-box">
@@ -268,11 +304,11 @@
       <!-- Game Over Screen -->
       <div id="gameover-screen"
         class="absolute inset-0 flex flex-col justify-center items-center p-6 bg-white/95 backdrop-blur-md z-30 hidden transition-all duration-300">
-        <h2 class="text-4xl font-black text-rose-600 tracking-tight mb-2 font-game">GAME OVER</h2>
-        <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center">Better luck next time!</p>
+        <h2 class="text-4xl font-black text-rose-600 tracking-tight mb-2 font-game" data-i18n="title_game_over">GAME OVER</h2>
+        <p class="text-gray-500 text-xs sm:text-sm mb-6 text-center" data-i18n="msg_better_luck">Better luck next time!</p>
 
         <div class="w-full max-w-xs bg-gray-50 border border-gray-200 p-4 rounded-2xl mb-8 flex flex-col items-center">
-          <span class="text-xs uppercase tracking-widest text-gray-400 mb-1">Final Score</span>
+          <span class="text-xs uppercase tracking-widest text-gray-400 mb-1" data-i18n="label_final_score">Final Score</span>
           <div class="flex items-center gap-2 mb-2">
             <span id="final-score" class="font-game text-5xl font-black text-[#ff6b6b]">0</span>
             <span id="final-grade"
@@ -287,7 +323,7 @@
 
         <div class="w-full max-w-xs flex flex-col gap-2">
           <button id="restart-btn"
-            class="w-full py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98]">
+            class="w-full py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-sm transition-all active:scale-[0.98]" data-i18n="btn_play_again">
             Play Again
           </button>
           <button id="home-btn"
@@ -355,10 +391,10 @@
 
       <!-- Pause Screen -->
       <div id="pause-screen" class="pause-screen hidden">
-        <h2 class="pause-screen-title">Game Paused</h2>
+        <h2 class="pause-screen-title" data-i18n="title_game_paused">Game Paused</h2>
         <div class="pause-screen-actions">
-          <button id="pause-exit-btn" class="pause-screen-btn" type="button">Quit</button>
-          <button id="pause-continue-btn" class="pause-screen-btn" type="button">Resume</button>
+          <button id="pause-exit-btn" class="pause-screen-btn" type="button" data-i18n="btn_quit">Quit</button>
+          <button id="pause-continue-btn" class="pause-screen-btn" type="button" data-i18n="btn_resume">Resume</button>
         </div>
       </div>
 
@@ -368,17 +404,17 @@
 
 
 
-        <div id="song-list-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0 pb-32">
+        <div id="song-list-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0">
           <!-- Song cards will be rendered here -->
         </div>
 
         <!-- Search Bar -->
-        <div class="absolute bottom-24 left-4 right-4 z-20">
+        <div id="song-search-bar" class="absolute left-4 right-4 z-20">
           <div class="bg-white/80 backdrop-blur-md rounded-2xl border border-white/50 shadow-lg flex items-center px-4 py-3">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-gray-400 mr-3">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
-            <input type="text" id="song-search-input" placeholder="Type to search..." class="flex-1 bg-transparent outline-none text-gray-700 placeholder-gray-400 text-sm">
+            <input type="text" id="song-search-input" data-i18n-placeholder="placeholder_search" class="flex-1 bg-transparent outline-none text-gray-700 placeholder-gray-400 text-sm">
           </div>
         </div>
       </div>
@@ -387,7 +423,7 @@
       <div id="challenges-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
         <!-- top bar moved to shared #shared-top-bar -->
 
-        <div id="challenges-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0 pb-32">
+        <div id="challenges-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative z-0">
           <!-- Challenge cards will be rendered here -->
         </div>
       </div>
@@ -396,34 +432,36 @@
       <div id="home-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
         <!-- top bar moved to shared #shared-top-bar -->
 
-        <div id="home-content-container" class="flex-1 min-h-0 w-full overflow-y-auto p-4 flex flex-col gap-4 relative z-0 pb-32">
+        <div id="home-content-container" class="flex-1 min-h-0 w-full overflow-y-auto p-4 flex flex-col gap-4 relative z-0">
           <!-- Welcome back card -->
-          <div id="welcome-card" class="w-full rounded-2xl p-6 flex flex-col items-center justify-center min-h-[200px]">
-            <div id="welcome-disc" class="w-64 h-64 rounded-full bg-gray-300 flex items-center justify-center mb-4 overflow-hidden">
+          <div id="welcome-card" class="w-full rounded-2xl p-6 flex flex-col items-center justify-center min-h-[280px]">
+            <div id="welcome-disc" class="w-64 h-64 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
               <img src="gameImage/collect_cd_1014.png" alt="Welcome disc" class="w-full h-full object-cover">
             </div>
-            <h3 id="welcome-song-title" class="text-gray-800 font-bold text-lg mb-4 text-center">No song played yet</h3>
-            <button id="welcome-play-btn" class="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full transition-all active:scale-95 shadow-md">
+          </div>
+          <div id="welcome-actions" class="flex flex-col items-center justify-center w-full">
+            <h3 id="welcome-song-title" class="text-gray-800 font-bold text-lg mb-4 text-center">Loading songs...</h3>
+            <button id="welcome-play-btn" class="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full transition-all active:scale-95 shadow-md" data-i18n="btn_play">
               Play
             </button>
           </div>
 
           <!-- Latest changes card -->
           <div class="w-full bg-gray-100 rounded-2xl p-4">
-            <h3 class="text-gray-800 font-bold text-sm mb-3">Latest changes:</h3>
+            <h3 class="text-gray-800 font-bold text-sm mb-3" data-i18n="header_latest_changes">Latest changes:</h3>
             <div class="space-y-2">
               <div class="text-gray-600 text-xs">
-                <span class="font-semibold">v0.0.0</span> - Placeholder update
+                <span class="font-semibold" data-i18n="version_placeholder">v0.0.0</span> - <span data-i18n="desc_placeholder_update">Placeholder update</span>
               </div>
             </div>
           </div>
 
           <!-- Favourite songs card -->
           <div class="w-full bg-gray-100 rounded-2xl p-4">
-            <h3 class="text-gray-800 font-bold text-sm mb-3">Your favourite songs</h3>
+            <h3 class="text-gray-800 font-bold text-sm mb-3" data-i18n="header_favourite_songs">Your favourite songs</h3>
             <div id="favourite-songs-container" class="flex flex-col gap-3">
               <!-- Favourite song cards will be rendered here -->
-              <p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>
+              <p class="text-gray-500 text-xs text-center py-4" data-i18n="msg_no_favourites">No favourite songs yet. Tap the heart on any song to add it here!</p>
             </div>
           </div>
         </div>
@@ -432,14 +470,14 @@
       <div id="life-modal" class="life-modal hidden" aria-hidden="true">
         <div class="life-modal-backdrop" data-close-life-modal="true"></div>
         <div class="life-modal-panel">
-          <button id="life-modal-close-btn" type="button" class="life-modal-close" aria-label="Close energy supply">
+          <button id="life-modal-close-btn" type="button" class="life-modal-close" data-i18n-aria-label="aria_close_energy">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6 18 18M18 6 6 18" />
             </svg>
           </button>
 
           <div class="life-modal-header">
-            <h2 class="life-modal-title">Energy Supply</h2>
+            <h2 class="life-modal-title" data-i18n="title_energy_supply">Energy Supply</h2>
 
             <div class="life-modal-status">
               <div class="life-modal-status-stack">
@@ -455,7 +493,7 @@
                     </div>
                   </div>
                 </div>
-                <div id="life-modal-timer" class="life-modal-timer-pill">Time to next life: 03:18</div>
+                <div id="life-modal-timer" class="life-modal-timer-pill" data-i18n="label_time_to_next_life">Time to next life: 03:18</div>
               </div>
             </div>
           </div>
@@ -463,8 +501,8 @@
           <div class="life-modal-body">
             <button type="button" class="life-purchase-row" data-life-amount="15" data-life-cost="0">
               <div class="life-purchase-cost">
-                <span class="life-note-icon">Free</span>
-                <span class="life-purchase-price">FREE</span>
+                <span class="life-note-icon" data-i18n="label_free">Free</span>
+                <span class="life-purchase-price" data-i18n="label_free_upper">FREE</span>
               </div>
               <div class="life-purchase-pack">
                 <div class="life-pack-icons life-pack-icons-1">
@@ -573,8 +611,8 @@
           <div class="revive-modal-body">
             <div id="revive-progress-row" class="revive-progress-row"></div>
             <div class="revive-modal-actions">
-              <button id="revive-cancel-btn" type="button" class="revive-modal-btn revive-cancel-btn">End Run</button>
-              <button id="revive-continue-btn" type="button" class="revive-modal-btn revive-continue-btn">Revive</button>
+              <button id="revive-cancel-btn" type="button" class="revive-modal-btn revive-cancel-btn" data-i18n="btn_end_run">End Run</button>
+              <button id="revive-continue-btn" type="button" class="revive-modal-btn revive-continue-btn" data-i18n="btn_revive">Revive</button>
             </div>
           </div>
         </div>
@@ -593,7 +631,7 @@
                 <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 11v8.5A.5.5 0 0 0 5.5 20h4v-4.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5V20h4.5a.5.5 0 0 0 .5-.5V11"/>
               </svg>
             </div>
-            <span class="text-[11px] font-bold tracking-tight">Home</span>
+            <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_home">Home</span>
           </div>
 
           <!-- Music Button -->
@@ -608,7 +646,7 @@
                 <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M19 15.5V6.5"/>
               </svg>
             </div>
-            <span class="text-[11px] font-bold tracking-tight">Music</span>
+            <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_music">Music</span>
           </div>
 
           <!-- Challenges Button -->
@@ -629,7 +667,7 @@
                 <path d="M12 5.5l.55 1.65h1.73l-1.4 1 .54 1.65L12 8.85l-1.42 1 .54-1.65-1.4-1h1.73Z"/>
               </svg>
             </div>
-            <span class="text-[11px] font-bold tracking-tight">Challenges</span>
+            <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_challenges">Challenges</span>
           </div>
 
           <!-- Settings Button -->
@@ -648,7 +686,7 @@
                 <circle cx="20" cy="9" r="2" fill="currentColor" stroke="none"/>
               </svg>
             </div>
-            <span class="text-[11px] font-bold tracking-tight">Settings</span>
+            <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_settings">Settings</span>
           </div>
         </div>
       </div>

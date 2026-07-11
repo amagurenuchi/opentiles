@@ -1,0 +1,83 @@
+key,english,chinese,japanese
+game_title,RAINING TILES,雨落方块,レイニングタイル
+artist_English Folk Music,English Folk Music,英式民谣音乐,イングリッシュフォークミュージック
+artist_James Lord Pierpont,James Lord Pierpont,詹姆斯·洛德·皮尔庞特,ジェームズ・ロード・ピアポント
+artist_Johann Pachelbel,Johann Pachelbel,约翰·帕赫贝尔,ヨハン・パッヘルベル
+artist_French Folk Music,French Folk Music,法国民谣音乐,フレンチフォークミュージック
+artist_Polish Folk Music,Polish Folk Music,波兰民谣音乐,ポーランドフォークミュージック
+artist_American Folk Music,American Folk Music,美国民谣音乐,アメリカンフォークミュージック
+artist_Schubert,Schubert,舒伯特,シューベルト
+artist_Beethoven,Beethoven,贝多芬,ベートーヴェン
+artist_Chopin,Chopin,肖邦,ショパン
+artist_Francois Joseph Gossec,Francois Joseph Gossec,弗朗索瓦·约瑟夫·戈塞克,フランソワ・ジョゼフ・ゴセック
+artist_Carlos Gardel,Carlos Gardel,卡洛斯·加尔德尔,カルロス・ガルデル
+artist_Russian Folk Music,Russian Folk Music,俄罗斯民谣音乐,ロシア民謡
+artist_Tchaikovsky,Tchaikovsky,柴可夫斯基,チャイコフスキー
+artist_Saint-Seans,Saint-Seans,圣桑,サン＝サーンス
+artist_Bach,Bach,巴赫,バッハ
+artist_Johann Strauss II,Johann Strauss II,约翰·施特劳斯二世,ヨハン・シュトラウス2世
+artist_Jacques Offenbach,Jacques Offenbach,雅克·奥芬巴赫,ジャック・オッフェンバック
+artist_Mozart,Mozart,莫扎特,モーツァルト
+artist_Congfei Wei,Congfei Wei,魏聪菲,魏聰菲
+game_instructions,"Tap the black tiles in order. Don't touch any white space!",按顺序点击黑色方块。不要触碰任何白色区域！,黒いタイルを順番にタップしてください。白い部分には触れないでください！
+label_pt2_json,Piano Tiles 2 JSON,钢琴瓷砖2 JSON,ピアノタイル2 JSON
+label_music_entry,Music Entry,音乐条目,音楽エントリー
+placeholder_load_pt2,Load a PT2 JSON first,请先加载PT2 JSON文件,まずPT2 JSONファイルを読み込んでください
+btn_load_horseman,Load Horseman.json,加载Horseman.json,Horseman.jsonを読み込む
+btn_clear_song,Clear Song,清除歌曲,曲をクリア
+status_no_pt2,No PT2 file loaded.,未加载PT2文件,PT2ファイルが読み込まれていません
+label_best,Best:,最佳:,ベスト:
+label_tps_unit,t/s,次/秒,回/秒
+btn_song_library,Song Library,歌曲库,曲ライブラリ
+title_settings,Settings,设置,設定
+subtitle_preferences,Preferences,偏好设置,設定
+btn_save,Save,保存,保存
+section_keybinds,Keybinds,按键绑定,キーバインド
+label_col_1,Col 1,第1列,列1
+label_col_2,Col 2,第2列,列2
+label_col_3,Col 3,第3列,列3
+label_col_4,Col 4,第4列,列4
+section_customize_speed,Customize Speed,自定义速度,速度カスタマイズ
+section_language,Language,语言,言語
+label_autoplay,Autoplay,自动播放,自動再生
+label_revive_slowdown,Revive Slowdown,复活减速,復活時スローダウン
+default_player_name,Player,玩家,プレイヤー
+label_p_points,P-Points,P点数,Pポイント
+aria_open_energy,Open energy supply,打开能量供应,エネルギー供給を開く
+alt_crown,Crown,皇冠,王冠
+alt_star,Star,星星,星
+title_game_over,GAME OVER,游戏结束,ゲームオーバー
+msg_better_luck,Better luck next time!,下次好运！,次は頑張ってください！
+label_final_score,Final Score,最终得分,最終スコア
+btn_play_again,Play Again,再玩一次,もう一度プレイ
+example_song_title,3. Nocturne Op. 55 No. 1,3. 夜曲Op.55 No.1,3. 夜想曲Op.55 No.1
+msg_new_best,New Best!,新纪录！,新記録！
+label_laps,Laps,圈数,周回数
+btn_retry,Retry,重试,リトライ
+title_game_paused,Game Paused,游戏暂停,ゲーム一時停止
+btn_quit,Quit,退出,終了
+btn_resume,Resume,继续,再開
+placeholder_search,Type to search...,输入搜索...,検索...
+msg_no_song_played,No song played yet,尚未播放歌曲,まだ曲を再生していません
+btn_play,Play,播放,再生
+header_latest_changes,Latest changes:,最新更改:,最新の変更:
+version_placeholder,v0.0.0,v0.0.0,v0.0.0
+desc_placeholder_update,Placeholder update,占位符更新,プレースホルダーの更新
+header_favourite_songs,Your favourite songs,您喜欢的歌曲,お気に入りの曲
+msg_no_favourites,"No favourite songs yet. Tap the heart on any song to add it here!",还没有喜欢的歌曲。点击任何歌曲上的心形图标将其添加到这里！,お気に入りの曲がまだありません。曲のハートマークをタップしてここに追加してください！
+aria_close_energy,Close energy supply,关闭能量供应,エネルギー供給を閉じる
+title_energy_supply,Energy Supply,能量供应,エネルギー供給
+label_time_to_next_life,Time to next life: 03:18,下一生命时间: 03:18,次のライフまでの時間: 03:18
+label_free,Free,免费,無料
+label_free_upper,FREE,免费,無料
+btn_end_run,End Run,结束运行,ランンを終了
+btn_revive,Revive,复活,復活
+nav_home,Home,主页,ホーム
+nav_music,Music,音乐,音楽
+nav_challenges,Challenges,挑战,チャレンジ
+nav_settings,Settings,设置,設定
+label_custom_song,Custom Song,自定义歌曲,カスタムソング
+status_no_custom_song,No custom song loaded.,未加载自定义歌曲,カスタムソングが読み込まれていません
+label_custom_start_speed,Custom Start Speed,自定义起始速度,カスタム開始速度
+label_disabled,Disabled,禁用,無効
+label_tiles_per_sec,t/s,次/秒,回/秒

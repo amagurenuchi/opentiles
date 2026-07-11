@@ -1996,17 +1996,18 @@ function playTileAudioNow(tile) {
   tile.played = true;
 }
 
-// Play the note for a single combo tap (the score group matching the current tap index).
+// Play the note for a single combo tap immediately so rapid taps each trigger
+// their own sound instead of bunching up when input is delayed.
 function playComboTapAudio(tile) {
   if (!tile || !isComboTile(tile)) return;
   // tap index = number of taps already made = taps - remainingTaps (before decrement)
   const tapIdx = (tile.taps || 2) - (tile.remainingTaps || 0);
-  const scoreGroup = tile.scores[tapIdx] || tile.scores[0];
+  const scoreGroup = tile.scores?.[tapIdx] || tile.scores?.[0];
   // Always mark played so the autoplay audio loop doesn't double-trigger.
   tile.played = true;
   if (!scoreGroup) return;
   scoreGroup.forEach((note) => {
-    queueTimeout(() => playPitchString(note.note, note.len), note.start * 60000 / currentBpm);
+    queueTimeout(() => playPitchString(note.note, note.len), 0);
   });
 }
 
@@ -2373,9 +2374,27 @@ async function finishRun(showLibrary = false) {
           lapsEl.classList.remove('hidden');
           lapsEl.textContent = `${Math.max(1, songLoopCount + 1)} Laps`;
         }
+        const numericScore = Number(currentScore || 0);
+        const isNewBestScore = (() => {
+          if (!selectedSongData) return false;
+          const mid = String(selectedSongData.mid || selectedSongData.id || '');
+          const scoreKey = `opentile_best_score_${mid}`;
+          const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
+          const isBest = numericScore > prev;
+          if (isBest) {
+            localStorage.setItem(scoreKey, String(numericScore));
+          }
+          return isBest;
+        })();
+
         if (subtextEl) {
-          subtextEl.classList.add('hidden');
-          subtextEl.textContent = '';
+          if (isNewBestScore) {
+            subtextEl.classList.remove('hidden');
+            subtextEl.textContent = 'New Best!';
+          } else {
+            subtextEl.classList.add('hidden');
+            subtextEl.textContent = '';
+          }
         }
 
         // compute stars/crowns earned for this play based on the award level
@@ -2420,17 +2439,9 @@ async function finishRun(showLibrary = false) {
             await playFile(audioPath);
           }
 
-          // check and play NewBest if score is a new best for this song
-          if (selectedSongData) {
-            const mid = String(selectedSongData.mid || selectedSongData.id || '');
-            const scoreKey = `opentile_best_score_${mid}`;
-            const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
-            const numericScore = Number(currentScore || 0);
-            if (numericScore > prev) {
-              localStorage.setItem(scoreKey, String(numericScore));
-              // play NewBest audio
-              await playFile('Audio/NewBest');
-            }
+          // play NewBest audio when this run beat the stored best for the song
+          if (isNewBestScore) {
+            await playFile('Audio/NewBest');
           }
         }
 
@@ -3702,6 +3713,10 @@ function returnToMainMenu() {
   selectedSongData = null;
   lastLoadedJsonText = '';
   lastLoadedLabel = '';
+  const resultsScreen = document.getElementById('results-screen');
+  if (resultsScreen) {
+    resultsScreen.classList.add('hidden');
+  }
   startScreen.classList.add('hidden');
   songListScreen.classList.add('hidden');
   challengesScreen.classList.add('hidden');
@@ -4534,6 +4549,11 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (event.code === 'Escape') {
+    const resultsScreen = document.getElementById('results-screen');
+    if (resultsScreen && !resultsScreen.classList.contains('hidden')) {
+      returnToMainMenu();
+      return;
+    }
     if (lifeModal && !lifeModal.classList.contains('hidden')) {
       closeLifeModal();
       return;

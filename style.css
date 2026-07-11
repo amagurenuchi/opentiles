@@ -50,6 +50,23 @@ body {
     font-size: 9rem !important;
   }
 
+  /* Softer shadow for score/TPS on tablet */
+  #score-display,
+  #tps-display-normal,
+  #tps-display-challenge {
+    text-shadow: 0px 7px 0px rgba(0.5, 0.5, 0.5, 0.5) !important;
+  }
+
+  /* Larger start/combo tile labels on tablet */
+  .tile-start-label-at-head {
+    font-size: 3rem !important;
+    line-height: 0.95;
+  }
+
+  .combo-badge {
+    font-size: clamp(4.3rem, 15vh, 7rem) !important;
+  }
+
   /* Increase all UI elements by 60% for tablet */
   .dock-button > div {
     width: 64px !important;

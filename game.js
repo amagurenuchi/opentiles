@@ -146,6 +146,7 @@ let challengeStartTime = 0;
 
 let isAwardAnimationRunning = false;
 let awardAnimationTimeout = null;
+let lastHudRewardState = null;
 
 function triggerAwardAnimation(stage) {
   isAwardAnimationRunning = true;
@@ -1482,6 +1483,7 @@ function resetEngineState() {
   challengeBaseBpm = 120;
   challengeBaseBeats = 0.5;
   hasStartedGameplay = false;
+  lastHudRewardState = null;
   preserveCurrentSpeedOnNextFrame = false;
   pausedSpeedBpm = 120;
   pausedSpeedBeats = 0.5;
@@ -1796,6 +1798,10 @@ function isSpecialChallengeSong(song) {
 }
 
 function shouldShowChallengeRewards(song) {
+  return isChallengeSong(song) && !isSpecialChallengeSong(song);
+}
+
+function shouldAnimateChallengeRewards(song) {
   return isChallengeSong(song) && !isSpecialChallengeSong(song);
 }
 
@@ -2285,7 +2291,8 @@ async function finishRun(showLibrary = false) {
 
       if (selectedSongData) {
         const num = selectedSongData.id ?? selectedSongData.mid ?? '';
-        const displayTitle = `${num ? String(num) + '. ' : ''}${selectedSongData.musicJson}`;
+        const shouldPrefixTitle = !isChallengeMode && !isClassicMode;
+        const displayTitle = `${shouldPrefixTitle && num ? String(num) + '. ' : ''}${selectedSongData.musicJson}`;
         if (titleEl) titleEl.textContent = displayTitle;
         if (artistEl) artistEl.textContent = `${selectedSongData.musician || ''}`;
       }
@@ -2625,7 +2632,7 @@ function tileMatchesColumn(tile, colIdx) {
 }
 
 function maybeGrantNormalSongAward(tile) {
-  if (!isStarted || isPaused || isClassicMode || !tile) return;
+  if (!isStarted || isPaused || isClassicMode || isChallengeMode || !tile) return;
   if (!tile.isSectionAwardTile || tile.awardGranted) return;
   normalSongAwardLevel = Math.min(10, (normalSongAwardLevel || 1) + 1);
   tile.awardGranted = true;
@@ -2645,9 +2652,8 @@ function maybeGrantNormalSongAward(tile) {
   }
   
   const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-  triggerAwardAnimation(stage);
-  
   if (!isChallengeMode) {
+    triggerAwardAnimation(stage);
     updateNormalSongAwardDisplay();
   }
 }
@@ -2896,20 +2902,58 @@ function handleManualInputUp(colIdx) {
   }
 }
 
-function updateNormalSongAwardDisplay() {
-  if (isChallengeMode || isClassicMode) {
-    starsDisplay.innerHTML = '';
-    crownsDisplay.innerHTML = '';
+function updateChallengeRewardAnimation() {
+  if (!isChallengeMode || !shouldAnimateChallengeRewards(selectedSongData)) {
+    lastHudRewardState = { stars: 0, crowns: 0 };
     return;
   }
 
-  const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-  if (stage.crowns) {
-    starsDisplay.innerHTML = '';
-    crownsDisplay.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.crowns);
-  } else {
-    starsDisplay.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-8 h-8 mr-1">'.repeat(stage.stars) : '';
-    crownsDisplay.innerHTML = '';
+  const rewardState = getChallengeRewardStateFromTps(currentBeats > 0 ? currentBpm / currentBeats / 60 : 0);
+  const stateChanged = !lastHudRewardState
+    || lastHudRewardState.stars !== rewardState.stars
+    || lastHudRewardState.crowns !== rewardState.crowns;
+  const isProgression = !lastHudRewardState
+    || (rewardState.crowns > (lastHudRewardState.crowns || 0))
+    || (rewardState.crowns === 0 && rewardState.stars > (lastHudRewardState.stars || 0));
+
+  if (stateChanged && isProgression && (rewardState.stars > 0 || rewardState.crowns > 0)) {
+    triggerAwardAnimation(rewardState);
+  }
+
+  lastHudRewardState = rewardState;
+}
+
+function updateClassicRewardAnimation() {
+  if (!isClassicMode) {
+    lastHudRewardState = { stars: 0, crowns: 0 };
+    return;
+  }
+
+  const rewardState = getClassicChallengeRewardStateFromTiles(Number(classicTappedTiles || 0));
+  const stateChanged = !lastHudRewardState
+    || lastHudRewardState.stars !== rewardState.stars
+    || lastHudRewardState.crowns !== rewardState.crowns;
+  const isProgression = !lastHudRewardState
+    || (rewardState.crowns > (lastHudRewardState.crowns || 0))
+    || (rewardState.crowns === 0 && rewardState.stars > (lastHudRewardState.stars || 0));
+
+  if (stateChanged && isProgression && (rewardState.stars > 0 || rewardState.crowns > 0)) {
+    triggerAwardAnimation(rewardState);
+  }
+
+  lastHudRewardState = rewardState;
+}
+
+function updateNormalSongAwardDisplay() {
+  starsDisplay.innerHTML = '';
+  crownsDisplay.innerHTML = '';
+  starsDisplay.classList.add('hidden');
+  crownsDisplay.classList.add('hidden');
+
+  if (isChallengeMode) {
+    updateChallengeRewardAnimation();
+  } else if (isClassicMode) {
+    updateClassicRewardAnimation();
   }
 }
 
@@ -2923,14 +2967,10 @@ function updateHUD() {
   tpsDisplayNormal?.classList.add('hidden');
   tpsDisplayChallenge?.classList.add('hidden');
   scoreDisplay.classList.add('hidden');
-  starsDisplay.classList.add('hidden');
-  crownsDisplay.classList.add('hidden');
 
   updateGameplayBackground();
-  
-  if (!isChallengeMode) {
-    updateNormalSongAwardDisplay();
-  }
+
+  updateNormalSongAwardDisplay();
 
   if (isAwardAnimationRunning) {
     return;

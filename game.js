@@ -4535,12 +4535,24 @@ window.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('keydown', (event) => {
+  const activeElement = document.activeElement;
+  const isEditableTarget = activeElement && (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  );
+
   if (bindingColIdx !== null) {
     keybinds[bindingColIdx] = event.code;
     localStorage.setItem('opentile_keybinds', JSON.stringify(keybinds));
     bindingColIdx = null;
     updateKeybindHints();
     event.preventDefault();
+    return;
+  }
+
+  if (isEditableTarget) {
     return;
   }
 
@@ -4600,6 +4612,18 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => {
+  const activeElement = document.activeElement;
+  const isEditableTarget = activeElement && (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  );
+
+  if (isEditableTarget) {
+    return;
+  }
+
   const colIdx = keybinds.indexOf(event.code);
   if (colIdx !== -1) {
     if (activeKeys[colIdx]) {

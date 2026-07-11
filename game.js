@@ -38,6 +38,7 @@ const pt2MusicSelect = document.getElementById('pt2-music-select');
 const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
 const clearSongBtn = document.getElementById('clear-song-btn');
 const autoplayToggle = document.getElementById('settings-autoplay');
+const reviveSlowdownToggle = document.getElementById('settings-revive-slowdown');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
@@ -98,6 +99,9 @@ let lastLoadedLabel = '';
 let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
 let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
+let reviveSlowdownEnabled = localStorage.getItem('opentile_revive_slowdown') !== 'false'; // default true
+let isReviveSlowdownActive = false;
+let reviveSlowdownStartTime = 0;
 let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
@@ -126,10 +130,10 @@ let warr = new Array(key).fill(0);
 let tiles = [];
 let reviveCountdownInterval = null;
 let reviveCountdownRemaining = 0;
-let reviveCountdownStartedAt = 0;
-let reviveCountdownDurationMs = 0;
-let reviveAwaitingStart = false;
 const REVIVE_COUNTDOWN_SECONDS = 10;
+// Cumulative score estimates at each section boundary (index = normalSongAwardLevel that fires).
+// Computed from the sheet data right after song load.
+let sectionScoreThresholds = [];
 
 // Challenge mode variables
 let isChallengeMode = false;
@@ -139,6 +143,33 @@ let challengeBpmOffset = 0;
 let challengeBaseBpm = 120;
 let challengeBaseBeats = 0.5;
 let challengeStartTime = 0;
+
+let isAwardAnimationRunning = false;
+let awardAnimationTimeout = null;
+
+function triggerAwardAnimation(stage) {
+  isAwardAnimationRunning = true;
+  if (awardAnimationTimeout) clearTimeout(awardAnimationTimeout);
+
+  const starAnim = document.getElementById('star-animation-display');
+  const crownAnim = document.getElementById('crown-animation-display');
+
+  if (stage.crowns) {
+    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-16 h-16 sm:w-20 sm:h-20 mr-2 drop-shadow-md">'.repeat(stage.crowns);
+    crownAnim.classList.remove('hidden');
+    starAnim.classList.add('hidden');
+  } else {
+    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-16 h-16 sm:w-20 sm:h-20 mr-2 drop-shadow-md">'.repeat(stage.stars) : '';
+    starAnim.classList.remove('hidden');
+    crownAnim.classList.add('hidden');
+  }
+  
+  awardAnimationTimeout = setTimeout(() => {
+    isAwardAnimationRunning = false;
+    starAnim.classList.add('hidden');
+    crownAnim.classList.add('hidden');
+  }, 500);
+}
 let hasStartedGameplay = false;
 
 // Classic mode variables
@@ -385,82 +416,142 @@ function clearReviveCountdown() {
 }
 
 function updateReviveCountdownDisplay() {
-  const countdownEl = document.getElementById('revive-countdown-ring-text');
+  const ringTextEl = document.getElementById('revive-countdown-ring-text');
   const ringEl = document.getElementById('revive-modal-ring');
-  const progressPercent = REVIVE_COUNTDOWN_SECONDS > 0
-    ? Math.max(0, (reviveCountdownRemaining / REVIVE_COUNTDOWN_SECONDS) * 100)
-    : 0;
+  const remaining = Math.max(0, reviveCountdownRemaining);
 
-  if (countdownEl) {
-    countdownEl.textContent = reviveCountdownRemaining > 0 ? Math.ceil(reviveCountdownRemaining).toString() : '0';
-  }
+  // Update numeric label (no suffix)
+  if (ringTextEl) ringTextEl.textContent = String(remaining);
 
+  // Animate the conic-gradient ring: 100% when full, 0% when done
   if (ringEl) {
-    ringEl.style.setProperty('--revive-progress', `${progressPercent}%`);
-    ringEl.classList.toggle('revive-ring-warning', reviveCountdownRemaining <= 3);
+    const pct = (remaining / REVIVE_COUNTDOWN_SECONDS) * 100;
+    ringEl.style.setProperty('--revive-progress', `${pct.toFixed(1)}%`);
+    // Turn ring red in the last 3 seconds
+    if (remaining <= 3) {
+      ringEl.classList.add('revive-ring-warning');
+    } else {
+      ringEl.classList.remove('revive-ring-warning');
+    }
   }
-}
-
-function getTileScoreValue(tile) {
-  if (!tile) return 0;
-  if (tile.type === 2) return 1;
-  if (tile.type === 5) return 4;
-  if (tile.type === 3) return Math.max(2, tile.taps || 2);
-  if (tile.type === 6) return Math.round(tile.hlen) + 1;
-  return Math.round(tile.hlen) + 1;
-}
-
-function getNextRewardInfo(scoreValue = 0) {
-  const sectionCount = Array.isArray(sheet) ? sheet.length : 0;
-  const nextRewardLevel = Math.max(1, Math.min(sectionCount, (normalSongAwardLevel || 1)));
-  let cumulativeScore = 0;
-
-  for (let sectionIndex = 0; sectionIndex < nextRewardLevel; sectionIndex += 1) {
-    const sectionTiles = Array.isArray(sheet?.[sectionIndex]) ? sheet[sectionIndex] : [];
-    cumulativeScore += sectionTiles.reduce((sum, tile) => sum + getTileScoreValue(tile), 0);
-  }
-
-  const remaining = Math.max(0, cumulativeScore - scoreValue);
-  const nextStage = getStarAndCrownState((normalSongAwardLevel || 1));
-  const iconName = nextStage.crowns > 0 ? 'crown' : 'star';
-  const iconCount = nextStage.crowns > 0 ? nextStage.crowns : nextStage.stars;
-
-  return { remaining, iconName, iconCount };
 }
 
 function updateReviveModalProgress() {
   const progressRow = document.getElementById('revive-progress-row');
   if (!progressRow) return;
-
   let progressHtml = '';
+
   if (isChallengeMode || isClassicMode) {
     progressHtml = '<div class="revive-progress-label">Resume and keep your current run.</div>';
   } else {
-    const currentStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+    const level = normalSongAwardLevel || 1;
+    const currentStage = getStarAndCrownState(level - 1);
 
     if (currentStage.crowns === 3) {
-      progressHtml = '<div class="revive-progress-label">Maximum crowns reached for this song.</div>';
+      // 3 crowns already — compare current score to per-song best score
+      const mid = selectedSongData ? String(selectedSongData.mid || selectedSongData.id || '') : '';
+      const scoreKey = mid ? `opentile_best_score_${mid}` : null;
+      const bestScore = scoreKey ? parseFloat(localStorage.getItem(scoreKey) || '0') : 0;
+      const score = Number(currentScore || 0);
+
+      if (score >= bestScore) {
+        // Already beating (or matching) the best score — no target to chase
+        progressHtml = '<div class="revive-progress-label">Revive now</div>';
+      } else {
+        const gap = bestScore - score;
+        progressHtml = `
+          <div class="revive-progress-icons">
+            <img src="gameImage/crown.png" class="revive-progress-icon filled" alt="crown">
+            <img src="gameImage/crown.png" class="revive-progress-icon filled" alt="crown">
+            <img src="gameImage/crown.png" class="revive-progress-icon filled" alt="crown">
+          </div>
+          <div class="revive-progress-label">${gap} more points to beat your best score</div>`;
+      }
     } else {
-      const rewardInfo = getNextRewardInfo(Number(currentScore || 0));
-      const icons = Array.from({ length: 3 }, (_, i) => `<img src="gameImage/${rewardInfo.iconName}.png" class="revive-progress-icon ${i < rewardInfo.iconCount ? 'filled' : 'unfilled'}" alt="${rewardInfo.iconName}">`).join('');
-      progressHtml = `
-        <div class="revive-progress-label">Need <span class="revive-progress-value">${rewardInfo.remaining}</span> to reach</div>
-        <div class="revive-progress-icons">${icons}</div>`;
+      // Determine the minimum level needed to reach the next award tier
+      // Tier thresholds (normalSongAwardLevel ≥ X for tier to activate):
+      //  1★ → 2 | 2★ → 3 | 3★ → 4 | 1👑 → 5 | 2👑 → 7 | 3👑 → 10
+      const tierLevels = [2, 3, 4, 5, 7, 10];
+      const tierStates = tierLevels.map((l) => ({ level: l, stage: getStarAndCrownState(l - 1) }));
+
+      // Find the next tier that is better than current
+      const next = tierStates.find(({ stage }) => {
+        const moreCrowns = stage.crowns > currentStage.crowns;
+        const moreStars = stage.crowns === 0 && currentStage.crowns === 0 && stage.stars > currentStage.stars;
+        return moreCrowns || moreStars;
+      });
+
+      if (!next) {
+        progressHtml = '<div class="revive-progress-label">Maximum crowns reached for this song.</div>';
+      } else {
+        const useCrowns = next.stage.crowns > 0;
+        const iconName = useCrowns ? 'crown' : 'star';
+        const iconCount = useCrowns ? next.stage.crowns : next.stage.stars;
+        const score = Number(currentScore || 0);
+
+        // next.level is the normalSongAwardLevel the player needs to reach.
+        // That fires when section index (next.level - 2) is completed.
+        // sectionScoreThresholds[next.level - 2] is the estimated cumulative
+        // score at that boundary, computed directly from the sheet.
+        const threshIdx = next.level - 2;
+        const computedThreshold = (threshIdx >= 0 && threshIdx < sectionScoreThresholds.length)
+          ? sectionScoreThresholds[threshIdx]
+          : 0;
+
+        // Also check any historically stored score for that level.
+        const mid = selectedSongData ? String(selectedSongData.mid || selectedSongData.id || '') : '';
+        const storedThreshold = mid
+          ? parseFloat(localStorage.getItem(`opentile_score_at_level_${mid}_${next.level}`) || '0')
+          : 0;
+
+        // Prefer the lower (easier to display) of computed vs stored.
+        const targetScore = computedThreshold > 0
+          ? computedThreshold
+          : storedThreshold;
+
+        let label;
+        if (targetScore > score) {
+          const gap = Math.ceil(targetScore - score);
+          label = `${gap} more points to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
+        } else {
+          // Fallback: neither source gave a usable threshold yet
+          const sectionsNeeded = next.level - level;
+          const sectionWord = sectionsNeeded === 1 ? 'section' : 'sections';
+          label = `${sectionsNeeded} more ${sectionWord} to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
+        }
+
+        const icons = Array.from({ length: 3 }, (_, i) =>
+          `<img src="gameImage/${iconName}.png" class="revive-progress-icon ${i < iconCount ? 'filled' : 'unfilled'}" alt="${iconName}">`
+        ).join('');
+        progressHtml = `
+          <div class="revive-progress-icons">${icons}</div>
+          <div class="revive-progress-label">${label}</div>`;
+      }
     }
   }
-
   progressRow.innerHTML = progressHtml;
 }
 
 function startReviveCountdown() {
   clearReviveCountdown();
-  reviveCountdownStartedAt = performance.now();
-  reviveCountdownDurationMs = REVIVE_COUNTDOWN_SECONDS * 1000;
   reviveCountdownRemaining = REVIVE_COUNTDOWN_SECONDS;
+  // Reset ring instantly (suppress transition) then re-enable it one frame
+  // later so the per-second decrements animate smoothly.
+  const ringEl = document.getElementById('revive-modal-ring');
+  if (ringEl) {
+    ringEl.style.transition = 'none';
+    ringEl.style.setProperty('--revive-progress', '100%');
+    ringEl.classList.remove('revive-ring-warning');
+    // Re-enable the CSS transition after the browser has painted the reset
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ringEl.style.transition = '';
+      });
+    });
+  }
   updateReviveCountdownDisplay();
   reviveCountdownInterval = window.setInterval(() => {
-    const elapsedMs = performance.now() - reviveCountdownStartedAt;
-    reviveCountdownRemaining = Math.max(0, (reviveCountdownDurationMs - elapsedMs) / 1000);
+    reviveCountdownRemaining -= 1;
     updateReviveCountdownDisplay();
     if (reviveCountdownRemaining <= 0) {
       clearReviveCountdown();
@@ -468,8 +559,9 @@ function startReviveCountdown() {
         cancelRevivePrompt();
       }
     }
-  }, 50);
+  }, 1000);
 }
+
 
 function openReviveModal() {
   if (!reviveModal) return;
@@ -501,7 +593,6 @@ function cancelRevivePrompt() {
   revivePendingType = null;
   revivePendingTile = null;
   revivePendingColIdx = null;
-  reviveAwaitingStart = false;
   finishRun(false);
 }
 
@@ -517,13 +608,11 @@ function resumeAfterRevive() {
   revivePendingType = null;
   revivePendingColIdx = null;
   revivePendingTile = null;
-  reviveAwaitingStart = true;
 
-  resetInputState();
   captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
-  isPaused = true;
+  isPaused = false;
   isStarted = false;
   hasStartedGameplay = true;
   tiles.forEach((tile) => delete tile.isStartTile);
@@ -540,6 +629,11 @@ function resumeAfterRevive() {
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+  }
+
+  if (reviveSlowdownEnabled) {
+    isReviveSlowdownActive = true;
+    reviveSlowdownStartTime = performance.now();
   }
 
   updatePauseButtonVisibility();
@@ -1077,6 +1171,7 @@ function preloadSprites() {
 
 function loadSettings() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
+  if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
   if (playerNameText) playerNameText.textContent = playerName;
 }
 
@@ -1084,6 +1179,10 @@ function saveSettingsToStorage() {
   if (autoplayToggle) {
     autoplayEnabled = autoplayToggle.checked;
     localStorage.setItem('opentile_autoplay', String(autoplayEnabled));
+  }
+  if (reviveSlowdownToggle) {
+    reviveSlowdownEnabled = reviveSlowdownToggle.checked;
+    localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
   }
 }
 
@@ -1388,7 +1487,7 @@ function resetEngineState() {
   pausedSpeedBeats = 0.5;
   resetInputState();
   pendingHitEffects = [];
-  reviveAwaitingStart = false;
+  isReviveSlowdownActive = false;
 }
 
 function loadSongObject(data, label) {
@@ -1489,6 +1588,29 @@ function loadSongObject(data, label) {
   songName = label;
   isGameLoaded = true;
   setSongStatus(`Loaded ${label} with ${sheet.length} sections`);
+  computeSectionScoreThresholds();
+}
+
+// Pre-compute the cumulative score at each section-award boundary.
+// Each entry sectionScoreThresholds[i] is the total estimated score a player
+// would have accumulated just after completing section i (0-indexed).
+// normalSongAwardLevel increments to (i + 2) when section i is cleared, so
+// the threshold for award level L is sectionScoreThresholds[L - 2].
+function computeSectionScoreThresholds() {
+  sectionScoreThresholds = [];
+  let runningScore = 0;
+  for (let s = 0; s < sheet.length; s++) {
+    const section = sheet[s];
+    for (const tile of section) {
+      switch (tile.type) {
+        case 5: runningScore += 4; break;             // combo start tile
+        case 3: runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); break; // multi-tap combo
+        case 6: runningScore += Math.round(tile.hlen) + 1; break; // long hold
+        default: runningScore += 1; break;             // regular tap (type 2) and others
+      }
+    }
+    sectionScoreThresholds.push(runningScore);
+  }
 }
 
 async function loadSongFromData(songData) {
@@ -2095,8 +2217,10 @@ async function finishRun(showLibrary = false) {
     if (selectedSongData && !autoplayEnabled) {
       const key = `opentile_highscore_level_${selectedSongData.mid}`;
       const bestLevel = parseInt(localStorage.getItem(key) || '0', 10);
-      if (speedLevel > bestLevel) {
-        localStorage.setItem(key, String(speedLevel));
+      // Save the higher of the current run's award level vs the stored best.
+      // normalSongAwardLevel directly maps to the star/crown tier shown in the HUD.
+      if (normalSongAwardLevel > bestLevel) {
+        localStorage.setItem(key, String(normalSongAwardLevel));
       }
       // Save last played song
       if (selectedSongData.mid) {
@@ -2430,7 +2554,17 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   classicScrollTarget = starthpos;
   updatePauseButtonVisibility();
 
-  const shouldOfferRevive = reviveRemaining > 0;
+  let shouldOfferRevive = reviveRemaining > 0;
+  
+  if (isChallengeMode) {
+    shouldOfferRevive = false;
+  } else {
+    const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+    if (currentScore < 100 && stage.stars === 0) {
+      shouldOfferRevive = false;
+    }
+  }
+
   if (shouldOfferRevive) {
     revivePendingFailure = true;
     revivePendingType = failureType;
@@ -2491,15 +2625,35 @@ function tileMatchesColumn(tile, colIdx) {
 }
 
 function maybeGrantNormalSongAward(tile) {
-  if (autoplayEnabled || !isStarted || isPaused || isChallengeMode || isClassicMode || !tile) return;
+  if (!isStarted || isPaused || isClassicMode || !tile) return;
   if (!tile.isSectionAwardTile || tile.awardGranted) return;
   normalSongAwardLevel = Math.min(10, (normalSongAwardLevel || 1) + 1);
   tile.awardGranted = true;
-  updateNormalSongAwardDisplay();
+  // Persist the score at which this level was reached so the revive modal
+  // can display the score gap to the next award tier.
+  if (selectedSongData) {
+    const mid = String(selectedSongData.mid || selectedSongData.id || '');
+    if (mid) {
+      const scoreAtLevelKey = `opentile_score_at_level_${mid}_${normalSongAwardLevel}`;
+      const existing = parseFloat(localStorage.getItem(scoreAtLevelKey) || '0');
+      // Only update if the current score is lower (i.e. reached the level more efficiently)
+      // or the key doesn't exist yet.
+      if (!existing || currentScore < existing) {
+        localStorage.setItem(scoreAtLevelKey, String(currentScore));
+      }
+    }
+  }
+  
+  const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+  triggerAwardAnimation(stage);
+  
+  if (!isChallengeMode) {
+    updateNormalSongAwardDisplay();
+  }
 }
 
 function handleManualInputDown(colIdx, pointerEvent = null) {
-  if (isPaused && !reviveAwaitingStart) return;
+  if (isPaused) return;
   
   // Handle start tile separately
   if (!isStarted) {
@@ -2509,8 +2663,6 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       // Allow tapping start tile anywhere on-screen
       if (tileBottom >= 0) {
         delete startTile.isStartTile;
-        reviveAwaitingStart = false;
-        isPaused = false;
         isStarted = true;
         hasStartedGameplay = true;
         startTime = performance.now();
@@ -2583,8 +2735,8 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           startTile.ended = 1;
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
+          maybeGrantNormalSongAward(startTile);
         }
-        maybeGrantNormalSongAward(startTile);
         return;
       }
     }
@@ -2770,14 +2922,22 @@ function updateHUD() {
 
   tpsDisplayNormal?.classList.add('hidden');
   tpsDisplayChallenge?.classList.add('hidden');
+  scoreDisplay.classList.add('hidden');
+  starsDisplay.classList.add('hidden');
+  crownsDisplay.classList.add('hidden');
 
   updateGameplayBackground();
-  updateNormalSongAwardDisplay();
+  
+  if (!isChallengeMode) {
+    updateNormalSongAwardDisplay();
+  }
+
+  if (isAwardAnimationRunning) {
+    return;
+  }
 
   if (isChallengeMode) {
     // In challenge mode: hide score, show challenge TPS, hide stars/crowns
-    scoreDisplay.classList.add('hidden');
-
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
@@ -2786,8 +2946,6 @@ function updateHUD() {
     }
   } else if (isClassicMode) {
     // Classic mode: hide score, show timer with 3 decimal points, hide stars/crowns
-    scoreDisplay.classList.add('hidden');
-
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
@@ -3132,7 +3290,7 @@ function updateEngineFrame(now) {
         const comboTaps = Math.max(2, currentTile.scores.length || Math.round(currentTile.hlen) + 1);
         const isCombo = currentTile.type === 3;
         const sectionTileIndex = currentSectionTileIndex;
-        const isLastTileInSection = sectionTileIndex >= (sheet[currentSectionIndex].length - 1);
+        const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length;
         tiles.push({
           id: nextTileId++,
           type: currentTile.type,
@@ -3211,6 +3369,7 @@ function updateEngineFrame(now) {
             currentScore++;
             tile.clicked = true;
             tile.ended = 1;
+            maybeGrantNormalSongAward(tile);
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -3220,6 +3379,7 @@ function updateEngineFrame(now) {
             currentScore += 4;
             tile.clicked = true;
             tile.ended = 1;
+            maybeGrantNormalSongAward(tile);
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -3249,6 +3409,7 @@ function updateEngineFrame(now) {
               if (tile.remainingTaps <= 0) {
                 tile.clicked = true;
                 tile.ended = 1;
+                maybeGrantNormalSongAward(tile);
               }
             }
           } else if (tile.ended) {
@@ -3261,6 +3422,7 @@ function updateEngineFrame(now) {
               currentScore += Math.round(tile.hlen) + 1;
               tile.clicked = true;
               tile.ended = 1;
+              maybeGrantNormalSongAward(tile);
             } else {
               tile.ended++;
             }
@@ -3275,6 +3437,7 @@ function updateEngineFrame(now) {
               currentScore += Math.round(scoreDelta) + 1;
               tile.clicked = true;
               tile.ended = 1;
+              maybeGrantNormalSongAward(tile);
             } else {
               tile.ended++;
             }
@@ -3381,7 +3544,17 @@ function updateEngineFrame(now) {
     }
     starthpos += (classicScrollTarget - starthpos) * 0.18;
   } else if (isStarted && !isPaused) {
-    starthpos += (now - startTime) * currentBpm / currentBeats / 60000;
+    let effectiveTps = currentBpm / currentBeats / 60;
+    if (isReviveSlowdownActive) {
+      const elapsed = (now - reviveSlowdownStartTime) / 1000;
+      if (elapsed >= 2) {
+        isReviveSlowdownActive = false;
+      } else {
+        // Starts at 2 tiles/sec and linearly interpolates to effectiveTps over 2 seconds
+        effectiveTps = 2 + (effectiveTps - 2) * (elapsed / 2);
+      }
+    }
+    starthpos += (now - startTime) * effectiveTps / 1000;
     startTime = now;
   }
 }
@@ -3485,6 +3658,14 @@ function resetTileForResume(tile) {
   delete tile.completionPlaying;
   if (tile.type === 3) {
     tile.remainingTaps = tile.taps || 2;
+  }
+
+  // Ensure the START tile is fully visible (not cut off at the bottom)
+  const bottom = getTileBottom(tile);
+  if (bottom > key - 1) {
+    const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
+    starthpos = adjHpos + key - 1;
+    classicScrollTarget = starthpos;
   }
 }
 

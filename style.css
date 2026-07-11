@@ -713,6 +713,14 @@ body {
   font-size: clamp(1.25rem, 5vw, 2rem);
 }
 
+/* Allow the browser to interpolate --revive-progress as a <percentage>
+   so the conic-gradient ring animates smoothly between JS updates. */
+@property --revive-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+
 .revive-modal {
   position: fixed;
   inset: 0;
@@ -754,12 +762,12 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 11rem;
-  background: linear-gradient(180deg, #e2f0ff 0%, #d2e8ff 100%);
+  background: linear-gradient(180deg, #ffe4e4 0%, #ffd0d0 100%);
 }
 
 .revive-modal-ring {
   --revive-progress: 100%;
-  --revive-ring-color: #4dade4;
+  --revive-ring-color: #ef4444;
   position: relative;
   width: 8.2rem;
   height: 8.2rem;
@@ -769,7 +777,8 @@ body {
   justify-content: center;
   padding: 0.5rem;
   box-sizing: border-box;
-  background: conic-gradient(var(--revive-ring-color) var(--revive-progress), rgba(77, 173, 228, 0.18) 0);
+  background: conic-gradient(var(--revive-ring-color) var(--revive-progress), rgba(239, 68, 68, 0.15) 0);
+  transition: --revive-progress 1s linear;
 }
 
 .revive-modal-ring::before {
@@ -777,18 +786,18 @@ body {
   position: absolute;
   inset: 0.5rem;
   border-radius: 9999px;
-  background: radial-gradient(circle at top left, #f8feff 0%, #d9f2ff 60%);
+  background: radial-gradient(circle at top left, #fff8f8 0%, #ffe4e4 60%);
 }
 
 .revive-modal-ring.revive-ring-warning {
-  --revive-ring-color: #ef4444;
+  --revive-ring-color: #b91c1c;
 }
 
 .revive-modal-ring-text {
   position: relative;
   z-index: 1;
   font-family: var(--font-game);
-  font-size: clamp(2rem, 5vw, 2.6rem);
+  font-size: clamp(2.6rem, 7vw, 3.4rem);
   font-weight: 800;
   color: #0f172a;
 }
@@ -916,7 +925,7 @@ body {
 }
 
 .revive-continue-btn {
-  background: #2563eb;
+  background: #ef4444;
   color: #ffffff;
 }
 

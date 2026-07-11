@@ -147,6 +147,26 @@ let challengeStartTime = 0;
 let isAwardAnimationRunning = false;
 let awardAnimationTimeout = null;
 let lastHudRewardState = null;
+let lastAnimatedRewardTier = 0;
+
+function clearAwardAnimation() {
+  if (awardAnimationTimeout) {
+    clearTimeout(awardAnimationTimeout);
+    awardAnimationTimeout = null;
+  }
+  isAwardAnimationRunning = false;
+  const starAnim = document.getElementById('star-animation-display');
+  const crownAnim = document.getElementById('crown-animation-display');
+  starAnim?.classList.add('hidden');
+  crownAnim?.classList.add('hidden');
+}
+
+function shouldShowRewardAnimationForTier(currentTier) {
+  if (currentTier <= 0) return false;
+  if (lastAnimatedRewardTier === currentTier) return false;
+  lastAnimatedRewardTier = currentTier;
+  return true;
+}
 
 function triggerAwardAnimation(stage) {
   isAwardAnimationRunning = true;
@@ -166,9 +186,7 @@ function triggerAwardAnimation(stage) {
   }
   
   awardAnimationTimeout = setTimeout(() => {
-    isAwardAnimationRunning = false;
-    starAnim.classList.add('hidden');
-    crownAnim.classList.add('hidden');
+    clearAwardAnimation();
   }, 500);
 }
 let hasStartedGameplay = false;
@@ -1827,6 +1845,13 @@ function getClassicChallengeRewardStateFromTiles(tiles) {
   return { stars: 0, crowns: 0 };
 }
 
+function getRewardTierRank(state) {
+  if (!state) return 0;
+  const crownCount = Number(state.crowns || 0);
+  if (crownCount > 0) return 3 + crownCount;
+  return Number(state.stars || 0);
+}
+
 function renderRewardIcons(state, baseClass = 'w-6 h-6 mr-1') {
   if (!state) return '';
   const useCrowns = (state.crowns || 0) > 0;
@@ -2634,6 +2659,8 @@ function tileMatchesColumn(tile, colIdx) {
 function maybeGrantNormalSongAward(tile) {
   if (!isStarted || isPaused || isClassicMode || isChallengeMode || !tile) return;
   if (!tile.isSectionAwardTile || tile.awardGranted) return;
+
+  const previousStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
   normalSongAwardLevel = Math.min(10, (normalSongAwardLevel || 1) + 1);
   tile.awardGranted = true;
   // Persist the score at which this level was reached so the revive modal
@@ -2651,9 +2678,13 @@ function maybeGrantNormalSongAward(tile) {
     }
   }
   
-  const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+  const currentStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+  const shouldAnimateReward = getRewardTierRank(currentStage) > getRewardTierRank(previousStage);
+
   if (!isChallengeMode) {
-    triggerAwardAnimation(stage);
+    if (shouldAnimateReward) {
+      triggerAwardAnimation(currentStage);
+    }
     updateNormalSongAwardDisplay();
   }
 }
@@ -2905,19 +2936,24 @@ function handleManualInputUp(colIdx) {
 function updateChallengeRewardAnimation() {
   if (!isChallengeMode || !shouldAnimateChallengeRewards(selectedSongData)) {
     lastHudRewardState = { stars: 0, crowns: 0 };
+    clearAwardAnimation();
     return;
   }
 
   const rewardState = getChallengeRewardStateFromTps(currentBeats > 0 ? currentBpm / currentBeats / 60 : 0);
-  const stateChanged = !lastHudRewardState
-    || lastHudRewardState.stars !== rewardState.stars
-    || lastHudRewardState.crowns !== rewardState.crowns;
-  const isProgression = !lastHudRewardState
-    || (rewardState.crowns > (lastHudRewardState.crowns || 0))
-    || (rewardState.crowns === 0 && rewardState.stars > (lastHudRewardState.stars || 0));
+  const previousRewardState = lastHudRewardState && lastHudRewardState.stars !== undefined && lastHudRewardState.crowns !== undefined
+    ? lastHudRewardState
+    : null;
+  const previousTier = getRewardTierRank(previousRewardState);
+  const currentTier = getRewardTierRank(rewardState);
+  const rewardTierImproved = previousTier > 0 && currentTier > previousTier;
+  const rewardTierVisible = currentTier > 0;
+  const shouldAnimateTier = rewardTierImproved && rewardTierVisible && shouldShowRewardAnimationForTier(currentTier);
 
-  if (stateChanged && isProgression && (rewardState.stars > 0 || rewardState.crowns > 0)) {
+  if (shouldAnimateTier) {
     triggerAwardAnimation(rewardState);
+  } else {
+    clearAwardAnimation();
   }
 
   lastHudRewardState = rewardState;
@@ -2926,19 +2962,24 @@ function updateChallengeRewardAnimation() {
 function updateClassicRewardAnimation() {
   if (!isClassicMode) {
     lastHudRewardState = { stars: 0, crowns: 0 };
+    clearAwardAnimation();
     return;
   }
 
   const rewardState = getClassicChallengeRewardStateFromTiles(Number(classicTappedTiles || 0));
-  const stateChanged = !lastHudRewardState
-    || lastHudRewardState.stars !== rewardState.stars
-    || lastHudRewardState.crowns !== rewardState.crowns;
-  const isProgression = !lastHudRewardState
-    || (rewardState.crowns > (lastHudRewardState.crowns || 0))
-    || (rewardState.crowns === 0 && rewardState.stars > (lastHudRewardState.stars || 0));
+  const previousRewardState = lastHudRewardState && lastHudRewardState.stars !== undefined && lastHudRewardState.crowns !== undefined
+    ? lastHudRewardState
+    : null;
+  const previousTier = getRewardTierRank(previousRewardState);
+  const currentTier = getRewardTierRank(rewardState);
+  const rewardTierImproved = previousTier > 0 && currentTier > previousTier;
+  const rewardTierVisible = currentTier > 0;
+  const shouldAnimateTier = rewardTierImproved && rewardTierVisible && shouldShowRewardAnimationForTier(currentTier);
 
-  if (stateChanged && isProgression && (rewardState.stars > 0 || rewardState.crowns > 0)) {
+  if (shouldAnimateTier) {
     triggerAwardAnimation(rewardState);
+  } else {
+    clearAwardAnimation();
   }
 
   lastHudRewardState = rewardState;

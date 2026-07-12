@@ -43,6 +43,8 @@ const customSpeedInput = document.getElementById('settings-custom-speed');
 const customSpeedDisplay = document.getElementById('custom-speed-display');
 const customSongUpload = document.getElementById('custom-song-upload');
 const customSongStatus = document.getElementById('custom-song-status');
+const bpmModal = document.getElementById('bpm-modal');
+const closeBpmModalBtn = document.getElementById('close-bpm-modal-btn');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
@@ -109,7 +111,7 @@ let reviveSlowdownStartTime = 0;
 let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
-let customStartingSpeed = parseInt(localStorage.getItem('opentile_custom_speed') || '0', 10); // 0 = disabled, 1-16 maps to 2-18 t/s
+let customStartingSpeed = parseInt(localStorage.getItem('opentile_custom_speed') || '0', 10); // 0 = disabled, direct t/s value
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -134,6 +136,11 @@ let speedLevel = 1;
 let speedLevelPos = [];
 let normalSongAwardLevel = 1;
 let warr = new Array(key).fill(0);
+let accompanimentLongColumn = null;
+let accompanimentSingleToggle = 0;
+let accompanimentSequenceActive = false;
+let accompanimentSequenceId = 0;
+let activeAccompanimentSequenceId = null;
 let tiles = [];
 let reviveCountdownInterval = null;
 let reviveCountdownRemaining = 0;
@@ -835,11 +842,10 @@ function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplie
 }
 
 function getRuntimeSpeed(index) {
-  if (customStartingSpeed > 0 && !isChallengeMode) {
+  if (customStartingSpeed > 0) {
     const baseSpeed = getSpeed(index);
-    const customStartTps = (customStartingSpeed + 1);
-    const sectionIndex = Math.max(0, index);
-    const forcedTps = customStartTps + (sectionIndex * 0.5);
+    const customStartTps = customStartingSpeed;
+    const forcedTps = customStartTps;
     return {
       bpm: Math.trunc(calculateBpmFromTps(forcedTps, baseSpeed.beats)),
       beats: baseSpeed.beats
@@ -852,8 +858,8 @@ function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
   const tpm = lastBpm / lastBeats;
   const effectiveLoopTimes = isChallengeMode && loopTimes > 1 ? 1 : loopTimes;
 
-  if (customStartingSpeed > 0 && !isChallengeMode) {
-    const customStartTps = (customStartingSpeed + 1);
+  if (customStartingSpeed > 0) {
+    const customStartTps = customStartingSpeed;
     const sectionIndex = loopTimes * 0 + 1;
     const forcedTps = customStartTps + ((sectionIndex - 1) * 0.5);
     return Math.trunc(calculateBpmFromTps(forcedTps, currentBeatsValue));
@@ -1290,13 +1296,16 @@ function updateTpsDisplayColor() {
 
 function updateSettingsUI() {
   if (customSpeedInput) {
+    // Clamp to whole numbers above 0 (0 = disabled, 1+ = t/s)
+    if (isNaN(customStartingSpeed) || customStartingSpeed < 0) {
+      customStartingSpeed = 0;
+    }
     customSpeedInput.value = customStartingSpeed;
     if (customStartingSpeed === 0) {
       customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
       customSpeedDisplay.classList.remove('text-indigo-600');
     } else {
-      const tps = customStartingSpeed + 1;
-      customSpeedDisplay.textContent = `${tps} t/s`;
+      customSpeedDisplay.textContent = `${customStartingSpeed} t/s`;
       customSpeedDisplay.classList.add('text-indigo-600');
     }
   }
@@ -1315,7 +1324,13 @@ function saveSettingsToStorage() {
     localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
   }
   if (customSpeedInput) {
-    customStartingSpeed = parseInt(customSpeedInput.value, 10);
+    let value = parseInt(customSpeedInput.value, 10);
+    // Clamp to whole numbers above 0 (0 = disabled, direct t/s value)
+    if (isNaN(value) || value < 0) {
+      value = 0;
+    }
+    customStartingSpeed = value;
+    customSpeedInput.value = value;
     localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
   }
   updateTpsDisplayColor();
@@ -1409,6 +1424,7 @@ function createCustomSongCard() {
         <div class="song-card-progress"></div>
       </div>
       <div class="song-card-action flex items-center gap-2">
+        <button class="btn-bpm">BPM</button>
         <button class="btn-load">Load</button>
         <button class="btn-play">Play</button>
       </div>
@@ -1417,13 +1433,42 @@ function createCustomSongCard() {
     const playBtn = card.querySelector('.btn-play');
     playBtn.addEventListener('click', () => {
       if (customSongData) {
-        loadSongFromText(JSON.stringify(customSongData), customSongLabel);
+        // Get BPM values from input fields
+        const bpm1 = parseInt(document.getElementById('custom-bpm-1')?.value || '120', 10);
+        const bpm2 = parseInt(document.getElementById('custom-bpm-2')?.value || '120', 10);
+        const bpm3 = parseInt(document.getElementById('custom-bpm-3')?.value || '120', 10);
+        
+        // Create mock songData structure to treat custom song like a normal song entry
+        const mockSongData = {
+          mid: 999999, // Unique ID for custom songs
+          musicJson: customSongLabel, // Use filename as musicJson for results screen
+          musician: 'Custom',
+          acceleration: 0,
+          sections: {
+            1: { bpm: bpm1, baseBeats: 0.5, musicJson: 'custom' },
+            2: { bpm: bpm2, baseBeats: 0.5, musicJson: 'custom' },
+            3: { bpm: bpm3, baseBeats: 0.5, musicJson: 'custom' }
+          }
+        };
+        
+        // Store the actual custom song data globally so loadSongFromData can access it
+        window.customSongJsonData = customSongData;
+        
+        loadSongFromData(mockSongData);
       }
     });
 
     const loadBtn = card.querySelector('.btn-load');
     loadBtn.addEventListener('click', () => {
       customSongUpload?.click();
+    });
+
+    const bpmBtn = card.querySelector('.btn-bpm');
+    bpmBtn.addEventListener('click', () => {
+      // Open BPM modal
+      if (bpmModal) {
+        bpmModal.classList.remove('hidden');
+      }
     });
   } else {
     // Display upload prompt
@@ -1438,6 +1483,7 @@ function createCustomSongCard() {
         <div class="song-card-progress"></div>
       </div>
       <div class="song-card-action flex items-center gap-2">
+        <button class="btn-bpm" disabled style="opacity: 0.5; cursor: not-allowed;">BPM</button>
         <button class="btn-load">Load</button>
         <button class="btn-play" disabled style="opacity: 0.5; cursor: not-allowed;">Play</button>
       </div>
@@ -1675,6 +1721,9 @@ function resetEngineState() {
   normalSongAwardLevel = 1;
   starterColumn = Math.floor(Math.random() * key);
   warr = new Array(key).fill(0).map((_, idx) => (idx === starterColumn ? 1 : 0));
+  accompanimentLongColumn = null;
+  accompanimentSingleToggle = 0;
+  accompanimentSequenceActive = false;
   nextTileId = 0;
   tiles = [{
     id: nextTileId++,
@@ -1797,8 +1846,8 @@ function loadSongObject(data, label) {
   // Calculate custom BPM if custom starting speed is set
   let customBpmOverride = null;
   let customSectionSpeedMultiplier = null;
-  if (customStartingSpeed > 0 && !isChallengeMode) {
-    const customTps = customStartingSpeed + 1; // value 1-16 maps to 2-18 t/s
+  if (customStartingSpeed > 0) {
+    const customTps = customStartingSpeed; // direct t/s value
     const originalFirstSectionTps = info[0] ? calculateTpsFromBpm(info[0].bpm, info[0].beats) : 0;
     customBpmOverride = calculateBpmFromTps(customTps, info[0].beats);
     if (originalFirstSectionTps > 0) {
@@ -1869,11 +1918,19 @@ async function loadSongFromData(songData) {
     const firstSection = songData.sections[sectionIds[0]];
     const challengeFirstSectionBpm = isChallengeMode ? (firstSection?.bpm || 120) : null;
     const challengeFirstSectionBeats = isChallengeMode ? (firstSection?.baseBeats || 0.5) : null;
-    const response = await fetch(`song/${firstSection.musicJson}.json`, { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    
+    // Check if this is a custom song (mid === 999999 or musicJson is not a real file)
+    let sourceJson;
+    if (songData.mid === 999999 && window.customSongJsonData) {
+      sourceJson = window.customSongJsonData;
+    } else {
+      const response = await fetch(`song/${firstSection.musicJson}.json`, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      sourceJson = JSON.parse(await response.text());
     }
-    const sourceJson = JSON.parse(await response.text());
+    
     const musics = Array.isArray(sourceJson.musics) ? sourceJson.musics : [];
     const mergedMusics = [];
 
@@ -1984,7 +2041,39 @@ function getSingleTilePos(arr0) {
   return arr;
 }
 
+function getAccompanimentTilePos() {
+  const nextLongColumn = accompanimentLongColumn === null
+    ? (Math.random() < 0.5 ? 0 : 3)
+    : (accompanimentLongColumn === 0 ? 3 : 0);
+  
+  if (accompanimentLongColumn !== nextLongColumn) {
+    accompanimentSingleToggle = 0;
+  }
+  accompanimentLongColumn = nextLongColumn;
+
+  return {
+    longColumn: nextLongColumn,
+    singleColumns: nextLongColumn === 0 ? [2, 3] : [0, 1]
+  };
+}
+
+function getAccompanimentSingleColumn() {
+  const singleColumns = accompanimentLongColumn === 0 ? [2, 3] : [0, 1];
+  const nextSingleColumn = singleColumns[accompanimentSingleToggle % singleColumns.length];
+  accompanimentSingleToggle = (accompanimentSingleToggle + 1) % singleColumns.length;
+  return nextSingleColumn;
+}
+
 function nextPos(arr, type) {
+  if (type === 9) {
+    const { longColumn } = getAccompanimentTilePos();
+    return [longColumn];
+  }
+
+  accompanimentLongColumn = null;
+  accompanimentSingleToggle = 0;
+  accompanimentSequenceActive = false;
+
   const getPos = type === 5 ? getDoubleTilePos : getSingleTilePos;
   let result = getPos(arr);
   let guard = 0;
@@ -2125,7 +2214,7 @@ function getTileHitAnimationFrame(tile, now = performance.now()) {
 }
 
 function isLongTile(tile) {
-  return tile.type === 6 || tile.type >= 7;
+  return tile.type === 6 || tile.type >= 7 || (tile.type === 9 && tile.isAccompanimentLong);
 }
 
 function isComboTile(tile) {
@@ -2167,6 +2256,35 @@ function getTileHitColumns(tile) {
   return getActiveColumns(tile);
 }
 
+function isTileNearTap(tile, pointerEvent) {
+  if (!pointerEvent) return true; // Keyboard input, assume proximity
+  const boardRect = boardEl.getBoundingClientRect();
+  const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
+  const clickRow = Math.floor(clickYRel * key);
+  
+  const tileTopRow = Math.floor(getTileTop(tile));
+  const tileBottomRow = Math.max(tileTopRow, Math.floor(getTileBottom(tile) - 0.01));
+  
+  // Check if tap is within the tile's vertical range
+  return clickRow >= tileTopRow && clickRow <= tileBottomRow;
+}
+
+function isTileNearAccompaniment(tile, pointerEvent) {
+  // Check if this tile is an accompaniment tile
+  if (tile.isAccompanimentTile) return true;
+  
+  // Check if there are accompaniment tiles nearby (within 2 rows)
+  const tileCenter = (getTileTop(tile) + getTileBottom(tile)) / 2;
+  const nearbyAccompaniment = tiles.find((t) => 
+    t.isAccompanimentTile && 
+    !t.clicked && 
+    !t.holdCompleted &&
+    Math.abs((getTileTop(t) + getTileBottom(t)) / 2 - tileCenter) < 2
+  );
+  
+  return !!nearbyAccompaniment;
+}
+
 function getTileBottom(tile) {
   return getTileTop(tile) + getTileEffectiveHeight(tile);
 }
@@ -2194,8 +2312,15 @@ function getManualProgress(tile) {
 
 function playTileAudioNow(tile) {
   if (!tile || tile.audioPlayed) return;
+  if (tile.type === 9) {
+    tile.audioPlayed = true;
+    tile.played = true;
+    return;
+  }
   let realLen = 0;
-  tile.scores.forEach((scoreGroup) => {
+  // Handle both formats: array of arrays (normal tiles) or single array (single accompaniment tiles)
+  const scoreGroups = Array.isArray(tile.scores[0]) ? tile.scores : [tile.scores];
+  scoreGroups.forEach((scoreGroup) => {
     scoreGroup.forEach((note) => {
       queueTimeout(() => playPitchString(note.note, note.len), (note.start + realLen) * 60000 / currentBpm);
     });
@@ -2457,13 +2582,15 @@ async function finishRun(showLibrary = false) {
     document.getElementById('final-crowns').innerHTML = crownsDisplay.innerHTML;
     document.getElementById('final-grade').classList.add('hidden');
 
-    if (selectedSongData && !autoplayEnabled && customStartingSpeed === 0) {
-      const key = `opentile_highscore_level_${selectedSongData.mid}`;
-      const bestLevel = parseInt(localStorage.getItem(key) || '0', 10);
-      // Save the higher of the current run's award level vs the stored best.
-      // normalSongAwardLevel directly maps to the star/crown tier shown in the HUD.
-      if (normalSongAwardLevel > bestLevel) {
-        localStorage.setItem(key, String(normalSongAwardLevel));
+    if (selectedSongData && !autoplayEnabled) {
+      if (customStartingSpeed === 0) {
+        const key = `opentile_highscore_level_${selectedSongData.mid}`;
+        const bestLevel = parseInt(localStorage.getItem(key) || '0', 10);
+        // Save the higher of the current run's award level vs the stored best.
+        // normalSongAwardLevel directly maps to the star/crown tier shown in the HUD.
+        if (normalSongAwardLevel > bestLevel) {
+          localStorage.setItem(key, String(normalSongAwardLevel));
+        }
       }
       // Save last played song
       if (selectedSongData.mid) {
@@ -2545,7 +2672,8 @@ async function finishRun(showLibrary = false) {
         if (scoreEl) animateNumberTo(scoreEl, finalTps, 300, 3);
         if (lapsEl) {
           lapsEl.classList.remove('hidden');
-          lapsEl.textContent = `${Math.max(1, songLoopCount + 1)} Laps`;
+          const lapCount = Math.max(1, songLoopCount + 1);
+          lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
         }
         if (subtextEl) {
           subtextEl.classList.remove('hidden');
@@ -2585,7 +2713,8 @@ async function finishRun(showLibrary = false) {
         if (scoreEl) animateNumberTo(scoreEl, Number(currentScore || 0), 300, 0);
         if (lapsEl) {
           lapsEl.classList.remove('hidden');
-          lapsEl.textContent = `${Math.max(1, songLoopCount + 1)} Laps`;
+          const lapCount = Math.max(1, songLoopCount + 1);
+          lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
         }
         const numericScore = Number(currentScore || 0);
         const isNewBestScore = (() => {
@@ -2966,7 +3095,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           startTile.ended = 1;
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
-          currentScore += 1;
+          if (!startTile.isAccompanimentSingle) currentScore += 1;
           maybeGrantNormalSongAward(startTile);
         } else if (startTile.type === 5) {
           if (!startTile.hitColumns.includes(colIdx)) {
@@ -3005,6 +3134,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   }
   
   if (autoplayEnabled) return;
+  
   const tile = getLowestManualTile();
   if (!tile) return;
 
@@ -3021,6 +3151,97 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     }
   }
 
+  // Only check for accompaniment tiles if the tapped tile is spatially close to them
+  // This prevents routing to distant accompaniment tiles
+  let longAccompanimentTile = null;
+  let singleAccompanimentTile = null;
+  
+  if (tile.isAccompanimentTile || (pointerEvent && isTileNearAccompaniment(tile, pointerEvent))) {
+    // Set the active sequence ID if we're hitting an accompaniment tile
+    if (tile.isAccompanimentTile && tile.accompanimentSequenceId) {
+      activeAccompanimentSequenceId = tile.accompanimentSequenceId;
+    }
+    
+    // Check if the pressed column has an accompaniment tile that can be hit
+    // Only consider accompaniment tiles that are spatially close AND from the active sequence
+    longAccompanimentTile = tiles.find((t) => 
+      t.isAccompanimentTile && 
+      t.type === 9 && 
+      t.isAccompanimentLong &&
+      !t.clicked && 
+      !t.holdCompleted &&
+      tileMatchesColumn(t, colIdx) &&
+      isTileNearTap(t, pointerEvent) &&
+      (activeAccompanimentSequenceId === null || t.accompanimentSequenceId === activeAccompanimentSequenceId)
+    );
+
+    if (longAccompanimentTile) {
+      // Set the active sequence ID when we start holding a long tile
+      activeAccompanimentSequenceId = longAccompanimentTile.accompanimentSequenceId;
+      
+      // Long accompaniment tile - handle as holdable tile (completely silent)
+      if (!longAccompanimentTile.holdStarted) {
+        longAccompanimentTile.holdStarted = true;
+        longAccompanimentTile.activeHoldColumn = colIdx;
+        longAccompanimentTile.played = true;
+        longAccompanimentTile.audioPlayed = true;
+        const el = document.querySelector(`[data-tile-id="${longAccompanimentTile.id}"]`);
+        if (pointerEvent) {
+          longAccompanimentTile.tapScreenY = pointerEvent.clientY;
+        } else if (el) {
+          const rect = el.getBoundingClientRect();
+          const unitHeight = rect.height / longAccompanimentTile.hlen;
+          longAccompanimentTile.tapScreenY = rect.bottom - (unitHeight / 2);
+        }
+        if (el && longAccompanimentTile.tapScreenY) {
+          const rect = el.getBoundingClientRect();
+          const unitHeight = rect.height / longAccompanimentTile.hlen;
+          const tapDistFromTop = (longAccompanimentTile.tapScreenY - rect.top) / unitHeight;
+          longAccompanimentTile.completionPlaying = longAccompanimentTile.playing + tapDistFromTop - 0.5;
+          longAccompanimentTile.tapPlaying = longAccompanimentTile.playing;
+        }
+      }
+      // Don't return - allow single accompaniment tile to also be handled on the same tap
+    }
+
+    singleAccompanimentTile = tiles.find((t) => 
+      t.isAccompanimentTile && 
+      t.type === 2 && 
+      t.isAccompanimentSingle &&
+      !t.clicked && 
+      !t.holdCompleted &&
+      tileMatchesColumn(t, colIdx) &&
+      isTileNearTap(t, pointerEvent) &&
+      (activeAccompanimentSequenceId === null || t.accompanimentSequenceId === activeAccompanimentSequenceId)
+    );
+
+    if (singleAccompanimentTile) {
+      // Set the active sequence ID when we hit a single tile
+      activeAccompanimentSequenceId = singleAccompanimentTile.accompanimentSequenceId;
+      
+      // Use the single accompaniment tile instead of the regular tile
+      singleAccompanimentTile.clicked = true;
+      singleAccompanimentTile.ended = 1;
+      triggerTileHitAnimation(singleAccompanimentTile);
+      playTileAudioNow(singleAccompanimentTile);
+      
+      // Check if this was the last single tile in the sequence
+      const sequenceId = singleAccompanimentTile.accompanimentSequenceId;
+      const remainingSingleTiles = tiles.filter((t) => 
+        t.isAccompanimentSingle && 
+        t.accompanimentSequenceId === sequenceId && 
+        !t.clicked
+      );
+      
+      if (remainingSingleTiles.length === 0) {
+        // Sequence completed, reset the active sequence ID
+        activeAccompanimentSequenceId = null;
+      }
+      
+      return;
+    }
+  }
+
   // Check if there's an active long tile in a different column
   const activeLongInOtherCol = tiles.find((t) => 
     isLongTile(t) && 
@@ -3031,16 +3252,27 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   );
   
   if (activeLongInOtherCol) {
-    // Drop the active long tile instead of game over
-    activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
-    activeLongInOtherCol.holdReleased = true;
-    activeLongInOtherCol.played = true;
+    // Don't drop accompaniment long tiles when tapping on their single tiles
+    // They're meant to be played together
+    // Also check that they belong to the same sequence to prevent cross-sequence interference
+    const isSameSequence = activeLongInOtherCol.accompanimentSequenceId && 
+                          (tile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId ||
+                           (singleAccompanimentTile && singleAccompanimentTile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId));
     
-    const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
-    currentScore += Math.max(1, Math.ceil(completedHeight));
-    
-    if (!tileMatchesColumn(tile, colIdx)) {
-      return;
+    if (activeLongInOtherCol.isAccompanimentLong && (tile.isAccompanimentSingle || singleAccompanimentTile) && isSameSequence) {
+      // Allow both tiles to be active - don't drop the long tile
+    } else {
+      // Drop the active long tile instead of game over
+      activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
+      activeLongInOtherCol.holdReleased = true;
+      activeLongInOtherCol.played = true;
+      
+      const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
+      currentScore += Math.max(1, Math.ceil(completedHeight));
+      
+      if (!tileMatchesColumn(tile, colIdx)) {
+        return;
+      }
     }
   }
 
@@ -3061,7 +3293,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     tile.ended = 1;
     triggerTileHitAnimation(tile);
     playTileAudioNow(tile);
-    if (tile.type === 2) currentScore += 1;
+    if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1;
     maybeGrantNormalSongAward(tile);
     
     // Classic mode: increment tapped tiles and advance field
@@ -3588,37 +3820,114 @@ function updateEngineFrame(now) {
     }
   }
 
-  while (tiles.length < key * 3) {
+  while (tiles.filter(t => !t.isAccompanimentTile).length < key * 3) {
     if (currentSectionIndex < sheet.length) {
       const currentTile = sheet[currentSectionIndex][currentSectionTileIndex++];
       if (currentTile) {
-        warr = nextPos(warr, currentTile.type);
         const comboTaps = Math.max(2, currentTile.scores.length || Math.round(currentTile.hlen) + 1);
         const isCombo = currentTile.type === 3;
+        const isAccompanimentTile = currentTile.type === 9;
         const sectionTileIndex = currentSectionTileIndex;
         const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length;
-        tiles.push({
-          id: nextTileId++,
-          type: currentTile.type,
-          scores: currentTile.scores,
-          hlen: currentTile.hlen,
-          hpos,
-          visualHposOffset,           // snapshot for reference
-          visualAdjustedHpos: hpos - visualHposOffset,  // precomputed, used by getTileTop
-          warr: [...warr],
-          taps: isCombo ? comboTaps : 0,
-          remainingTaps: isCombo ? comboTaps : 0,
-          holdStarted: false,
-          holdCompleted: false,
-          released: false,
-          clicked: false,
-          played: false,
-          ended: 0,
-          hitColumns: [],
-          hitAnimationStartedAt: 0,
-          isSectionAwardTile: isLastTileInSection,
-          awardGranted: false
-        });
+
+        if (isAccompanimentTile) {
+          const { longColumn } = getAccompanimentTilePos();
+          const longWarr = new Array(key).fill(0);
+          longWarr[longColumn] = 1;
+          
+          // Assign a unique sequence ID to this accompaniment group
+          const currentSequenceId = ++accompanimentSequenceId;
+
+          tiles.push({
+            id: nextTileId++,
+            type: currentTile.type,
+            scores: [],
+            hlen: currentTile.hlen,
+            hpos,
+            visualHposOffset,
+            visualAdjustedHpos: hpos - visualHposOffset,
+            warr: longWarr,
+            taps: 0,
+            remainingTaps: 0,
+            holdStarted: false,
+            holdCompleted: false,
+            released: false,
+            clicked: false,
+            played: false,
+            ended: 0,
+            hitColumns: [],
+            hitAnimationStartedAt: 0,
+            isSectionAwardTile: isLastTileInSection,
+            awardGranted: false,
+            isAccompanimentLong: true,
+            isAccompanimentTile: true,
+            accompanimentSequenceId: currentSequenceId
+          });
+
+          const numSingleTiles = Math.round(currentTile.hlen);
+          for (let i = 0; i < numSingleTiles; i++) {
+            const currentSingleColumn = getAccompanimentSingleColumn();
+            const singleWarr = new Array(key).fill(0);
+            singleWarr[currentSingleColumn] = 1;
+            const singleTileHpos = hpos + i;
+            // Each single tile gets the corresponding score group from the original accompaniment tile
+            // currentTile.scores[i] is already a score group (array of notes), assign directly
+            const tileScore = currentTile.scores[i] !== undefined ? currentTile.scores[i] : [];
+
+            tiles.push({
+              id: nextTileId++,
+              type: 2,
+              scores: tileScore,
+              hlen: 1,
+              hpos: singleTileHpos,
+              visualHposOffset,
+              visualAdjustedHpos: singleTileHpos - visualHposOffset,
+              warr: singleWarr,
+              taps: 0,
+              remainingTaps: 0,
+              holdStarted: false,
+              holdCompleted: false,
+              released: false,
+              clicked: false,
+              played: false,
+              ended: 0,
+              hitColumns: [],
+              hitAnimationStartedAt: 0,
+              isSectionAwardTile: isLastTileInSection && i === numSingleTiles - 1,
+              awardGranted: false,
+              isAccompanimentSingle: true,
+              isAccompanimentTile: true,
+              accompanimentSequenceId: currentSequenceId
+            });
+          }
+
+          warr = new Array(key).fill(0);
+        } else {
+          warr = nextPos(warr, currentTile.type);
+          tiles.push({
+            id: nextTileId++,
+            type: currentTile.type,
+            scores: currentTile.scores,
+            hlen: currentTile.hlen,
+            hpos,
+            visualHposOffset,
+            visualAdjustedHpos: hpos - visualHposOffset,
+            warr: [...warr],
+            taps: isCombo ? comboTaps : 0,
+            remainingTaps: isCombo ? comboTaps : 0,
+            holdStarted: false,
+            holdCompleted: false,
+            released: false,
+            clicked: false,
+            played: false,
+            ended: 0,
+            hitColumns: [],
+            hitAnimationStartedAt: 0,
+            isSectionAwardTile: isLastTileInSection,
+            awardGranted: false
+          });
+        }
+
         hpos += currentTile.hlen;
         // Combo tiles are displayed as 2 rows tall; accumulate the visual compression
         // so subsequent tiles are positioned directly above the combo with no gap.
@@ -3644,9 +3953,11 @@ function updateEngineFrame(now) {
     // Use the visual-adjusted position for the autoplay audio trigger so tiles after a
     // combo tile (which have a large visualHposOffset) are triggered at the correct time.
     const visualPlaying = starthpos - (tile.visualAdjustedHpos ?? tile.hpos) - (key - 1);
-    if (autoplayEnabled && visualPlaying > 0 && !tile.played) {
+    if (autoplayEnabled && visualPlaying > 0 && !tile.played && !tile.isAccompanimentLong) {
       let realLen = 0;
-      tile.scores.forEach((scoreGroup) => {
+      // Handle both formats: array of arrays (normal tiles) or single array (single accompaniment tiles)
+      const scoreGroups = Array.isArray(tile.scores[0]) ? tile.scores : [tile.scores];
+      scoreGroups.forEach((scoreGroup) => {
         scoreGroup.forEach((note) => {
           queueTimeout(() => playPitchString(note.note, note.len), (note.start + realLen) * 60000 / currentBpm);
         });
@@ -3671,7 +3982,15 @@ function updateEngineFrame(now) {
         case 1:
           break;
         case 2:
-          if (tile.played && !tile.ended) {
+          if (tile.isAccompanimentSingle) {
+            // Single accompaniment tiles should only play when manually tapped
+            if (tile.played && !tile.ended) {
+              tile.clicked = true;
+              tile.ended = 1;
+            } else if (tile.ended) {
+              tile.ended++;
+            }
+          } else if (tile.played && !tile.ended) {
             currentScore++;
             tile.clicked = true;
             tile.ended = 1;
@@ -3732,6 +4051,15 @@ function updateEngineFrame(now) {
             } else {
               tile.ended++;
             }
+          }
+          break;
+        case 9:
+          // Accompaniment long tiles - completely silent, no scoring
+          if (tile.playing > tile.hlen - 1) {
+            tile.clicked = true;
+            tile.ended = 1;
+          } else if (tile.ended) {
+            tile.ended++;
           }
           break;
         default:
@@ -4792,14 +5120,33 @@ customSongUpload?.addEventListener('change', async (event) => {
   }
 });
 
+closeBpmModalBtn?.addEventListener('click', () => {
+  if (bpmModal) {
+    bpmModal.classList.add('hidden');
+  }
+});
+
+// Close modal when clicking on backdrop
+bpmModal?.addEventListener('click', (event) => {
+  if (event.target.dataset.closeBpmModal === 'true') {
+    bpmModal.classList.add('hidden');
+  }
+});
+
 customSpeedInput?.addEventListener('input', (event) => {
-  const value = parseInt(event.target.value, 10);
+  let value = parseInt(event.target.value, 10);
+  // Clamp to whole numbers above 0 (0 = disabled, direct t/s value)
+  if (isNaN(value) || value < 0) {
+    value = 0;
+  }
+  // Update the input value to reflect clamping
+  event.target.value = value;
+  
   if (value === 0) {
     customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
     customSpeedDisplay.classList.remove('text-indigo-600');
   } else {
-    const tps = value + 1; // value 1-16 maps to 2-18 t/s
-    customSpeedDisplay.textContent = `${tps} t/s`;
+    customSpeedDisplay.textContent = `${value} t/s`;
     customSpeedDisplay.classList.add('text-indigo-600');
   }
 });

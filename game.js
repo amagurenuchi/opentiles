@@ -3946,13 +3946,14 @@ function updateEngineFrame(now) {
 
   while (tiles.filter(t => !t.isAccompanimentTile).length < key * 3) {
     if (currentSectionIndex < sheet.length) {
-      const currentTile = sheet[currentSectionIndex][currentSectionTileIndex++];
+      const currentTile = sheet[currentSectionIndex][currentSectionTileIndex];
       if (currentTile) {
         const comboTaps = Math.max(2, currentTile.scores.length || Math.round(currentTile.hlen) + 1);
         const isCombo = currentTile.type === 3;
         const isAccompanimentTile = currentTile.type === 9;
         const sectionTileIndex = currentSectionTileIndex;
         const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length - 1;
+        currentSectionTileIndex++;
 
         if (isAccompanimentTile) {
           const { longColumn } = getAccompanimentTilePos();
@@ -4062,7 +4063,7 @@ function updateEngineFrame(now) {
         bgLevelPos.push(hpos - 4 + key);
         // Advance the normal-song award threshold one tile earlier so it can trigger
         // at the end of the current section rather than the next section's first tile.
-        speedLevelPos.push(hpos + key);
+        speedLevelPos.push(hpos - 2 + key);
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }

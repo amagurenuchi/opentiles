@@ -16,13 +16,20 @@
     #game-board {
       touch-action: none;
     }
+
+    /* Logo visibility - only show on screens wider than 1060px */
+    @media (min-width: 1060px) {
+      .logo-desktop {
+        display: block !important;
+      }
+    }
   </style>
 </head>
 
 <body class="h-full select-none bg-[#f3f4f6] overflow-hidden">
 
   <!-- Logo (PC devices only) - positioned at absolute top left of webpage -->
-  <img src="special/logowide.png" alt="Logo" class="absolute top-4 left-4 h-12 md:h-16 object-contain pointer-events-none z-[50] hidden md:block">
+  <img src="special/logowide.png" alt="Logo" class="logo-desktop absolute top-4 left-4 h-12 lg:h-16 object-contain pointer-events-none z-[50] hidden">
 
   <div class="relative flex h-dvh min-h-dvh w-full items-center justify-center gap-3">
     <!-- Game Board Wrapper (Fills screen height, aspect-ratio 1:2 -> width is 50vh) -->

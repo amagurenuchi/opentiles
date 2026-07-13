@@ -4062,7 +4062,7 @@ function updateEngineFrame(now) {
         bgLevelPos.push(hpos - 4 + key);
         // Advance the normal-song award threshold one tile earlier so it can trigger
         // at the end of the current section rather than the next section's first tile.
-        speedLevelPos.push(hpos - 1 + key);
+        speedLevelPos.push(hpos + key);
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }

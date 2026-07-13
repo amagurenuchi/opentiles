@@ -2033,6 +2033,23 @@ body {
   /* Yellow color for crowns */
 }
 
+/* Score digit wrapper for consistent positioning */
+.score-digit-wrapper {
+  display: inline-block;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  /* Ensures consistent width for all digits */
+  min-width: 0.4em;
+  /* Minimal width to prevent layout shifts when digits change */
+  vertical-align: baseline;
+  /* Maintains proper alignment with text */
+  margin: 0;
+  padding: 0;
+  /* No extra spacing that could interfere with animations */
+  line-height: 1;
+  /* Tight line height to prevent vertical shifts */
+}
+
 /* Song card styling */
 .song-card {
   background: white;

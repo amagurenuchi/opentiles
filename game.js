@@ -3493,7 +3493,11 @@ function updateHUD() {
   } else {
     // Normal mode: show score, show normal TPS, show stars/crowns
     scoreDisplay.classList.remove('hidden');
-    scoreDisplay.textContent = String(currentScore);
+    // Wrap each digit in an individual span for consistent positioning
+    const scoreStr = String(currentScore);
+    scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
+      `<span class="score-digit-wrapper">${digit}</span>`
+    ).join('');
 
     if (isGameLoaded) {
       tpsDisplayNormal?.classList.remove('hidden');
@@ -3828,7 +3832,7 @@ function updateEngineFrame(now) {
         const isCombo = currentTile.type === 3;
         const isAccompanimentTile = currentTile.type === 9;
         const sectionTileIndex = currentSectionTileIndex;
-        const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length;
+        const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length - 1;
 
         if (isAccompanimentTile) {
           const { longColumn } = getAccompanimentTilePos();
@@ -4231,7 +4235,7 @@ function stopGame(showStart = true) {
     renderHomeScreen();
   }
   gameoverScreen.classList.add('hidden');
-  scoreDisplay.textContent = '0';
+  scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
   
@@ -4263,7 +4267,7 @@ function returnToMainMenu() {
   songListScreen.classList.add('hidden');
   challengesScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
-  scoreDisplay.textContent = '0';
+  scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
   
@@ -4913,7 +4917,7 @@ function initUi() {
   songListScreen.classList.add('hidden');
   homeScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
-  scoreDisplay.textContent = '0';
+  scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
   loadSettings();
   updateKeybindHints();
   normalizeLifeState();
@@ -5169,7 +5173,7 @@ clearSongBtn?.addEventListener('click', () => {
   startScreen.classList.add('hidden');
   songListScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
-  scoreDisplay.textContent = '0';
+  scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
   starsDisplay.innerHTML = '';
   crownsDisplay.innerHTML = '';
   setSongStatus('Load a PT2 JSON file to play a song.');

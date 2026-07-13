@@ -267,6 +267,21 @@ body {
   gap: 0.75rem;
 }
 
+/* Loading Screen Styles */
+#loading-screen {
+  display: flex;
+}
+
+#loading-screen.hidden {
+  display: none;
+}
+
+/* Home screen specific styles */
+#home-screen {
+  display: none;
+  text-shadow: none;
+}
+
 /* Push main screen contents down to make space for the shared top bar */
 #start-screen,
 #song-list-screen,

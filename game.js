@@ -54,6 +54,7 @@ const pPointsDisplay = document.getElementById('p-points-display');
 const totalCrownsDisplay = document.getElementById('total-crowns');
 const totalStarsDisplay = document.getElementById('total-stars');
 const homeScreen = document.getElementById('home-screen');
+const loadingScreen = document.getElementById('loading-screen');
 const welcomeSongTitle = document.getElementById('welcome-song-title');
 const welcomePlayBtn = document.getElementById('welcome-play-btn');
 const favouriteSongsContainer = document.getElementById('favourite-songs-container');
@@ -101,6 +102,7 @@ let musicCsvData = [];
 let selectedSongData = null;
 let lastLoadedJsonText = '';
 let lastLoadedLabel = '';
+let isPlayInProgress = false;
 
 let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
@@ -626,6 +628,7 @@ function cancelRevivePrompt() {
   revivePendingType = null;
   revivePendingTile = null;
   revivePendingColIdx = null;
+  isPlayInProgress = false; // Reset play progress flag when canceling revive
   finishRun(false);
 }
 
@@ -1109,10 +1112,15 @@ function getPlayLifeCost(songData) {
 }
 
 function startSongTransition(songData) {
+  if (isPlayInProgress) {
+    return; // Prevent multiple play button presses
+  }
+  
   if (!spendLifeCost(getPlayLifeCost(songData))) {
     return;
   }
 
+  isPlayInProgress = true;
   animateLifeSpendFromTopBar();
   playLifeIntroSound();
   window.setTimeout(() => {
@@ -1121,10 +1129,15 @@ function startSongTransition(songData) {
 }
 
 function startSongTextTransition(text, label) {
+  if (isPlayInProgress) {
+    return; // Prevent multiple play button presses
+  }
+  
   if (!spendLifeCost(1)) {
     return;
   }
 
+  isPlayInProgress = true;
   animateLifeSpendFromTopBar();
   playLifeIntroSound();
   window.setTimeout(() => {
@@ -1247,23 +1260,68 @@ function setSongStatus(message) {
   if (songStatusEl) songStatusEl.textContent = message;
 }
 
+function updateLoadingProgress(stage, current, total) {
+  const loadingProgress = document.getElementById('loading-progress');
+  const loadingStatus = document.getElementById('loading-status');
+  
+  if (!loadingProgress || !loadingStatus) return;
+  
+  const percentage = Math.round((current / total) * 100);
+  loadingProgress.style.width = `${percentage}%`;
+  
+  const stageNames = {
+    'sprites': 'Loading sprites...',
+    'csv': 'Loading song data...',
+    'audio': 'Preparing audio...',
+    'complete': 'Ready!'
+  };
+  
+  loadingStatus.textContent = stageNames[stage] || `Loading ${stage}...`;
+}
+
 function preloadSprites() {
-  [
-    '1',
-    '2',
-    '3',
-    '4',
-    'long_finish',
-    'long_head',
-    'long_light',
-    'long_tap2',
-    'long_tilelight',
-    'tile_black',
-    'tile_start'
-  ].forEach((name) => {
-    const image = new Image();
-    image.src = `gameImage/${name}.png`;
-    spriteCache[name] = image;
+  return new Promise((resolve) => {
+    const sprites = [
+      '1',
+      '2',
+      '3',
+      '4',
+      'long_finish',
+      'long_head',
+      'long_light',
+      'long_tap2',
+      'long_tilelight',
+      'tile_black',
+      'tile_start'
+    ];
+    
+    let loadedCount = 0;
+    const totalSprites = sprites.length;
+    
+    sprites.forEach((name) => {
+      const image = new Image();
+      image.src = `gameImage/${name}.png`;
+      image.onload = () => {
+        loadedCount++;
+        updateLoadingProgress('sprites', loadedCount, totalSprites);
+        if (loadedCount === totalSprites) {
+          resolve();
+        }
+      };
+      image.onerror = () => {
+        loadedCount++;
+        updateLoadingProgress('sprites', loadedCount, totalSprites);
+        if (loadedCount === totalSprites) {
+          resolve();
+        }
+      };
+      spriteCache[name] = image;
+    });
+    
+    // Fallback in case images are cached
+    if (loadedCount === totalSprites) {
+      resolve();
+    }
   });
 }
 
@@ -1432,6 +1490,10 @@ function createCustomSongCard() {
 
     const playBtn = card.querySelector('.btn-play');
     playBtn.addEventListener('click', () => {
+      if (isPlayInProgress) {
+        return; // Prevent multiple play button presses
+      }
+      
       if (customSongData) {
         // Get BPM values from input fields
         const bpm1 = parseInt(document.getElementById('custom-bpm-1')?.value || '120', 10);
@@ -1546,7 +1608,12 @@ function createSongCard(song, isFavouriteView = false) {
   `;
 
   const playBtn = card.querySelector('.btn-play');
-  playBtn.addEventListener('click', () => startSongTransition(song));
+  playBtn.addEventListener('click', () => {
+    if (isPlayInProgress) {
+      return; // Prevent multiple play button presses
+    }
+    startSongTransition(song);
+  });
 
   const heartBtn = card.querySelector('.heart-button');
   heartBtn.addEventListener('click', (e) => {
@@ -1606,7 +1673,12 @@ function createChallengeCard(challengeData) {
   `;
 
   const playBtn = card.querySelector('.btn-play');
-  playBtn.addEventListener('click', () => startSongTransition(challengeData));
+  playBtn.addEventListener('click', () => {
+    if (isPlayInProgress) {
+      return; // Prevent multiple play button presses
+    }
+    startSongTransition(challengeData);
+  });
 
   return card;
 }
@@ -1669,6 +1741,8 @@ function renderChallenges() {
 
 async function loadMusicCsv() {
   try {
+    updateLoadingProgress('csv', 0, 1);
+    
     if (typeof i18n !== 'undefined' && i18n.loadTranslations) {
       await i18n.loadTranslations();
     }
@@ -1681,9 +1755,12 @@ async function loadMusicCsv() {
     renderSongList();
     renderHomeScreen();
     setSongStatus(`Loaded ${musicCsvData.length} songs from music_json.csv`);
+    
+    updateLoadingProgress('csv', 1, 1);
   } catch (err) {
     console.warn(err);
     setSongStatus(`Failed to load music_json.csv: ${err.message}`);
+    updateLoadingProgress('csv', 1, 1);
   }
 }
 
@@ -1893,6 +1970,7 @@ function computeSectionScoreThresholds() {
 
 async function loadSongFromData(songData) {
   try {
+    isPlayInProgress = true; // Set play progress flag when loading from data
     selectedSongData = songData;
     reviveRemaining = MAX_REVIVES_PER_RUN;
     revivePendingFailure = false;
@@ -1988,6 +2066,7 @@ async function loadSongFromData(songData) {
 }
 
 function loadSongFromText(text, label) {
+  isPlayInProgress = true; // Set play progress flag when loading from text
   const parsed = JSON.parse(text);
   loadSongObject(parsed, label);
   
@@ -2507,6 +2586,7 @@ async function finishRun(showLibrary = false) {
   captureCurrentSpeedState();
   isStarted = false;
   isPaused = true;
+  isPlayInProgress = false; // Reset play progress flag when run finishes
   
   // Clean up classic mode timer
   if (isClassicMode) {
@@ -4219,6 +4299,7 @@ function startGame() {
   isPaused = false;
   startTime = performance.now();
   updatePauseButtonVisibility();
+  isPlayInProgress = false; // Reset play progress flag when game actually starts
 }
 
 function stopGame(showStart = true) {
@@ -4227,6 +4308,7 @@ function stopGame(showStart = true) {
   selectedSongData = null;
   lastLoadedJsonText = '';
   lastLoadedLabel = '';
+  isPlayInProgress = false; // Reset play progress flag when game stops
   if (showStart) {
     startScreen.classList.add('hidden');
     songListScreen.classList.add('hidden');
@@ -4259,6 +4341,7 @@ function returnToMainMenu() {
   selectedSongData = null;
   lastLoadedJsonText = '';
   lastLoadedLabel = '';
+  isPlayInProgress = false; // Reset play progress flag when returning to menu
   const resultsScreen = document.getElementById('results-screen');
   if (resultsScreen) {
     resultsScreen.classList.add('hidden');
@@ -4692,7 +4775,12 @@ function renderHomeScreen() {
     const localizedSongName = getLocalizedSongDisplayName(songToDisplay);
     welcomeSongTitle.textContent = `${songToDisplay.id}. ${localizedSongName}`;
     welcomePlayBtn.textContent = i18n ? i18n.t('btn_play') : 'Play';
-    welcomePlayBtn.onclick = () => startSongTransition(songToDisplay);
+    welcomePlayBtn.onclick = () => {
+      if (isPlayInProgress) {
+        return; // Prevent multiple play button presses
+      }
+      startSongTransition(songToDisplay);
+    };
   } else {
     // Show "Loading songs..." if music data hasn't loaded yet
     if (musicCsvData.length === 0) {
@@ -4933,6 +5021,43 @@ function initUi() {
   if (sharedDock) sharedDock.classList.remove('hidden');
 }
 
+async function initializeGame() {
+  // Show loading screen
+  if (loadingScreen) {
+    loadingScreen.classList.remove('hidden');
+  }
+  
+  try {
+    // Load assets in parallel
+    await Promise.all([
+      preloadSprites(),
+      loadMusicCsv()
+    ]);
+    
+    // Finalize loading
+    updateLoadingProgress('complete', 1, 1);
+    
+    // Small delay to show the completion state
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Hide loading screen and initialize UI
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+    }
+    
+    initUi();
+    
+  } catch (error) {
+    console.error('Failed to initialize game:', error);
+    
+    // Even if there's an error, hide loading screen and show the game
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+    }
+    initUi();
+  }
+}
+
 document.getElementById('song-library-btn')?.addEventListener('click', () => {
   songListScreen.classList.remove('hidden');
   playMenuLoopCue();
@@ -4959,6 +5084,10 @@ document.getElementById('save-settings-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('restart-btn')?.addEventListener('click', () => {
+  if (isPlayInProgress) {
+    return; // Prevent multiple play button presses
+  }
+  
   if (selectedSongData) {
     startSongTransition(selectedSongData);
   } else if (lastLoadedJsonText) {
@@ -5078,6 +5207,10 @@ songSearchInput?.addEventListener('input', (event) => {
 });
 
 pt2MusicSelect?.addEventListener('change', () => {
+  if (isPlayInProgress) {
+    return; // Prevent multiple play button presses
+  }
+  
   const mid = parseInt(pt2MusicSelect.value, 10);
   if (!mid) return;
   const songData = musicCsvData.find((song) => song.mid === mid);
@@ -5087,6 +5220,10 @@ pt2MusicSelect?.addEventListener('change', () => {
 });
 
 pt2JsonInput?.addEventListener('change', async (event) => {
+  if (isPlayInProgress) {
+    return; // Prevent multiple play button presses
+  }
+  
   const file = event.target.files && event.target.files[0];
   if (!file) return;
   try {
@@ -5367,9 +5504,7 @@ document.addEventListener('click', (event) => {
   playMenuLoopCue();
 }, true);
 
-preloadSprites();
-loadMusicCsv();
-initUi();
+initializeGame();
 
 // Listen for language changes to update song displays (after functions are defined)
 document.addEventListener('languageChanged', () => {

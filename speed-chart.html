@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Speed Chart - OpenTiles</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom CSS for fonts and animations -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      background-color: #f3f4f6;
+    }
+    
+    .speed-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    
+    .speed-table th,
+    .speed-table td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .speed-table th {
+      background-color: #f9fafb;
+      font-weight: 600;
+      color: #374151;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .speed-table tr:hover {
+      background-color: #f3f4f6;
+    }
+    
+    /* Speed color coding for TPM column only */
+    .speed-very-slow {
+      background-color: #d1fae5; /* green-100 */
+    }
+    
+    .speed-slow {
+      background-color: #a7f3d0; /* green-200 */
+    }
+    
+    .speed-medium-slow {
+      background-color: #6ee7b7; /* green-300 */
+    }
+    
+    .speed-medium {
+      background-color: #fcd34d; /* amber-300 */
+    }
+    
+    .speed-medium-fast {
+      background-color: #fbbf24; /* amber-400 */
+    }
+    
+    .speed-fast {
+      background-color: #fb923c; /* orange-400 */
+    }
+    
+    .speed-very-fast {
+      background-color: #f87171; /* red-400 */
+    }
+    
+    .speed-extreme {
+      background-color: #ef4444; /* red-500 */
+    }
+    
+    .speed-insane {
+      background-color: #dc2626; /* red-600 */
+    }
+    
+    /* Section 9 (3-crown) coloring - different from regular speeds */
+    .speed-section9 {
+      background-color: #8b5cf6; /* violet-500 */
+      color: white;
+    }
+    
+    /* Ensure colored cells maintain their background on hover */
+    .speed-table tr:hover td.speed-very-slow,
+    .speed-table tr:hover td.speed-slow,
+    .speed-table tr:hover td.speed-medium-slow,
+    .speed-table tr:hover td.speed-medium,
+    .speed-table tr:hover td.speed-medium-fast,
+    .speed-table tr:hover td.speed-fast,
+    .speed-table tr:hover td.speed-very-fast,
+    .speed-table tr:hover td.speed-extreme,
+    .speed-table tr:hover td.speed-insane,
+    .speed-table tr:hover td.speed-section9 {
+      background-color: inherit !important;
+    }
+  </style>
+</head>
+
+<body class="h-full select-none bg-[#f3f4f6] overflow-auto">
+  
+  <div class="min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+      <!-- Header -->
+      <div class="mb-8">
+        <h1 class="text-4xl font-black tracking-tight text-gray-900 mb-2 font-game">SPEED CHART</h1>
+        <p class="text-gray-500 text-sm">Song speeds in tiles per minute and tiles per second</p>
+      </div>
+      
+      <!-- Legend -->
+      <div class="mb-6 p-4 bg-white rounded-xl shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h3 class="text-sm font-semibold text-gray-700">Speed Legend (TPS = Tiles Per Second)</h3>
+          <button id="toggle-section9" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            Show 3-Crown Speeds
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-3">
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-very-slow"></div>
+            <span class="text-xs text-gray-600">&lt;3 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-slow"></div>
+            <span class="text-xs text-gray-600">3-3.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-medium-slow"></div>
+            <span class="text-xs text-gray-600">4-4.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-medium"></div>
+            <span class="text-xs text-gray-600">5-5.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-medium-fast"></div>
+            <span class="text-xs text-gray-600">6-6.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-fast"></div>
+            <span class="text-xs text-gray-600">7-7.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-very-fast"></div>
+            <span class="text-xs text-gray-600">8-8.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-extreme"></div>
+            <span class="text-xs text-gray-600">9-9.9 TPS</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-insane"></div>
+            <span class="text-xs text-gray-600">≥10 TPS</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200">
+          <div class="flex items-center gap-2">
+            <div class="w-4 h-4 rounded speed-section9"></div>
+            <span class="text-xs text-gray-600">3-Crown (Section 9)</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Table Container -->
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="speed-table" id="speed-table">
+            <thead>
+              <tr>
+                <th>TPM</th>
+                <th>TPS</th>
+                <th>Song Name</th>
+                <th>Section</th>
+              </tr>
+            </thead>
+            <tbody id="speed-table-body">
+              <!-- Data will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CSV data processing
+    async function loadCSVData() {
+      try {
+        const response = await fetch('music_json.csv');
+        const csvText = await response.text();
+        return parseCSV(csvText);
+      } catch (error) {
+        console.error('Error loading CSV:', error);
+        return [];
+      }
+    }
+
+    function parseCSV(csvText) {
+      const lines = csvText.trim().split('\n');
+      const data = [];
+      
+      // Skip header rows (first 2 rows are headers)
+      for (let i = 2; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const columns = line.split(',');
+        if (columns.length < 6) continue;
+        
+        const id = columns[0].trim();
+        const bpm = parseFloat(columns[2].trim());
+        const acceleration = parseFloat(columns[3].trim());
+        const tilesPerMinRaw = parseFloat(columns[4].trim());
+        const songName = columns[5] ? columns[5].trim() : '';
+        const musician = columns[6] ? columns[6].trim() : '';
+        
+        // Skip challenge songs (IDs starting with 88 or 19)
+        if (id.startsWith('88') || id.startsWith('19')) continue;
+        
+        // Skip songs with challenge-related names
+        const challengePatterns = ['Challenge', 'Single tile', 'Double tile', 'Combo tile', 'Slider tile', 'Accompaniment tile', 'Classic'];
+        let shouldSkip = false;
+        for (const pattern of challengePatterns) {
+          if (songName.indexOf(pattern) !== -1) {
+            shouldSkip = true;
+            break;
+          }
+        }
+        if (shouldSkip) continue;
+        
+        // Calculate speed metrics
+        const tilesPerMin = tilesPerMinRaw || (bpm * acceleration * 4);
+        const tilesPerSec = tilesPerMin / 60;
+        
+        // Extract section number from ID (last digit)
+        const section = parseInt(id.slice(-1));
+        
+        data.push({
+          id,
+          songName,
+          musician,
+          section,
+          tilesPerMin,
+          tilesPerSec
+        });
+      }
+      
+      // Sort by tiles per minute (descending)
+      data.sort((a, b) => b.tilesPerMin - a.tilesPerMin);
+      
+      return data;
+    }
+
+    // Helper functions matching game.js acceleration formula
+    function calculateBpmFromTps(tps, beats) {
+      return Math.round(tps * beats * 60);
+    }
+
+    function calculateTpsFromBpm(bpm, beats) {
+      return bpm / beats / 60;
+    }
+
+    function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
+      const tpm = lastBpm / lastBeats;
+      const effectiveLoopTimes = loopTimes; // Normal mode, not challenge mode
+
+      const constant = effectiveLoopTimes < 3 ? 100 : 130;
+      const factor = Math.max(1.3 - (tpm - constant) * 0.001, 1.04);
+      return Math.trunc(factor * tpm * currentBeatsValue);
+    }
+
+    // Calculate section 9 (3-crown) speeds by iterating through all sections
+    function calculateSection9Speeds(data) {
+      const section9Data = [];
+      const songMap = new Map();
+      
+      // Group songs by their base ID (without section number)
+      data.forEach(item => {
+        const baseId = item.id.slice(0, -1); // Remove last digit (section)
+        if (!songMap.has(baseId)) {
+          songMap.set(baseId, []);
+        }
+        songMap.get(baseId).push(item);
+      });
+      
+      // Calculate section 9 speeds for each song by iterating through sections
+      songMap.forEach((sections, baseId) => {
+        // Find section 3 data (highest normal section)
+        const section3 = sections.find(s => s.section === 3);
+        if (section3) {
+          // We need to iterate from section 3 to section 9 using the acceleration formula
+          // First, reconstruct the BPM and beats from section 3
+          // Assuming beats = 0.5 (standard), we can back-calculate BPM
+          const beats = 0.5; // Standard beats value
+          const section3Bpm = calculateBpmFromTps(section3.tilesPerSec, beats);
+          
+          // Now iterate through sections 4, 5, 6, 7, 8, 9
+          let currentBpm = section3Bpm;
+          let currentBeats = beats;
+          
+          for (let section = 4; section <= 9; section++) {
+            const loopTimes = Math.floor((section - 1) / 3); // Loop counter based on section
+            currentBpm = getNewBpm(currentBpm, currentBeats, beats, loopTimes);
+          }
+          
+          // Calculate final section 9 speed
+          const section9TilesPerSec = calculateTpsFromBpm(currentBpm, beats);
+          const section9TilesPerMin = section9TilesPerSec * 60;
+          
+          section9Data.push({
+            ...section3,
+            section: 9,
+            tilesPerMin: section9TilesPerMin,
+            tilesPerSec: section9TilesPerSec,
+            isSection9: true
+          });
+        }
+      });
+      
+      // Sort by tiles per minute (descending)
+      section9Data.sort((a, b) => b.tilesPerMin - a.tilesPerMin);
+      
+      return section9Data;
+    }
+
+    function getSpeedClass(tilesPerSec) {
+      if (tilesPerSec < 3) return 'speed-very-slow';
+      if (tilesPerSec < 4) return 'speed-slow';
+      if (tilesPerSec < 5) return 'speed-medium-slow';
+      if (tilesPerSec < 6) return 'speed-medium';
+      if (tilesPerSec < 7) return 'speed-medium-fast';
+      if (tilesPerSec < 8) return 'speed-fast';
+      if (tilesPerSec < 9) return 'speed-very-fast';
+      if (tilesPerSec < 10) return 'speed-extreme';
+      return 'speed-insane';
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('speed-table-body');
+      tbody.innerHTML = '';
+      
+      data.forEach(item => {
+        const row = document.createElement('tr');
+        
+        const speedClass = item.isSection9 ? 'speed-section9' : getSpeedClass(item.tilesPerSec);
+        
+        row.innerHTML = `
+          <td class="font-mono text-gray-900 ${speedClass}">${item.tilesPerMin.toFixed(0)}</td>
+          <td class="font-mono text-gray-900">${item.tilesPerSec.toFixed(2)}</td>
+          <td class="font-medium text-gray-900">${item.songName}</td>
+          <td class="text-gray-600">${item.section}</td>
+        `;
+        
+        tbody.appendChild(row);
+      });
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      const data = await loadCSVData();
+      const section9Data = calculateSection9Speeds(data);
+      
+      let currentData = data;
+      let showingSection9 = false;
+      
+      // Initial render
+      renderTable(currentData);
+      
+      // Toggle button functionality
+      const toggleButton = document.getElementById('toggle-section9');
+      toggleButton.addEventListener('click', () => {
+        showingSection9 = !showingSection9;
+        
+        if (showingSection9) {
+          // Combine normal data with section 9 data
+          currentData = [...data, ...section9Data];
+          // Sort by tiles per minute (descending)
+          currentData.sort((a, b) => b.tilesPerMin - a.tilesPerMin);
+        } else {
+          currentData = data;
+        }
+        
+        // Update button text
+        toggleButton.textContent = showingSection9 ? 'Hide 3-Crown Speeds' : 'Show 3-Crown Speeds';
+        
+        // Re-render table
+        renderTable(currentData);
+      });
+    });
+  </script>
+</body>
+</html>

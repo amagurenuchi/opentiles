@@ -2054,7 +2054,7 @@ body {
   text-align: center;
   font-variant-numeric: tabular-nums;
   /* Ensures consistent width for all digits */
-  min-width: 0.3em;
+  min-width: 0.2em;
   /* Minimal width to prevent layout shifts when digits change */
   vertical-align: baseline;
   /* Maintains proper alignment with text */

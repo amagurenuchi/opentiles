@@ -529,9 +529,37 @@ function updateReviveModalProgress() {
         // sectionScoreThresholds[next.level - 2] is the estimated cumulative
         // score at that boundary, computed directly from the sheet.
         const threshIdx = next.level - 2;
-        const computedThreshold = (threshIdx >= 0 && threshIdx < sectionScoreThresholds.length)
+        let computedThreshold = (threshIdx >= 0 && threshIdx < sectionScoreThresholds.length)
           ? sectionScoreThresholds[threshIdx]
           : 0;
+
+        // If computed threshold is not available, calculate it on the fly from sheet data
+        if (computedThreshold === 0 && sheet.length > 0) {
+          let runningScore = 0;
+          
+          // Calculate through all available sections first
+          for (let s = 0; s < sheet.length; s++) {
+            const section = sheet[s];
+            for (const tile of section) {
+              switch (tile.type) {
+                case 5: runningScore += 4; break;             // combo start tile
+                case 3: runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); break; // multi-tap combo
+                case 6: runningScore += Math.round(tile.hlen) + 1; break; // long hold
+                default: runningScore += 1; break;             // regular tap (type 2) and others
+              }
+            }
+          }
+          
+          // If we need to reach a level beyond the available sections, extrapolate
+          // by assuming the average score per section continues
+          if (threshIdx >= sheet.length && sheet.length > 0) {
+            const avgScorePerSection = runningScore / sheet.length;
+            const additionalSections = threshIdx - sheet.length + 1;
+            runningScore += Math.round(avgScorePerSection * additionalSections);
+          }
+          
+          computedThreshold = runningScore;
+        }
 
         // Also check any historically stored score for that level.
         const mid = selectedSongData ? String(selectedSongData.mid || selectedSongData.id || '') : '';
@@ -544,16 +572,9 @@ function updateReviveModalProgress() {
           ? computedThreshold
           : storedThreshold;
 
-        let label;
-        if (targetScore > score) {
-          const gap = Math.ceil(targetScore - score);
-          label = `${gap} more points to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
-        } else {
-          // Fallback: neither source gave a usable threshold yet
-          const sectionsNeeded = next.level - level;
-          const sectionWord = sectionsNeeded === 1 ? 'section' : 'sections';
-          label = `${sectionsNeeded} more ${sectionWord} to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
-        }
+        // Always calculate and display the point gap
+        const gap = Math.max(0, Math.ceil(targetScore - score));
+        const label = `${gap} more points to reach ${iconCount} ${iconName}${iconCount === 1 ? '' : 's'}`;
 
         const icons = Array.from({ length: 3 }, (_, i) =>
           `<img src="gameImage/${iconName}.png" class="revive-progress-icon ${i < iconCount ? 'filled' : 'unfilled'}" alt="${iconName}">`
@@ -1954,6 +1975,8 @@ function loadSongObject(data, label) {
 function computeSectionScoreThresholds() {
   sectionScoreThresholds = [];
   let runningScore = 0;
+  
+  // Calculate through all available sections
   for (let s = 0; s < sheet.length; s++) {
     const section = sheet[s];
     for (const tile of section) {
@@ -1965,6 +1988,20 @@ function computeSectionScoreThresholds() {
       }
     }
     sectionScoreThresholds.push(runningScore);
+  }
+  
+  // Extrapolate for crown tiers that may require more sections than available
+  // Crown tiers: 1👑 → level 5, 2👑 → level 7, 3👑 → level 10
+  // We need thresholds up to level 10 (index 8 in sectionScoreThresholds)
+  const maxLevelNeeded = 10;
+  const maxIdxNeeded = maxLevelNeeded - 2; // level 10 needs index 8
+  
+  if (sheet.length > 0 && sectionScoreThresholds.length < maxIdxNeeded + 1) {
+    const avgScorePerSection = runningScore / sheet.length;
+    while (sectionScoreThresholds.length <= maxIdxNeeded) {
+      runningScore += Math.round(avgScorePerSection);
+      sectionScoreThresholds.push(runningScore);
+    }
   }
 }
 
@@ -2537,13 +2574,6 @@ function spawnHoldEffect(x, y) {
       effectContainer.remove();
     }
   }, 250);
-}
-
-function flashColumn(colIdx) {
-  const colEl = colElements[colIdx];
-  if (!colEl) return;
-  colEl.classList.add('bg-white/10');
-  setTimeout(() => colEl.classList.remove('bg-white/10'), 80);
 }
 
 function blinkTile(tile) {
@@ -3559,7 +3589,10 @@ function updateHUD() {
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
-        tpsDisplayChallenge.textContent = tpsText;
+        // Wrap each character in an individual span for consistent positioning
+        tpsDisplayChallenge.innerHTML = tpsText.split('').map(char => 
+          `<span class="score-digit-wrapper">${char}</span>`
+        ).join('');
       }
     }
   } else if (isClassicMode) {
@@ -3567,7 +3600,11 @@ function updateHUD() {
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
-        tpsDisplayChallenge.textContent = classicTimer.toFixed(3);
+        // Wrap each character in an individual span for consistent positioning
+        const timerText = classicTimer.toFixed(3);
+        tpsDisplayChallenge.innerHTML = timerText.split('').map(char => 
+          `<span class="score-digit-wrapper">${char}</span>`
+        ).join('');
       }
     }
   } else {
@@ -3582,7 +3619,10 @@ function updateHUD() {
     if (isGameLoaded) {
       tpsDisplayNormal?.classList.remove('hidden');
       if (tpsDisplayNormal) {
-        tpsDisplayNormal.textContent = tpsText;
+        // Wrap each character in an individual span for consistent positioning
+        tpsDisplayNormal.innerHTML = tpsText.split('').map(char => 
+          `<span class="score-digit-wrapper">${char}</span>`
+        ).join('');
       }
     }
   }
@@ -5421,7 +5461,6 @@ window.addEventListener('keydown', (event) => {
     }
 
     activeKeys[colIdx] = true;
-    flashColumn(colIdx);
     handleManualInputDown(colIdx);
     event.preventDefault();
   }
@@ -5453,7 +5492,6 @@ window.addEventListener('keyup', (event) => {
 colElements.forEach((colElement, colIdx) => {
   colElement.addEventListener('pointerdown', (event) => {
     activeKeys[colIdx] = true;
-    flashColumn(colIdx);
     handleManualInputDown(colIdx, event);
     event.preventDefault();
   });

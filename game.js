@@ -4385,27 +4385,25 @@ function resetTileForResume(tile) {
     tile.remainingTaps = tile.taps || 2;
   }
 
-  // Center the START tile on screen if it's at least partially off-screen
+  // Center the START tile on screen if it's not fully visible
   const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
   const tileHeight = getTileEffectiveHeight(tile);
   const tileTop = starthpos - adjHpos - tileHeight;
   const tileBottom = starthpos - adjHpos;
-  const screenBottom = starthpos - (key - 1);
   
-  // Check if tile is at least partially off-screen (either above top or below bottom)
-  // tileTop > starthpos means tile's top is above screen top
-  // tileBottom < screenBottom means tile's bottom is below screen bottom
-  const isOffscreen = tileTop > starthpos || tileBottom < screenBottom;
+  // Check if tile (or head of long tile) is fully visible on-screen
+  // Using the same visibility check as the rest of the game: screen spans from 0 to key
+  const isFullyVisible = tileBottom > 0 && tileTop < key;
   
-  if (isOffscreen) {
-    // Calculate new starthpos to center the tile
-    // Tile center in screen coordinates: (tileTop + tileBottom) / 2 = starthpos - adjHpos - tileHeight/2
-    // Screen center in screen coordinates: (starthpos + screenBottom) / 2 = starthpos - (key-1)/2
-    // We want tile center = screen center
-    // So: starthpos - adjHpos - tileHeight/2 = starthpos - (key-1)/2
-    // This simplifies to: adjHpos + tileHeight/2 = (key-1)/2
-    // So: starthpos = adjHpos + tileHeight/2 + (key-1)/2
-    starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2;
+  if (!isFullyVisible) {
+    // Calculate new starthpos to center the tile, shifted down by 1 tile height
+    // Tile center in screen coordinates: starthpos - adjHpos - tileHeight/2
+    // Screen center shifted down by 1: starthpos - (key-1)/2 - 1
+    // We want tile center = screen center shifted down by 1
+    // So: starthpos - adjHpos - tileHeight/2 = starthpos - (key-1)/2 - 1
+    // This simplifies to: adjHpos + tileHeight/2 = (key-1)/2 + 1
+    // So: starthpos = adjHpos + tileHeight/2 + (key-1)/2 + 1
+    starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
     classicScrollTarget = starthpos;
   }
 }

@@ -895,7 +895,7 @@ body {
 
 .revive-progress-icon {
   width: 1.9rem;
-  height: 1.9rem;
+  height: auto;
   opacity: 0.35;
   filter: grayscale(100%);
 }
@@ -1733,6 +1733,8 @@ body {
 }
 
 .result-medal {
+  width: 3rem;
+  height: auto;
   transform-origin: center;
   animation-name: result-pop;
   animation-duration: 0.45s;
@@ -1767,11 +1769,13 @@ body {
 
 #results-screen #results-medals img {
   width: 81px; /* 50% bigger */
-  height: 81px;
+  height: auto;
 }
 
 /* silhouette for unearned medals */
 .medal-silhouette {
+  width: 3rem;
+  height: auto;
   /* fully desaturated, flat grey silhouette with no shadows */
   filter: grayscale(100%) brightness(0.75) saturate(0%);
   box-shadow: none !important;

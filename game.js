@@ -190,11 +190,11 @@ function triggerAwardAnimation(stage) {
   const crownAnim = document.getElementById('crown-animation-display');
 
   if (stage.crowns) {
-    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-16 h-16 sm:w-20 sm:h-20 mr-2 drop-shadow-md">'.repeat(stage.crowns);
+    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-16 h-auto sm:w-20 mr-2 drop-shadow-md">'.repeat(stage.crowns);
     crownAnim.classList.remove('hidden');
     starAnim.classList.add('hidden');
   } else {
-    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-16 h-16 sm:w-20 sm:h-20 mr-2 drop-shadow-md">'.repeat(stage.stars) : '';
+    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-16 h-auto sm:w-20 mr-2 drop-shadow-md">'.repeat(stage.stars) : '';
     starAnim.classList.remove('hidden');
     crownAnim.classList.add('hidden');
   }
@@ -1510,11 +1510,11 @@ function createSongCard(song, isFavouriteView = false) {
   let progressHTML = '';
   if (stage.crowns > 0) {
     for (let i = 0; i < 3; i++) {
-      progressHTML += `<img src="gameImage/crown.png" class="w-6 h-6 mr-1 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
+      progressHTML += `<img src="gameImage/crown.png" class="w-6 h-auto mr-1 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
     }
   } else {
     for (let i = 0; i < 3; i++) {
-      progressHTML += `<img src="gameImage/star.png" class="w-6 h-6 mr-1 ${i < stage.stars ? 'earned' : 'unearned'}">`;
+      progressHTML += `<img src="gameImage/star.png" class="w-6 h-auto mr-1 ${i < stage.stars ? 'earned' : 'unearned'}">`;
     }
   }
 
@@ -2152,7 +2152,7 @@ function getRewardTierRank(state) {
   return Number(state.stars || 0);
 }
 
-function renderRewardIcons(state, baseClass = 'w-6 h-6 mr-1') {
+function renderRewardIcons(state, baseClass = 'w-6 h-auto mr-1') {
   if (!state) return '';
   const useCrowns = (state.crowns || 0) > 0;
   const achieved = useCrowns ? state.crowns : state.stars;
@@ -2531,8 +2531,8 @@ async function finishRun(showLibrary = false) {
     const finalStarsEl = document.getElementById('final-stars');
     const finalCrownsEl = document.getElementById('final-crowns');
     document.getElementById('final-score').textContent = finalTps.toFixed(3);
-    if (finalStarsEl) finalStarsEl.innerHTML = rewardState && rewardState.crowns === 0 ? renderRewardIcons(rewardState, 'w-8 h-8 mr-1') : '';
-    if (finalCrownsEl) finalCrownsEl.innerHTML = rewardState && rewardState.crowns > 0 ? renderRewardIcons(rewardState, 'w-8 h-8 mr-1') : '';
+    if (finalStarsEl) finalStarsEl.innerHTML = rewardState && rewardState.crowns === 0 ? renderRewardIcons(rewardState, 'w-8 h-auto mr-1') : '';
+    if (finalCrownsEl) finalCrownsEl.innerHTML = rewardState && rewardState.crowns > 0 ? renderRewardIcons(rewardState, 'w-8 h-auto mr-1') : '';
     document.getElementById('final-grade').classList.add('hidden');
 
     if (selectedSongData && !autoplayEnabled && customStartingSpeed === 0) {
@@ -2564,8 +2564,8 @@ async function finishRun(showLibrary = false) {
         localStorage.setItem(key, String(classicTappedTiles));
       }
     }
-    if (finalStarsEl) finalStarsEl.innerHTML = rewardState && rewardState.crowns === 0 ? renderRewardIcons(rewardState, 'w-8 h-8 mr-1') : '';
-    if (finalCrownsEl) finalCrownsEl.innerHTML = rewardState && rewardState.crowns > 0 ? renderRewardIcons(rewardState, 'w-8 h-8 mr-1') : '';
+    if (finalStarsEl) finalStarsEl.innerHTML = rewardState && rewardState.crowns === 0 ? renderRewardIcons(rewardState, 'w-8 h-auto mr-1') : '';
+    if (finalCrownsEl) finalCrownsEl.innerHTML = rewardState && rewardState.crowns > 0 ? renderRewardIcons(rewardState, 'w-8 h-auto mr-1') : '';
     document.getElementById('final-grade').classList.add('hidden');
 
     if (showLibrary) {

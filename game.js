@@ -3274,15 +3274,21 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   const tile = getLowestManualTile();
   if (!tile) return;
 
+  // If the lowest tile is already clicked/completed, ignore the input
+  // This prevents routing input from completed combo tiles to tiles above
+  if (tile.clicked || tile.ended) {
+    return;
+  }
+
   if (pointerEvent) {
     const boardRect = boardEl.getBoundingClientRect();
     const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
-    const clickRow = Math.floor(clickYRel * key);
+    const clickUnits = clickYRel * key;
     
-    const tileTopRow = Math.floor(getTileTop(tile));
-    const tileBottomRow = Math.max(tileTopRow, Math.floor(getTileBottom(tile) - 0.01));
+    const tileTop = getTileTop(tile);
+    const tileBottom = getTileBottom(tile);
 
-    if (clickRow < tileTopRow || clickRow > tileBottomRow) {
+    if (clickUnits < tileTop || clickUnits > tileBottom) {
       return;
     }
   }

@@ -178,6 +178,65 @@ body {
   :root {
     --dock-offset: calc(15rem + env(safe-area-inset-bottom));
   }
+
+  /* Enlarged results screen UI elements for tablet */
+  #results-song-title {
+    font-size: 32px !important;
+  }
+
+  #results-medals {
+    padding: 19.2px !important;
+    border-radius: 19.2px !important;
+  }
+
+  #results-medals img {
+    width: 129.6px !important;
+    height: auto !important;
+  }
+
+  #results-tps {
+    font-size: 32px !important;
+    left: calc(50% - 256px) !important;
+  }
+
+  #results-score {
+    font-size: 9.6rem !important;
+  }
+
+  #results-subtext {
+    font-size: 32px !important;
+  }
+
+  #results-laps {
+    font-size: 28.8px !important;
+    right: calc(50% - 256px) !important;
+  }
+
+  .results-dock {
+    padding: 19.2px !important;
+  }
+
+  .results-dock-btn {
+    width: 89.6px !important;
+    height: 78.4px !important;
+    border-radius: 22.4px !important;
+  }
+
+  .results-dock-btn svg {
+    width: 38.4px !important;
+    height: 38.4px !important;
+  }
+
+  .results-dock-center {
+    border-radius: 38.4px !important;
+    padding: 19.2px 38.4px !important;
+    font-size: 28.8px !important;
+  }
+
+  .results-dock-center svg {
+    width: 38.4px !important;
+    height: 38.4px !important;
+  }
 }
 
 /* Smaller score on mobile and PC */

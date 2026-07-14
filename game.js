@@ -198,6 +198,15 @@ function shouldShowRewardAnimationForTier(currentTier) {
   return true;
 }
 
+let pendingAwardAnimationStages = [];
+
+function triggerPendingAwardAnimations() {
+  if (pendingAwardAnimationStages.length > 0) {
+    const stage = pendingAwardAnimationStages.shift();
+    triggerAwardAnimation(stage);
+  }
+}
+
 function triggerAwardAnimation(stage) {
   isAwardAnimationRunning = true;
   if (awardAnimationTimeout) clearTimeout(awardAnimationTimeout);
@@ -1956,6 +1965,16 @@ async function loadMusicCsv() {
 }
 
 function resetInputState() {
+  if (typeof activeKeys !== 'undefined' && activeKeys) {
+    for (let colIdx = 0; colIdx < 4; colIdx++) {
+      if (activeKeys[colIdx]) {
+        activeKeys[colIdx] = false;
+        if (typeof handleManualInputUp === 'function') {
+          handleManualInputUp(colIdx);
+        }
+      }
+    }
+  }
   activeKeys = { 0: false, 1: false, 2: false, 3: false };
 }
 
@@ -2155,6 +2174,9 @@ function computeSectionScoreThresholds() {
         case 5: runningScore += 4; break;             // combo start tile
         case 3: runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); break; // multi-tap combo
         case 6: runningScore += Math.round(tile.hlen) + 1; break; // long hold
+        case 9:
+        case 1:
+          break; // accompaniment and blank tiles give no score
         default: runningScore += 1; break;             // regular tap (type 2) and others
       }
     }
@@ -2600,6 +2622,7 @@ function getManualProgress(tile) {
 }
 
 function playTileAudioNow(tile) {
+  triggerPendingAwardAnimations();
   if (!tile || tile.audioPlayed) return;
   if (tile.type === 9) {
     tile.audioPlayed = true;
@@ -2624,6 +2647,7 @@ function playTileAudioNow(tile) {
 // Play the note for a single combo tap immediately so rapid taps each trigger
 // their own sound instead of bunching up when input is delayed.
 function playComboTapAudio(tile) {
+  triggerPendingAwardAnimations();
   if (!tile || !isComboTile(tile)) return;
   // tap index = number of taps already made = taps - remainingTaps (before decrement)
   const tapIdx = (tile.taps || 2) - (tile.remainingTaps || 0);
@@ -3300,36 +3324,42 @@ function tileMatchesColumn(tile, colIdx) {
   return getTileHitColumns(tile).includes(colIdx);
 }
 
-function maybeGrantNormalSongAward(tile) {
-  if (!isStarted || isPaused || isClassicMode || isChallengeMode || !tile) return;
-  if (!tile.isSectionAwardTile || tile.awardGranted) return;
+function checkNormalSongAwards(reachedSection) {
+  if (!isStarted || isPaused || isClassicMode || isChallengeMode) return;
 
-  const previousStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-  normalSongAwardLevel = Math.min(10, (normalSongAwardLevel || 1) + 1);
-  tile.awardGranted = true;
-  // Persist the score at which this level was reached so the revive modal
-  // can display the score gap to the next award tier.
-  if (selectedSongData && customStartingSpeed === 0) {
-    const mid = String(selectedSongData.mid || selectedSongData.id || '');
-    if (mid) {
-      const scoreAtLevelKey = `opentile_score_at_level_${mid}_${normalSongAwardLevel}`;
-      const existing = parseFloat(localStorage.getItem(scoreAtLevelKey) || '0');
-      // Only update if the current score is lower (i.e. reached the level more efficiently)
-      // or the key doesn't exist yet.
-      if (!existing || currentScore < existing) {
-        localStorage.setItem(scoreAtLevelKey, String(currentScore));
+  const currentAwardLevel = normalSongAwardLevel || 1;
+  // Maximum award level is 10 (3 crowns).
+  if (currentAwardLevel >= 10) return;
+
+  if (reachedSection >= currentAwardLevel) {
+    const previousStage = getStarAndCrownState(currentAwardLevel - 1);
+    normalSongAwardLevel = currentAwardLevel + 1;
+    
+    // Persist the score at which this level was reached so the revive modal
+    // can display the score gap to the next award tier.
+    if (selectedSongData && customStartingSpeed === 0) {
+      const mid = String(selectedSongData.mid || selectedSongData.id || '');
+      if (mid) {
+        const scoreAtLevelKey = `opentile_score_at_level_${mid}_${normalSongAwardLevel}`;
+        const existing = parseFloat(localStorage.getItem(scoreAtLevelKey) || '0');
+        // Only update if the current score is lower (i.e. reached the level more efficiently)
+        // or the key doesn't exist yet.
+        if (!existing || currentScore < existing) {
+          localStorage.setItem(scoreAtLevelKey, String(currentScore));
+        }
       }
     }
-  }
-  
-  const currentStage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-  const shouldAnimateReward = getRewardTierRank(currentStage) > getRewardTierRank(previousStage);
+    
+    const currentStage = getStarAndCrownState(normalSongAwardLevel - 1);
+    const shouldAnimateReward = getRewardTierRank(currentStage) > getRewardTierRank(previousStage);
 
-  if (!isChallengeMode) {
     if (shouldAnimateReward) {
-      triggerAwardAnimation(currentStage);
+      pendingAwardAnimationStages.push(currentStage);
     }
     updateNormalSongAwardDisplay();
+    
+    // Check recursively in case they skipped multiple sections at once
+    checkNormalSongAwards(reachedSection);
   }
 }
 
@@ -3394,7 +3424,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
           if (!startTile.isAccompanimentSingle) currentScore += 1;
-          maybeGrantNormalSongAward(startTile);
+
         } else if (startTile.type === 5) {
           if (!startTile.hitColumns.includes(colIdx)) {
             startTile.hitColumns.push(colIdx);
@@ -3404,7 +3434,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
               startTile.ended = 1;
               triggerTileHitAnimation(startTile);
               currentScore += 4;
-              maybeGrantNormalSongAward(startTile);
+
             }
           }
         } else if (startTile.type === 3) {
@@ -3416,14 +3446,14 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
             startTile.clicked = true;
             startTile.ended = 1;
             currentScore += Math.max(2, startTile.taps || 2);
-            maybeGrantNormalSongAward(startTile);
+
           }
         } else {
           startTile.clicked = true;
           startTile.ended = 1;
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
-          maybeGrantNormalSongAward(startTile);
+
         }
         return;
       }
@@ -3598,7 +3628,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     triggerTileHitAnimation(tile);
     playTileAudioNow(tile);
     if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1;
-    maybeGrantNormalSongAward(tile);
+
     
     // Classic mode: increment tapped tiles and advance field
     if (isClassicMode) {
@@ -3617,7 +3647,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         tile.ended = 1;
         triggerTileHitAnimation(tile);
         currentScore += 4;
-        maybeGrantNormalSongAward(tile);
+
         
         // Classic mode: increment tapped tiles and advance field
         if (isClassicMode) {
@@ -3638,7 +3668,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       tile.clicked = true;
       tile.ended = 1;
       currentScore += Math.max(2, tile.taps || 2);
-      maybeGrantNormalSongAward(tile);
+
       
       // Classic mode: increment tapped tiles and advance field
       if (isClassicMode) {
@@ -3674,14 +3704,14 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         tile.completionPlaying = tile.playing + tapDistFromTop - 0.5;
         tile.tapPlaying = tile.playing;
       }
-      maybeGrantNormalSongAward(tile);
+
     }
   }
 }
 
 function handleManualInputUp(colIdx) {
   if (autoplayEnabled || !isStarted) return;
-  const activeLong = tiles.find((tile) => isLongTile(tile) && tile.holdStarted && !tile.holdCompleted && tile.activeHoldColumn === colIdx);
+  const activeLong = tiles.find((tile) => isLongTile(tile) && tile.holdStarted && !tile.holdCompleted && !tile.holdReleased && tile.activeHoldColumn === colIdx);
   if (activeLong) {
     // Mark the release point instead of failing
     activeLong.holdReleasedAt = activeLong.playing || 0;
@@ -3690,6 +3720,7 @@ function handleManualInputUp(colIdx) {
     
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
     currentScore += Math.max(1, Math.ceil(completedHeight));
+
   }
 }
 
@@ -4180,7 +4211,9 @@ function updateEngineFrame(now) {
             awardGranted: false,
             isAccompanimentLong: true,
             isAccompanimentTile: true,
-            accompanimentSequenceId: currentSequenceId
+            accompanimentSequenceId: currentSequenceId,
+            sectionIndex: currentSectionIndex,
+            loopCount: songLoopCount
           });
 
           const numSingleTiles = Math.round(currentTile.hlen);
@@ -4216,7 +4249,9 @@ function updateEngineFrame(now) {
               awardGranted: false,
               isAccompanimentSingle: true,
               isAccompanimentTile: true,
-              accompanimentSequenceId: currentSequenceId
+              accompanimentSequenceId: currentSequenceId,
+              sectionIndex: currentSectionIndex,
+              loopCount: songLoopCount
             });
           }
 
@@ -4243,7 +4278,9 @@ function updateEngineFrame(now) {
             hitColumns: [],
             hitAnimationStartedAt: 0,
             isSectionAwardTile: isLastTileInSection,
-            awardGranted: false
+            awardGranted: false,
+            sectionIndex: currentSectionIndex,
+            loopCount: songLoopCount
           });
         }
 
@@ -4267,8 +4304,19 @@ function updateEngineFrame(now) {
     }
   }
 
+  let maxEffectiveSectionReached = -1;
+
   tiles.forEach((tile) => {
     tile.playing = starthpos - tile.hpos - (key - 1);
+    
+    // Check section progression for normal song awards
+    if (tile.playing >= -0.5 || tile.clicked || tile.ended > 0) {
+      const effectiveSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
+      if (effectiveSection > maxEffectiveSectionReached) {
+        maxEffectiveSectionReached = effectiveSection;
+      }
+    }
+
     // Use the visual-adjusted position for the autoplay audio trigger so tiles after a
     // combo tile (which have a large visualHposOffset) are triggered at the correct time.
     const visualPlaying = starthpos - (tile.visualAdjustedHpos ?? tile.hpos) - (key - 1);
@@ -4285,8 +4333,13 @@ function updateEngineFrame(now) {
         }
       });
       tile.played = true;
+      triggerPendingAwardAnimations();
     }
   });
+
+  if (maxEffectiveSectionReached >= normalSongAwardLevel) {
+    checkNormalSongAwards(maxEffectiveSectionReached);
+  }
 
   if (autoplayEnabled) {
     tiles.forEach((tile) => {
@@ -4313,7 +4366,7 @@ function updateEngineFrame(now) {
             currentScore++;
             tile.clicked = true;
             tile.ended = 1;
-            maybeGrantNormalSongAward(tile);
+
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -4323,7 +4376,7 @@ function updateEngineFrame(now) {
             currentScore += 4;
             tile.clicked = true;
             tile.ended = 1;
-            maybeGrantNormalSongAward(tile);
+
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -4353,7 +4406,7 @@ function updateEngineFrame(now) {
               if (tile.remainingTaps <= 0) {
                 tile.clicked = true;
                 tile.ended = 1;
-                maybeGrantNormalSongAward(tile);
+
               }
             }
           } else if (tile.ended) {
@@ -4366,7 +4419,7 @@ function updateEngineFrame(now) {
               currentScore += Math.round(tile.hlen) + 1;
               tile.clicked = true;
               tile.ended = 1;
-              maybeGrantNormalSongAward(tile);
+
             } else {
               tile.ended++;
             }
@@ -4390,7 +4443,7 @@ function updateEngineFrame(now) {
               currentScore += Math.round(scoreDelta) + 1;
               tile.clicked = true;
               tile.ended = 1;
-              maybeGrantNormalSongAward(tile);
+
             } else {
               tile.ended++;
             }
@@ -4405,6 +4458,7 @@ function updateEngineFrame(now) {
         tile.clicked = true;
         tile.ended = 1;
         currentScore += Math.round(tile.hlen) + 1;
+
       } else if ((tile.clicked || tile.holdCompleted) && tile.ended) {
         tile.ended++;
       }

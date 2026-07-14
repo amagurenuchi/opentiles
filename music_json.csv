@@ -1,3 +1,5 @@
+Id,Mid,BPM,,,MusicJson,Musician,Acceleration,AniID,BridgeAniID
+音乐ID[int],,,基础音符,难度系数,音乐JSON文件[string],音乐家,竞技场加速度,特效索引,过渡特效索引
 101,100001,90,0.5,180,Little Star,English Folk Music,,1024001,2048001
 102,100001,101,0.5,202,Little Star,,,1024002,2048002
 103,100001,110,0.5,220,Little Star,,,1024008,
@@ -1183,5 +1185,3 @@
 190803,200008,0,,,Accompaniment tile,,,,
 190804,200008,0,,,Accompaniment tile,,,,
 191001,200009,90,,,Classic,,,,
-Id,Mid,BPM,,,MusicJson,Musician,Acceleration,AniID,BridgeAniID
-音乐ID[int],,,基础音符,难度系数,音乐JSON文件[string],音乐家,竞技场加速度,特效索引,过渡特效索引

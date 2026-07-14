@@ -237,6 +237,16 @@ body {
     width: 38.4px !important;
     height: 38.4px !important;
   }
+
+  /* Full width top bar on tablet */
+  .screen-top-bar {
+    max-width: none !important;
+  }
+
+  /* Full width results dock on tablet */
+  .results-dock {
+    max-width: none !important;
+  }
 }
 
 /* Smaller score on mobile and PC */

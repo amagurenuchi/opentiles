@@ -1,5 +1,18 @@
 'use strict';
 
+// Register Service Worker for offline functionality
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        console.log('Service Worker registered with scope:', reg.scope);
+      })
+      .catch(err => {
+        console.error('Service Worker registration failed:', err);
+      });
+  });
+}
+
 const restMap = { Q: 8, R: 4, S: 2, T: 1, U: 0.5, V: 0.25, W: 0.125, X: 0.0625, Y: 0.03125 };
 const beatsMap = { H: 8, I: 4, J: 2, K: 1, L: 0.5, M: 0.25, N: 0.125, O: 0.0625, P: 0.03125 };
 const playTypes = {
@@ -216,6 +229,7 @@ let classicTimerStartedAt = 0;
 let classicTimerInterval = null;
 let classicSongQueue = [];
 let classicCurrentSongIndex = 0;
+let classicLoadFailCount = 0; // consecutive failure guard
 let classicTappedTiles = 0;
 let classicScrollTarget = 0;
 let classicTimerEnding = false;
@@ -1298,11 +1312,16 @@ function setSongStatus(message) {
 function updateLoadingProgress(stage, current, total) {
   const loadingProgress = document.getElementById('loading-progress');
   const loadingStatus = document.getElementById('loading-status');
+  const loadingPercentage = document.getElementById('loading-percentage');
+  const loadingSubstatus = document.getElementById('loading-substatus');
   
   if (!loadingProgress || !loadingStatus) return;
   
   const percentage = Math.round((current / total) * 100);
   loadingProgress.style.width = `${percentage}%`;
+  if (loadingPercentage) {
+    loadingPercentage.textContent = `${percentage}%`;
+  }
   
   const stageNames = {
     'sprites': 'Loading sprites...',
@@ -1312,52 +1331,189 @@ function updateLoadingProgress(stage, current, total) {
   };
   
   loadingStatus.textContent = stageNames[stage] || `Loading ${stage}...`;
+  if (stage === 'complete' && loadingSubstatus) {
+    loadingSubstatus.textContent = 'Initialization complete!';
+  }
 }
 
-function preloadSprites() {
-  return new Promise((resolve) => {
-    const sprites = [
-      '1',
-      '2',
-      '3',
-      '4',
-      'long_finish',
-      'long_head',
-      'long_light',
-      'long_tap2',
-      'long_tilelight',
-      'tile_black',
-      'tile_start'
-    ];
-    
-    let loadedCount = 0;
-    const totalSprites = sprites.length;
-    
-    sprites.forEach((name) => {
-      const image = new Image();
-      image.src = `gameImage/${name}.png`;
-      image.onload = () => {
-        loadedCount++;
-        updateLoadingProgress('sprites', loadedCount, totalSprites);
-        if (loadedCount === totalSprites) {
+async function preloadAssets() {
+  const loadingStatus = document.getElementById('loading-status');
+  const loadingPercentage = document.getElementById('loading-percentage');
+  const loadingProgress = document.getElementById('loading-progress');
+  const loadingSubstatus = document.getElementById('loading-substatus');
+
+  const tasks = [];
+  
+  // A. Sprites (Images in gameImage)
+  const spriteNames = [
+    '1', '2', '3', '4',
+    'bgani_01', 'bgani_02', 'bgani_03',
+    'circle_light', 'collect_cd_1014',
+    'crown', 'dot_light',
+    'long_finish', 'long_head', 'long_light', 'long_tap2', 'long_tilelight',
+    'star', 'tile_black', 'tile_start'
+  ];
+  spriteNames.forEach(name => {
+    tasks.push({
+      type: 'sprite',
+      name: name,
+      url: `gameImage/${name}.png`,
+      execute: () => new Promise((resolve) => {
+        const img = new Image();
+        img.src = `gameImage/${name}.png`;
+        img.onload = () => {
+          spriteCache[name] = img;
           resolve();
-        }
-      };
-      image.onerror = () => {
-        loadedCount++;
-        updateLoadingProgress('sprites', loadedCount, totalSprites);
-        if (loadedCount === totalSprites) {
+        };
+        img.onerror = () => {
+          spriteCache[name] = img;
           resolve();
-        }
-      };
-      spriteCache[name] = image;
+        };
+      })
     });
-    
-    // Fallback in case images are cached
-    if (loadedCount === totalSprites) {
-      resolve();
-    }
   });
+
+  // B. Special images
+  const specialImages = ['logo.png', 'logowide.png', 'right.png', 'splash.png'];
+  specialImages.forEach(name => {
+    tasks.push({
+      type: 'special_image',
+      name: name,
+      url: `special/${name}`,
+      execute: () => new Promise((resolve) => {
+        const img = new Image();
+        img.src = `special/${name}`;
+        img.onload = resolve;
+        img.onerror = resolve;
+      })
+    });
+  });
+
+  // C. Audio Effects
+  const audioEffects = [
+    'FailPage', 'Life', 'NewBest', 'OneCrown',
+    'PassPageOne', 'PassPageThree', 'PassPageTwo',
+    'ThreeCrown', 'TwoCrown'
+  ];
+  audioEffects.forEach(name => {
+    tasks.push({
+      type: 'audio_effect',
+      name: name,
+      url: `Audio/${name}.mp3`,
+      execute: async () => {
+        await getCachedAudioBuffer(`Audio/${name}`);
+      }
+    });
+  });
+
+  // D. Piano Notes (from pitches)
+  const noteFiles = pitches.map(pitch => noteNameToMp3Path(pitch)).filter(Boolean);
+  const uniqueNoteFiles = [...new Set(noteFiles)];
+  uniqueNoteFiles.forEach(path => {
+    const filename = path.split('/').pop();
+    tasks.push({
+      type: 'note',
+      name: filename,
+      url: `${path}.mp3`,
+      execute: async () => {
+        await getCachedAudioBuffer(path);
+      }
+    });
+  });
+
+  // E. Song JSON files
+  const uniqueSongJsons = new Set();
+  uniqueSongJsons.add('Horseman'); // Ensure fallback is cached
+  // Classic challenge mode loads Classic1–Classic13 directly, not via CSV sections
+  for (let i = 1; i <= 13; i++) {
+    uniqueSongJsons.add(`Classic${i}`);
+  }
+  if (Array.isArray(musicCsvData)) {
+    musicCsvData.forEach(song => {
+      if (song && song.sections) {
+        Object.values(song.sections).forEach(section => {
+          if (section && section.musicJson && section.musicJson !== 'Classic') {
+            uniqueSongJsons.add(section.musicJson);
+          }
+        });
+      }
+    });
+  }
+
+  const CACHE_NAME_REF = 'opentiles-v1';
+  uniqueSongJsons.forEach(songName => {
+    tasks.push({
+      type: 'song_json',
+      name: songName,
+      url: `song/${songName}.json`,
+      execute: async () => {
+        const url = `song/${songName}.json`;
+        try {
+          // Check if already cached before fetching
+          if ('caches' in window) {
+            const cached = await caches.match(url);
+            if (cached) return; // already in cache, skip
+          }
+          const response = await fetch(url);
+          if (response.ok) {
+            // Explicitly write into the cache so it works regardless of SW timing
+            if ('caches' in window) {
+              const cache = await caches.open(CACHE_NAME_REF);
+              await cache.put(url, response);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed preloading song JSON:', songName, e);
+        }
+      }
+    });
+  });
+
+  // Execute tasks with a concurrency limit
+  const total = tasks.length;
+  let completed = 0;
+  const CONCURRENCY_LIMIT = 15;
+
+  const updateProgress = (taskName, type) => {
+    completed++;
+    const percentage = Math.round((completed / total) * 100);
+    if (loadingProgress) loadingProgress.style.width = `${percentage}%`;
+    if (loadingPercentage) loadingPercentage.textContent = `${percentage}%`;
+    
+    let typeLabel = 'Loading assets...';
+    if (type === 'sprite' || type === 'special_image') typeLabel = 'Loading graphics...';
+    else if (type === 'audio_effect') typeLabel = 'Loading audio effects...';
+    else if (type === 'note') typeLabel = 'Loading piano keys...';
+    else if (type === 'song_json') typeLabel = 'Caching song data...';
+
+    if (loadingStatus) loadingStatus.textContent = typeLabel;
+    if (loadingSubstatus) {
+      loadingSubstatus.textContent = `${taskName} (${completed}/${total})`;
+    }
+  };
+
+  // Run with concurrency limit queue
+  const queue = [...tasks];
+  const workers = [];
+
+  const runWorker = async () => {
+    while (queue.length > 0) {
+      const task = queue.shift();
+      if (!task) break;
+      try {
+        await task.execute();
+      } catch (err) {
+        console.error('Error preloading task:', task.url, err);
+      }
+      updateProgress(task.name, task.type);
+    }
+  };
+
+  for (let i = 0; i < Math.min(CONCURRENCY_LIMIT, queue.length); i++) {
+    workers.push(runWorker());
+  }
+
+  await Promise.all(workers);
 }
 
 function loadSettings() {
@@ -2982,9 +3138,15 @@ async function finishRun(showLibrary = false) {
       const favBtn = document.getElementById('results-fav-btn');
       if (backBtn) {
         backBtn.onclick = () => {
+          // Check and spend life cost before proceeding
+          if (!spendLifeCost(getPlayLifeCost(selectedSongData))) {
+            return;
+          }
+
           // Play life intro immediately, disable button to prevent double-press
           backBtn.disabled = true;
           backBtn.classList.add('opacity-50');
+          animateLifeSpendFromTopBar();
           playLifeIntroSound();
 
           // Reinitialize state now so UI shows fresh board once loaded
@@ -4746,6 +4908,7 @@ function initializeClassicMode() {
   classicTimerStartedAt = performance.now();
   classicTappedTiles = 0;
   classicCurrentSongIndex = 0;
+  classicLoadFailCount = 0;
   classicScrollTarget = key - 2;
   
   // Create shuffled queue of Classic1-13
@@ -4766,6 +4929,13 @@ function initializeClassicMode() {
 }
 
 function loadNextClassicSong() {
+  // Guard: stop retrying if we've failed every song in the current queue rotation
+  if (classicLoadFailCount >= classicSongQueue.length) {
+    console.error('All classic songs failed to load. Offline with no cache?');
+    classicLoadFailCount = 0;
+    return;
+  }
+
   if (classicCurrentSongIndex >= classicSongQueue.length) {
     // Reshuffle and start over
     classicCurrentSongIndex = 0;
@@ -4780,12 +4950,18 @@ function loadNextClassicSong() {
   
   // Load the song JSON directly
   fetch(`song/${songName}.json`)
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    })
     .then(data => {
+      classicLoadFailCount = 0; // reset on success
       loadSongObject(data, songName);
     })
     .catch(err => {
-      console.error('Failed to load classic song:', err);
+      console.error('Failed to load classic song:', songName, err);
+      classicLoadFailCount++;
+      loadNextClassicSong(); // skip to next, bounded by guard above
     });
 }
 
@@ -5155,11 +5331,17 @@ async function initializeGame() {
   }
   
   try {
-    // Load assets in parallel
-    await Promise.all([
-      preloadSprites(),
-      loadMusicCsv()
-    ]);
+    const loadingStatus = document.getElementById('loading-status');
+    const loadingSubstatus = document.getElementById('loading-substatus');
+    
+    if (loadingStatus) loadingStatus.textContent = 'Loading database...';
+    if (loadingSubstatus) loadingSubstatus.textContent = 'Fetching game CSV configurations';
+
+    // 1. First, load music CSV and translations (required to parse unique songs)
+    await loadMusicCsv();
+
+    // 2. Now run the unified asset preloader which loads and caches everything else
+    await preloadAssets();
     
     // Finalize loading
     updateLoadingProgress('complete', 1, 1);

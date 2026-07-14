@@ -34,8 +34,6 @@ const hitEffectsEl = document.getElementById('hit-effects');
 const scoreDisplay = document.getElementById('score-display');
 const tpsDisplayNormal = document.getElementById('tps-display-normal');
 const tpsDisplayChallenge = document.getElementById('tps-display-challenge');
-const starsDisplay = document.getElementById('stars-display');
-const crownsDisplay = document.getElementById('crowns-display');
 const bestDisplay = document.getElementById('best-display');
 const startScreen = document.getElementById('start-screen');
 const settingsScreen = document.getElementById('settings-screen');
@@ -223,7 +221,7 @@ function triggerAwardAnimation(stage) {
     starAnim.classList.remove('hidden');
     crownAnim.classList.add('hidden');
   }
-  
+
   awardAnimationTimeout = setTimeout(() => {
     clearAwardAnimation();
   }, 500);
@@ -289,7 +287,15 @@ function saveLifeState() {
   localStorage.setItem('opentile_life_last_updated_at', String(lifeLastUpdatedAt));
 }
 
+let _earnedPPointsCache = null;
+
+function invalidateEarnedPPointsCache() {
+  _earnedPPointsCache = null;
+}
+
 function calculateEarnedPPoints() {
+  if (_earnedPPointsCache) return _earnedPPointsCache;
+
   let totalStars = 0;
   let totalCrowns = 0;
 
@@ -300,11 +306,12 @@ function calculateEarnedPPoints() {
     totalCrowns += stage.crowns;
   });
 
-  return {
+  _earnedPPointsCache = {
     totalStars,
     totalCrowns,
     earnedPPoints: totalStars + (totalCrowns * 5)
   };
+  return _earnedPPointsCache;
 }
 
 function getAvailablePPoints() {
@@ -831,7 +838,10 @@ function unexpected(str) {
 }
 
 function lenToNum(len, type) {
-  return Array.from(len).reduce((sum, char) => sum + ((type ? beatsMap : restMap)[char] || 0), 0);
+  const map = type ? beatsMap : restMap;
+  let sum = 0;
+  for (const char of len) sum += map[char] || 0;
+  return sum;
 }
 
 function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplier = null) {
@@ -885,7 +895,14 @@ function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplie
   };
 }
 
+const _runtimeSpeedCache = new Map();
+
 function getRuntimeSpeed(index) {
+  const cacheKey = `${index}:${customStartingSpeed}`;
+  if (_runtimeSpeedCache.has(cacheKey)) {
+    return _runtimeSpeedCache.get(cacheKey);
+  }
+
   if (customStartingSpeed > 0) {
     const baseSpeed = getSpeed(index);
     const customStartTps = customStartingSpeed;
@@ -899,12 +916,16 @@ function getRuntimeSpeed(index) {
     }
     const forcedTps = currentSpeed;
     
-    return {
+    const result = {
       bpm: Math.trunc(calculateBpmFromTps(forcedTps, baseSpeed.beats)),
       beats: baseSpeed.beats
     };
+    _runtimeSpeedCache.set(cacheKey, result);
+    return result;
   }
-  return getSpeed(index);
+  const result = getSpeed(index);
+  _runtimeSpeedCache.set(cacheKey, result);
+  return result;
 }
 
 function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
@@ -1695,10 +1716,24 @@ function createCustomSongCard() {
       }
       
       if (customSongData) {
-        // Get BPM values from input fields
-        const bpm1 = parseInt(document.getElementById('custom-bpm-1')?.value || '120', 10);
-        const bpm2 = parseInt(document.getElementById('custom-bpm-2')?.value || '120', 10);
-        const bpm3 = parseInt(document.getElementById('custom-bpm-3')?.value || '120', 10);
+        // Get original BPM values from custom song data for defaults
+        const originalBpm = customSongData.baseBpm || 120;
+        const section1 = customSongData.musics?.[0] || customSongData.sections?.[1] || {};
+        const section2 = customSongData.musics?.[1] || customSongData.sections?.[2] || {};
+        const section3 = customSongData.musics?.[2] || customSongData.sections?.[3] || {};
+        
+        const defaultBpm1 = section1.bpm || originalBpm;
+        const defaultBpm2 = section2.bpm || defaultBpm1;
+        const defaultBpm3 = section3.bpm || defaultBpm2;
+        
+        const defaultBeats1 = section1.baseBeats || 0.5;
+        const defaultBeats2 = section2.baseBeats || defaultBeats1;
+        const defaultBeats3 = section3.baseBeats || defaultBeats2;
+        
+        // Get BPM values from input fields, defaulting to original values if empty
+        const bpm1 = parseInt(document.getElementById('custom-bpm-1')?.value || String(defaultBpm1), 10);
+        const bpm2 = parseInt(document.getElementById('custom-bpm-2')?.value || String(defaultBpm2), 10);
+        const bpm3 = parseInt(document.getElementById('custom-bpm-3')?.value || String(defaultBpm3), 10);
         
         // Create mock songData structure to treat custom song like a normal song entry
         const mockSongData = {
@@ -1707,9 +1742,9 @@ function createCustomSongCard() {
           musician: 'Custom',
           acceleration: 0,
           sections: {
-            1: { bpm: bpm1, baseBeats: 0.5, musicJson: 'custom' },
-            2: { bpm: bpm2, baseBeats: 0.5, musicJson: 'custom' },
-            3: { bpm: bpm3, baseBeats: 0.5, musicJson: 'custom' }
+            1: { bpm: bpm1, baseBeats: defaultBeats1, musicJson: 'custom' },
+            2: { bpm: bpm2, baseBeats: defaultBeats2, musicJson: 'custom' },
+            3: { bpm: bpm3, baseBeats: defaultBeats3, musicJson: 'custom' }
           }
         };
         
@@ -1725,11 +1760,68 @@ function createCustomSongCard() {
       customSongUpload?.click();
     });
 
+    // Helper function to update speed display (converts from tile/min to tile/sec)
+    function updateSpeedDisplay(sectionNum, bpm, beats) {
+      const tilesPerMin = bpm / beats;
+      const tilesPerSec = (tilesPerMin / 60).toFixed(3);
+      document.getElementById(`speed-${sectionNum}`).textContent = tilesPerSec;
+    }
+
     const bpmBtn = card.querySelector('.btn-bpm');
     bpmBtn.addEventListener('click', () => {
-      // Open BPM modal
-      if (bpmModal) {
+      // Open BPM modal and populate with original values
+      if (bpmModal && customSongData) {
+        // Extract original BPM and beats from custom song data
+        const originalBpm1 = customSongData.baseBpm || 120;
+        const originalBeats1 = customSongData.baseBeats || 0.5;
+        
+        // Try to get section-specific values if available
+        const section1 = customSongData.musics?.[0] || customSongData.sections?.[1] || {};
+        const section2 = customSongData.musics?.[1] || customSongData.sections?.[2] || {};
+        const section3 = customSongData.musics?.[2] || customSongData.sections?.[3] || {};
+        
+        const bpm1 = section1.bpm || originalBpm1;
+        const beats1 = section1.baseBeats || originalBeats1;
+        const bpm2 = section2.bpm || bpm1;
+        const beats2 = section2.baseBeats || beats1;
+        const bpm3 = section3.bpm || bpm2;
+        const beats3 = section3.baseBeats || beats2;
+        
+        // Update original values display
+        document.getElementById('original-bpm-1').textContent = bpm1;
+        document.getElementById('original-beats-1').textContent = beats1;
+        document.getElementById('original-bpm-2').textContent = bpm2;
+        document.getElementById('original-beats-2').textContent = beats2;
+        document.getElementById('original-bpm-3').textContent = bpm3;
+        document.getElementById('original-beats-3').textContent = beats3;
+        
+        // Clear input fields (leave them empty)
+        document.getElementById('custom-bpm-1').value = '';
+        document.getElementById('custom-bpm-2').value = '';
+        document.getElementById('custom-bpm-3').value = '';
+        
+        // Calculate and display initial speeds based on original values
+        updateSpeedDisplay(1, bpm1, beats1);
+        updateSpeedDisplay(2, bpm2, beats2);
+        updateSpeedDisplay(3, bpm3, beats3);
+        
         bpmModal.classList.remove('hidden');
+      }
+    });
+
+    // Add event listeners for live speed updates
+    ['custom-bpm-1', 'custom-bpm-2', 'custom-bpm-3'].forEach((inputId, index) => {
+      const sectionNum = index + 1;
+      const input = document.getElementById(inputId);
+      if (input) {
+        input.addEventListener('input', () => {
+          const bpmEl = document.getElementById(`original-bpm-${sectionNum}`);
+          const originalBpm = parseFloat(bpmEl?.textContent) || 120;
+          const bpm = input.value ? parseFloat(input.value) : originalBpm;
+          const beatsEl = document.getElementById(`original-beats-${sectionNum}`);
+          const beats = parseFloat(beatsEl?.textContent) || 0.5;
+          updateSpeedDisplay(sectionNum, bpm, beats);
+        });
       }
     });
   } else {
@@ -2019,7 +2111,8 @@ function resetEngineState() {
     hpos: -1,
     visualAdjustedHpos: -1,  // hpos - visualHposOffset at spawn time
     scores: [],
-    warr: [...warr]
+    warr: [...warr],
+    activeCols: computeActiveCols(warr)
   }];
   tileDomCache.forEach((el) => el.remove());
   tileDomCache.clear();
@@ -2165,7 +2258,7 @@ function loadSongObject(data, label) {
 function computeSectionScoreThresholds() {
   sectionScoreThresholds = [];
   let runningScore = 0;
-  
+
   // Calculate through all available sections
   for (let s = 0; s < sheet.length; s++) {
     const section = sheet[s];
@@ -2182,13 +2275,13 @@ function computeSectionScoreThresholds() {
     }
     sectionScoreThresholds.push(runningScore);
   }
-  
+
   // Extrapolate for crown tiers that may require more sections than available
   // Crown tiers: 1👑 → level 5, 2👑 → level 7, 3👑 → level 10
   // We need thresholds up to level 10 (index 8 in sectionScoreThresholds)
   const maxLevelNeeded = 10;
   const maxIdxNeeded = maxLevelNeeded - 2; // level 10 needs index 8
-  
+
   if (sheet.length > 0 && sectionScoreThresholds.length < maxIdxNeeded + 1) {
     const avgScorePerSection = runningScore / sheet.length;
     while (sectionScoreThresholds.length <= maxIdxNeeded) {
@@ -2669,10 +2762,11 @@ function spawnHitRipple(x, y, options = {}) {
   let anchorY = typeof y === 'number' ? y : null;
 
   if ((anchorX == null || anchorY == null) && options.tile) {
-    const tileEl = document.querySelector(`[data-tile-id="${options.tile.id}"]`);
+    const activeCols = getActiveColumns(options.tile);
+    const domKey = `${options.tile.id}:${activeCols.join('-')}`;
+    const tileEl = tileDomCache.get(domKey);
     const rect = tileEl?.getBoundingClientRect();
     if (rect) {
-      const activeCols = getActiveColumns(options.tile);
       const leftMost = Math.min(...activeCols);
       const rightMost = Math.max(...activeCols);
       const side = options.colIdx <= (leftMost + rightMost) / 2 ? 'left' : 'right';
@@ -2702,9 +2796,10 @@ function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
   if (!tile || !isComboTile(tile)) return;
 
   const containerRect = hitEffectsEl.getBoundingClientRect();
-  const tileEl = document.querySelector(`[data-tile-id="${tile.id}"]`);
-  const rect = tileEl?.getBoundingClientRect();
   const activeCols = getActiveColumns(tile);
+  const domKey = `${tile.id}:${activeCols.join('-')}`;
+  const tileEl = tileDomCache.get(domKey);
+  const rect = tileEl?.getBoundingClientRect();
   const leftMost = Math.min(...activeCols);
   const rightMost = Math.max(...activeCols);
   const side = colIdx <= (leftMost + rightMost) / 2 ? 'left' : 'right';
@@ -2886,8 +2981,9 @@ async function finishRun(showLibrary = false) {
   } else {
     // Normal mode: save high score level, display score
     document.getElementById('final-score').textContent = String(currentScore);
-    document.getElementById('final-stars').innerHTML = starsDisplay.innerHTML;
-    document.getElementById('final-crowns').innerHTML = crownsDisplay.innerHTML;
+    const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+    document.getElementById('final-stars').innerHTML = stage.stars > 0 ? '<img src="gameImage/star.png" class="inline-block w-8 h-auto mr-1">'.repeat(stage.stars) : '';
+    document.getElementById('final-crowns').innerHTML = stage.crowns > 0 ? '<img src="gameImage/crown.png" class="inline-block w-8 h-auto mr-1">'.repeat(stage.crowns) : '';
     document.getElementById('final-grade').classList.add('hidden');
 
     if (selectedSongData && !autoplayEnabled) {
@@ -2898,6 +2994,7 @@ async function finishRun(showLibrary = false) {
         // normalSongAwardLevel directly maps to the star/crown tier shown in the HUD.
         if (normalSongAwardLevel > bestLevel) {
           localStorage.setItem(key, String(normalSongAwardLevel));
+          invalidateEarnedPPointsCache();
         }
       }
       // Save last played song
@@ -3200,24 +3297,57 @@ async function finishRun(showLibrary = false) {
         };
       }
       if (favBtn) {
-        // set initial favourite state
-        try {
-          if (selectedSongData && favouriteSongs.has(String(selectedSongData.mid))) {
-            favBtn.classList.add('favourite');
-          } else {
-            favBtn.classList.remove('favourite');
-          }
-        } catch (e) {}
+        const heartIcon = document.getElementById('results-fav-heart-icon');
+        const copyIcon = document.getElementById('results-fav-copy-icon');
+        
+        // Check if playing custom song
+        const isCustomSong = customSongData !== null;
+        
+        // Toggle icons based on song type
+        if (isCustomSong) {
+          heartIcon.classList.add('hidden');
+          copyIcon.classList.remove('hidden');
+        } else {
+          heartIcon.classList.remove('hidden');
+          copyIcon.classList.add('hidden');
+          
+          // set initial favourite state for regular songs
+          try {
+            if (selectedSongData && favouriteSongs.has(String(selectedSongData.mid))) {
+              favBtn.classList.add('favourite');
+            } else {
+              favBtn.classList.remove('favourite');
+            }
+          } catch (e) {}
+        }
 
         favBtn.onclick = () => {
-          if (!selectedSongData) return;
           // play menu loop cue for feedback
           try { playMenuLoopCue(); } catch (e) {}
-          const id = String(selectedSongData.mid);
-          toggleFavourite(id);
-          favBtn.classList.toggle('favourite', favouriteSongs.has(id));
-          // update other UI that may show favourites
-          renderFavouriteSongs();
+          
+          if (isCustomSong) {
+            // Copy custom JSON content to clipboard
+            if (customSongData) {
+              const jsonContent = JSON.stringify(customSongData, null, 2);
+              navigator.clipboard.writeText(jsonContent).then(() => {
+                // Visual feedback - briefly change icon or show success
+                copyIcon.style.stroke = '#22c55e';
+                setTimeout(() => {
+                  copyIcon.style.stroke = '';
+                }, 1000);
+              }).catch(err => {
+                console.error('Failed to copy:', err);
+              });
+            }
+          } else {
+            // Toggle favourite for regular songs
+            if (!selectedSongData) return;
+            const id = String(selectedSongData.mid);
+            toggleFavourite(id);
+            favBtn.classList.toggle('favourite', favouriteSongs.has(id));
+            // update other UI that may show favourites
+            renderFavouriteSongs();
+          }
         };
       }
     } catch (err) {
@@ -3325,16 +3455,32 @@ function tileMatchesColumn(tile, colIdx) {
 }
 
 function checkNormalSongAwards(reachedSection) {
-  if (!isStarted || isPaused || isClassicMode || isChallengeMode) return;
+  if (!isStarted || isPaused || isClassicMode || isChallengeMode) {
+    return;
+  }
 
   const currentAwardLevel = normalSongAwardLevel || 1;
   // Maximum award level is 10 (3 crowns).
   if (currentAwardLevel >= 10) return;
 
+  // Trigger animation one tile early (when approaching the next award level)
+  // but don't increment the award level yet
+  if (reachedSection === currentAwardLevel - 1) {
+    const nextStage = getStarAndCrownState(currentAwardLevel - 1);
+    const currentStage = currentAwardLevel > 1 ? getStarAndCrownState(currentAwardLevel - 2) : { stars: 0, crowns: 0 };
+    const currentTierRank = getRewardTierRank(currentStage);
+    const nextTierRank = getRewardTierRank(nextStage);
+    const shouldAnimateReward = nextTierRank > currentTierRank;
+
+    if (shouldAnimateReward) {
+      pendingAwardAnimationStages.push(nextStage);
+    }
+  }
+
+  // Increment award level when section is actually reached
   if (reachedSection >= currentAwardLevel) {
-    const previousStage = getStarAndCrownState(currentAwardLevel - 1);
     normalSongAwardLevel = currentAwardLevel + 1;
-    
+
     // Persist the score at which this level was reached so the revive modal
     // can display the score gap to the next award tier.
     if (selectedSongData && customStartingSpeed === 0) {
@@ -3349,15 +3495,9 @@ function checkNormalSongAwards(reachedSection) {
         }
       }
     }
-    
-    const currentStage = getStarAndCrownState(normalSongAwardLevel - 1);
-    const shouldAnimateReward = getRewardTierRank(currentStage) > getRewardTierRank(previousStage);
 
-    if (shouldAnimateReward) {
-      pendingAwardAnimationStages.push(currentStage);
-    }
     updateNormalSongAwardDisplay();
-    
+
     // Check recursively in case they skipped multiple sections at once
     checkNormalSongAwards(reachedSection);
   }
@@ -3777,16 +3917,12 @@ function updateClassicRewardAnimation() {
 }
 
 function updateNormalSongAwardDisplay() {
-  starsDisplay.innerHTML = '';
-  crownsDisplay.innerHTML = '';
-  starsDisplay.classList.add('hidden');
-  crownsDisplay.classList.add('hidden');
-
   if (isChallengeMode) {
     updateChallengeRewardAnimation();
   } else if (isClassicMode) {
     updateClassicRewardAnimation();
   }
+  // Normal song mode no longer has persistent star/crown display
 }
 
 function updateHUD() {
@@ -3813,7 +3949,8 @@ function updateHUD() {
     // In challenge mode: hide score, show challenge TPS, hide stars/crowns
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
-      if (tpsDisplayChallenge) {
+      if (tpsDisplayChallenge && tpsDisplayChallenge._lastText !== tpsText) {
+        tpsDisplayChallenge._lastText = tpsText;
         // Wrap each character in an individual span for consistent positioning
         tpsDisplayChallenge.innerHTML = tpsText.split('').map(char => 
           `<span class="score-digit-wrapper">${char}</span>`
@@ -3825,11 +3962,14 @@ function updateHUD() {
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
-        // Wrap each character in an individual span for consistent positioning
         const timerText = classicTimer.toFixed(3);
-        tpsDisplayChallenge.innerHTML = timerText.split('').map(char => 
-          `<span class="score-digit-wrapper">${char}</span>`
-        ).join('');
+        if (tpsDisplayChallenge._lastText !== timerText) {
+          tpsDisplayChallenge._lastText = timerText;
+          // Wrap each character in an individual span for consistent positioning
+          tpsDisplayChallenge.innerHTML = timerText.split('').map(char => 
+            `<span class="score-digit-wrapper">${char}</span>`
+          ).join('');
+        }
       }
     }
   } else {
@@ -3837,13 +3977,17 @@ function updateHUD() {
     scoreDisplay.classList.remove('hidden');
     // Wrap each digit in an individual span for consistent positioning
     const scoreStr = String(currentScore);
-    scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
-      `<span class="score-digit-wrapper">${digit}</span>`
-    ).join('');
+    if (scoreDisplay._lastText !== scoreStr) {
+      scoreDisplay._lastText = scoreStr;
+      scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
+        `<span class="score-digit-wrapper">${digit}</span>`
+      ).join('');
+    }
 
     if (isGameLoaded) {
       tpsDisplayNormal?.classList.remove('hidden');
-      if (tpsDisplayNormal) {
+      if (tpsDisplayNormal && tpsDisplayNormal._lastText !== tpsText) {
+        tpsDisplayNormal._lastText = tpsText;
         // Wrap each character in an individual span for consistent positioning
         tpsDisplayNormal.innerHTML = tpsText.split('').map(char => 
           `<span class="score-digit-wrapper">${char}</span>`
@@ -3860,11 +4004,21 @@ function getTileTop(tile) {
   return starthpos - adjHpos - getTileEffectiveHeight(tile);
 }
 
-function getActiveColumns(tile) {
+function computeActiveCols(warr) {
   const cols = [];
-  tile.warr.forEach((value, idx) => {
-    if (value) cols.push(idx);
-  });
+  for (let i = 0; i < warr.length; i++) {
+    if (warr[i]) cols.push(i);
+  }
+  return cols;
+}
+
+function getActiveColumns(tile) {
+  if (tile.activeCols) return tile.activeCols;
+  // Fallback for tiles created before this optimization (e.g. the start tile)
+  const cols = [];
+  for (let i = 0; i < tile.warr.length; i++) {
+    if (tile.warr[i]) cols.push(i);
+  }
   return cols;
 }
 
@@ -3906,28 +4060,43 @@ function renderTiles() {
         <div class="combo-badge hidden"></div>
         <div class="tile-start-label hidden">START</div>
       `;
+      el._head = el.querySelector('.tile-head');
+      el._lightStrip = el.querySelector('.tile-light-strip');
+      el._lightOrb = el.querySelector('.tile-light-orb');
+      el._comboBadge = el.querySelector('.combo-badge');
+      el._startLabel = el.querySelector('.tile-start-label');
       tilesContainer.appendChild(el);
       tileDomCache.set(domKey, el);
     }
 
     const leftCol = Math.min(...cols);
     const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
-    const headEl = el.querySelector('.tile-head');
-    const lightStripEl = el.querySelector('.tile-light-strip');
-    const lightOrbEl = el.querySelector('.tile-light-orb');
-    const comboBadgeEl = el.querySelector('.combo-badge');
-    const startLabelEl = el.querySelector('.tile-start-label');
+    const headEl = el._head;
+    const lightStripEl = el._lightStrip;
+    const lightOrbEl = el._lightOrb;
+    const comboBadgeEl = el._comboBadge;
+    const startLabelEl = el._startLabel;
 
     el.className = '';
-    el.style.left = `${(leftCol / key) * 100}%`;
-    el.style.width = `${(widthCols / key) * 100}%`;
-    el.style.top = `${(topUnits / key) * 100}%`;
-    el.style.height = `${(tileHeight / key) * 100}%`;
-    el.style.filter = (tile.type === 3 || tile.type >= 7) ? 'hue-rotate(-90deg)' : 'none';
-    el.style.backgroundColor = 'transparent';
-    el.style.borderTop = 'none';
-    el.style.boxShadow = 'none';
-    el.style.opacity = '1';
+    const styleLeft = `${(leftCol / key) * 100}%`;
+    const styleWidth = `${(widthCols / key) * 100}%`;
+    const styleTop = `${(topUnits / key) * 100}%`;
+    const styleHeight = `${(tileHeight / key) * 100}%`;
+    const styleFilter = (tile.type === 3 || tile.type >= 7) ? 'hue-rotate(-90deg)' : 'none';
+
+    if (el._lastLeft !== styleLeft) { el.style.left = styleLeft; el._lastLeft = styleLeft; }
+    if (el._lastWidth !== styleWidth) { el.style.width = styleWidth; el._lastWidth = styleWidth; }
+    if (el._lastTop !== styleTop) { el.style.top = styleTop; el._lastTop = styleTop; }
+    if (el._lastHeight !== styleHeight) { el.style.height = styleHeight; el._lastHeight = styleHeight; }
+    if (el._lastFilter !== styleFilter) { el.style.filter = styleFilter; el._lastFilter = styleFilter; }
+
+    if (el._lastBgStyle !== 'batched') {
+      el.style.backgroundColor = 'transparent';
+      el.style.borderTop = 'none';
+      el.style.boxShadow = 'none';
+      el.style.opacity = '1';
+      el._lastBgStyle = 'batched';
+    }
 
     [headEl, lightStripEl, lightOrbEl].forEach((child) => {
       child.style.position = 'absolute';
@@ -4089,7 +4258,7 @@ function renderTiles() {
     });
   });
 
-  Array.from(tileDomCache.entries()).forEach(([keyValue, el]) => {
+  tileDomCache.forEach((el, keyValue) => {
     if (!visibleKeys.has(keyValue)) {
       el.remove();
       tileDomCache.delete(keyValue);
@@ -4169,7 +4338,10 @@ function updateEngineFrame(now) {
     }
   }
 
-  while (tiles.filter(t => !t.isAccompanimentTile).length < key * 3) {
+  let manualTileCount = 0;
+  for (const t of tiles) if (!t.isAccompanimentTile) manualTileCount++;
+
+  while (manualTileCount < key * 3) {
     if (currentSectionIndex < sheet.length) {
       const currentTile = sheet[currentSectionIndex][currentSectionTileIndex];
       if (currentTile) {
@@ -4197,6 +4369,7 @@ function updateEngineFrame(now) {
             visualHposOffset,
             visualAdjustedHpos: hpos - visualHposOffset,
             warr: longWarr,
+            activeCols: computeActiveCols(longWarr),
             taps: 0,
             remainingTaps: 0,
             holdStarted: false,
@@ -4235,6 +4408,7 @@ function updateEngineFrame(now) {
               visualHposOffset,
               visualAdjustedHpos: singleTileHpos - visualHposOffset,
               warr: singleWarr,
+              activeCols: computeActiveCols(singleWarr),
               taps: 0,
               remainingTaps: 0,
               holdStarted: false,
@@ -4267,6 +4441,7 @@ function updateEngineFrame(now) {
             visualHposOffset,
             visualAdjustedHpos: hpos - visualHposOffset,
             warr: [...warr],
+            activeCols: computeActiveCols(warr),
             taps: isCombo ? comboTaps : 0,
             remainingTaps: isCombo ? comboTaps : 0,
             holdStarted: false,
@@ -4282,6 +4457,7 @@ function updateEngineFrame(now) {
             sectionIndex: currentSectionIndex,
             loopCount: songLoopCount
           });
+          manualTileCount++;
         }
 
         hpos += currentTile.hlen;
@@ -4335,14 +4511,8 @@ function updateEngineFrame(now) {
       tile.played = true;
       triggerPendingAwardAnimations();
     }
-  });
 
-  if (maxEffectiveSectionReached >= normalSongAwardLevel) {
-    checkNormalSongAwards(maxEffectiveSectionReached);
-  }
-
-  if (autoplayEnabled) {
-    tiles.forEach((tile) => {
+    if (autoplayEnabled) {
       switch (tile.type) {
         case -1:
           // Start tile must be clicked manually even in autoplay mode
@@ -4366,7 +4536,6 @@ function updateEngineFrame(now) {
             currentScore++;
             tile.clicked = true;
             tile.ended = 1;
-
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -4376,7 +4545,6 @@ function updateEngineFrame(now) {
             currentScore += 4;
             tile.clicked = true;
             tile.ended = 1;
-
           } else if (tile.ended) {
             tile.ended++;
           }
@@ -4406,7 +4574,6 @@ function updateEngineFrame(now) {
               if (tile.remainingTaps <= 0) {
                 tile.clicked = true;
                 tile.ended = 1;
-
               }
             }
           } else if (tile.ended) {
@@ -4419,7 +4586,6 @@ function updateEngineFrame(now) {
               currentScore += Math.round(tile.hlen) + 1;
               tile.clicked = true;
               tile.ended = 1;
-
             } else {
               tile.ended++;
             }
@@ -4443,26 +4609,26 @@ function updateEngineFrame(now) {
               currentScore += Math.round(scoreDelta) + 1;
               tile.clicked = true;
               tile.ended = 1;
-
             } else {
               tile.ended++;
             }
           }
       }
-    });
-  } else {
-    tiles.forEach((tile) => {
+    } else {
       // Handle long tiles that were released midway
       if (tile.holdStarted && !tile.holdCompleted && !tile.holdReleased && tile.playing > (tile.completionPlaying !== undefined ? tile.completionPlaying : tile.hlen - 1)) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
         currentScore += Math.round(tile.hlen) + 1;
-
       } else if ((tile.clicked || tile.holdCompleted) && tile.ended) {
         tile.ended++;
       }
-    });
+    }
+  });
+
+  if (maxEffectiveSectionReached >= normalSongAwardLevel) {
+    checkNormalSongAwards(maxEffectiveSectionReached);
   }
 
   if (!autoplayEnabled && !isPaused) {
@@ -4608,8 +4774,6 @@ function stopGame(showStart = true) {
   }
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  starsDisplay.innerHTML = '';
-  crownsDisplay.innerHTML = '';
   
   updatePauseButtonVisibility();
 }
@@ -4641,8 +4805,6 @@ function returnToMainMenu() {
   challengesScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  starsDisplay.innerHTML = '';
-  crownsDisplay.innerHTML = '';
   
   updatePauseButtonVisibility();
 
@@ -5319,12 +5481,12 @@ function showSettingsScreen() {
 function syncTopDockData() {
   const { totalStars, totalCrowns, earnedPPoints } = calculateEarnedPPoints();
   const pPoints = Math.max(0, earnedPPoints - spentPPoints);
-  
-  // Update Music tab displays
+
+  // Primary (shared) top bar updates
   if (pPointsDisplay) pPointsDisplay.textContent = String(pPoints);
   if (totalCrownsDisplay) totalCrownsDisplay.textContent = String(totalCrowns);
   if (totalStarsDisplay) totalStarsDisplay.textContent = String(totalStars);
-  
+
   // Update Home/Challenges fallbacks (kept for backwards compatibility)
   const pPointsDisplayHome = document.getElementById('p-points-display-home');
   const totalCrownsDisplayHome = document.getElementById('total-crowns-home');
@@ -5333,12 +5495,6 @@ function syncTopDockData() {
   const totalCrownsDisplayChallenges = document.getElementById('total-crowns-challenges');
   const totalStarsDisplayChallenges = document.getElementById('total-stars-challenges');
 
-  // Primary (shared) top bar updates
-  if (pPointsDisplay) pPointsDisplay.textContent = String(pPoints);
-  if (totalCrownsDisplay) totalCrownsDisplay.textContent = String(totalCrowns);
-  if (totalStarsDisplay) totalStarsDisplay.textContent = String(totalStars);
-
-  // Fallback updates for any remaining per-screen elements (optional)
   if (pPointsDisplayHome) pPointsDisplayHome.textContent = String(pPoints);
   if (totalCrownsDisplayHome) totalCrownsDisplayHome.textContent = String(totalCrowns);
   if (totalStarsDisplayHome) totalStarsDisplayHome.textContent = String(totalStars);
@@ -5707,8 +5863,6 @@ clearSongBtn?.addEventListener('click', () => {
   songListScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  starsDisplay.innerHTML = '';
-  crownsDisplay.innerHTML = '';
   setSongStatus('Load a PT2 JSON file to play a song.');
 });
 
@@ -5906,13 +6060,5 @@ document.addEventListener('languageChanged', () => {
   if (typeof renderHomeScreen === 'function') renderHomeScreen();
   if (typeof renderFavouriteSongs === 'function') renderFavouriteSongs();
   if (typeof populateMusicSelect === 'function') populateMusicSelect();
-});
-
-// Listen for language changes to update song displays
-document.addEventListener('languageChanged', () => {
-  renderSongList();
-  renderHomeScreen();
-  renderFavouriteSongs();
-  populateMusicSelect();
 });
 rafId = requestAnimationFrame(frame);

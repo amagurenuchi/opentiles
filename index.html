@@ -73,9 +73,6 @@
           class="hidden font-game text-2xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow mt-1">
           <span class="score-digit-wrapper">0</span><span class="score-digit-wrapper">.</span><span class="score-digit-wrapper">0</span><span class="score-digit-wrapper">0</span><span class="score-digit-wrapper">0</span>
         </div>
-        <!-- Stars display -->
-        <div id="stars-display" class="mt-2 text-2xl drop-shadow select-none"></div>
-        <div id="crowns-display" class="mt-2 text-2xl drop-shadow select-none"></div>
         <!-- Star animation display (positioned at same height as score) -->
         <div id="star-animation-display"
           class="hidden absolute font-game text-7xl font-bold text-[#ff6b6b] tracking-tight leading-none drop-shadow">
@@ -380,7 +377,7 @@
         </div>
 
         <div class="w-full mb-6 px-4">
-          <div class="results-dock mx-auto max-w-[520px] rounded-xl bg-gray-200/80 backdrop-blur-md p-4 flex justify-between items-center">
+          <div class="results-dock mx-auto rounded-xl bg-gray-200/80 backdrop-blur-md p-4 flex justify-between items-center">
             <button id="results-home-btn" class="results-dock-btn flex items-center justify-center bg-white rounded-2xl w-16 h-14 shadow-sm">
               <!-- back arrow icon -->
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6 text-gray-800">
@@ -396,9 +393,13 @@
             </button>
 
             <button id="results-fav-btn" class="results-dock-btn heart-button flex items-center justify-center bg-white rounded-2xl w-16 h-14 shadow-sm">
-              <!-- heart icon -->
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6 text-gray-800">
+              <!-- heart icon (default) -->
+              <svg id="results-fav-heart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6 text-gray-800">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.172 7.172a4 4 0 015.656 0L12 10.343l3.172-3.171a4 4 0 115.656 5.656L12 21.657 3.172 12.828a4 4 0 010-5.656z" />
+              </svg>
+              <!-- copy icon (for custom songs, hidden by default) -->
+              <svg id="results-fav-copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6 text-gray-800 hidden">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" />
               </svg>
             </button>
           </div>
@@ -504,15 +505,27 @@
             <div class="p-6 flex flex-col gap-4">
               <div>
                 <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Section 1 BPM</label>
-                <input id="custom-bpm-1" type="number" min="60" max="300" value="120" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <input id="custom-bpm-1" type="number" min="60" max="300" placeholder="Leave empty for original" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <div class="flex justify-between mt-1 text-[9px] text-gray-500">
+                  <span>Original: <span id="original-bpm-1">-</span> BPM, <span id="original-beats-1">-</span> beats</span>
+                  <span>Speed: <span id="speed-1">-</span> t/s</span>
+                </div>
               </div>
               <div>
                 <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Section 2 BPM</label>
-                <input id="custom-bpm-2" type="number" min="60" max="300" value="120" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <input id="custom-bpm-2" type="number" min="60" max="300" placeholder="Leave empty for original" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <div class="flex justify-between mt-1 text-[9px] text-gray-500">
+                  <span>Original: <span id="original-bpm-2">-</span> BPM, <span id="original-beats-2">-</span> beats</span>
+                  <span>Speed: <span id="speed-2">-</span> t/s</span>
+                </div>
               </div>
               <div>
                 <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1">Section 3 BPM</label>
-                <input id="custom-bpm-3" type="number" min="60" max="300" value="120" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <input id="custom-bpm-3" type="number" min="60" max="300" placeholder="Leave empty for original" class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
+                <div class="flex justify-between mt-1 text-[9px] text-gray-500">
+                  <span>Original: <span id="original-bpm-3">-</span> BPM, <span id="original-beats-3">-</span> beats</span>
+                  <span>Speed: <span id="speed-3">-</span> t/s</span>
+                </div>
               </div>
             </div>
           </div>
@@ -747,7 +760,7 @@
   </div>
 
   <!-- Game Logic Script -->
-  <script type="module" src="game.js?v=2"></script>
+  <script type="module" src="game.js?v=3"></script>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4590063042244704"
      crossorigin="anonymous"></script>
 </body>

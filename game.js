@@ -110,10 +110,11 @@ let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
 let reviveSlowdownEnabled = localStorage.getItem('opentile_revive_slowdown') !== 'false'; // default true
 let isReviveSlowdownActive = false;
 let reviveSlowdownStartTime = 0;
+let isPostReviveState = false;
 let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
-let customStartingSpeed = parseInt(localStorage.getItem('opentile_custom_speed') || '0', 10); // 0 = disabled, direct t/s value
+let customStartingSpeed = parseFloat(localStorage.getItem('opentile_custom_speed') || '0'); // 0 = disabled, direct t/s value
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -672,6 +673,7 @@ function resumeAfterRevive() {
   isPaused = false;
   isStarted = false;
   hasStartedGameplay = true;
+  isPostReviveState = true; // Set flag to indicate we're in post-revive state
   tiles.forEach((tile) => delete tile.isStartTile);
 
   const nearestUntapped = getLowestManualTile();
@@ -686,11 +688,6 @@ function resumeAfterRevive() {
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
-  }
-
-  if (reviveSlowdownEnabled) {
-    isReviveSlowdownActive = true;
-    reviveSlowdownStartTime = performance.now();
   }
 
   updatePauseButtonVisibility();
@@ -869,7 +866,16 @@ function getRuntimeSpeed(index) {
   if (customStartingSpeed > 0) {
     const baseSpeed = getSpeed(index);
     const customStartTps = customStartingSpeed;
-    const forcedTps = customStartTps;
+    
+    // Calculate speed incrementally with dynamic acceleration
+    // The index represents the section index (0-based)
+    let currentSpeed = customStartTps;
+    for (let i = 0; i < index; i++) {
+      const acceleration = currentSpeed < 10 ? 1 : 0.5;
+      currentSpeed += acceleration;
+    }
+    const forcedTps = currentSpeed;
+    
     return {
       bpm: Math.trunc(calculateBpmFromTps(forcedTps, baseSpeed.beats)),
       beats: baseSpeed.beats
@@ -885,7 +891,15 @@ function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
   if (customStartingSpeed > 0) {
     const customStartTps = customStartingSpeed;
     const sectionIndex = loopTimes * 0 + 1;
-    const forcedTps = customStartTps + ((sectionIndex - 1) * 0.5);
+    
+    // Calculate speed incrementally with dynamic acceleration
+    let currentSpeed = customStartTps;
+    for (let i = 1; i < sectionIndex; i++) {
+      const acceleration = currentSpeed < 10 ? 1 : 0.5;
+      currentSpeed += acceleration;
+    }
+    const forcedTps = currentSpeed;
+    
     return Math.trunc(calculateBpmFromTps(forcedTps, currentBeatsValue));
   }
 
@@ -1375,7 +1389,7 @@ function updateTpsDisplayColor() {
 
 function updateSettingsUI() {
   if (customSpeedInput) {
-    // Clamp to whole numbers above 0 (0 = disabled, 1+ = t/s)
+    // Clamp to decimal values above 0 (0 = disabled, 0.1+ = t/s)
     if (isNaN(customStartingSpeed) || customStartingSpeed < 0) {
       customStartingSpeed = 0;
     }
@@ -1403,8 +1417,8 @@ function saveSettingsToStorage() {
     localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
   }
   if (customSpeedInput) {
-    let value = parseInt(customSpeedInput.value, 10);
-    // Clamp to whole numbers above 0 (0 = disabled, direct t/s value)
+    let value = parseFloat(customSpeedInput.value);
+    // Clamp to decimal values above 0 (0 = disabled, direct t/s value)
     if (isNaN(value) || value < 0) {
       value = 0;
     }
@@ -1851,6 +1865,7 @@ function resetEngineState() {
   resetInputState();
   pendingHitEffects = [];
   isReviveSlowdownActive = false;
+  isPostReviveState = false; // Reset revive flag when engine is reset
 }
 
 function loadSongObject(data, label) {
@@ -2413,6 +2428,8 @@ function getLowestManualTile() {
     if (tile.type === 1) return;
     // Skip long tiles that have been released midway
     if (isLongTile(tile) && tile.holdReleased) return;
+    // Skip long tiles that were started but not completed (e.g., pause-dropped)
+    if (isLongTile(tile) && tile.holdStarted && !tile.holdCompleted) return;
     const bottom = getTileBottom(tile);
     if (bottom > maxBottom) {
       maxBottom = bottom;
@@ -2617,6 +2634,7 @@ async function finishRun(showLibrary = false) {
   isStarted = false;
   isPaused = true;
   isPlayInProgress = false; // Reset play progress flag when run finishes
+  isPostReviveState = false; // Reset revive flag when run finishes
   
   // Clean up classic mode timer
   if (isClassicMode) {
@@ -3028,6 +3046,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   captureCurrentSpeedState();
   isPaused = true;
   isStarted = false;
+  isPostReviveState = false; // Reset revive flag when run fails
   
   // Clean up classic mode
   if (isClassicMode) {
@@ -3170,6 +3189,13 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           gameBoardWrapper.classList.add('game-playing');
           updateGameplayBackground();
           updatePauseButtonVisibility();
+        }
+
+        // Start revive slowdown only when tapping START tile after revive
+        if (isPostReviveState && reviveSlowdownEnabled) {
+          isReviveSlowdownActive = true;
+          reviveSlowdownStartTime = performance.now();
+          isPostReviveState = false; // Reset flag after using it
         }
 
         if (startTile.type === -1 && startTile.hpos === -1) {
@@ -4341,6 +4367,7 @@ function startGame() {
   startTime = performance.now();
   updatePauseButtonVisibility();
   isPlayInProgress = false; // Reset play progress flag when game actually starts
+  isPostReviveState = false; // Reset revive flag when starting normal game
 }
 
 function stopGame(showStart = true) {
@@ -4532,10 +4559,48 @@ function togglePause() {
 
   if (pausedWasStarted) {
     tiles.forEach((tile) => delete tile.isStartTile);
+    
+    // Force-drop any currently held long tile
+    const heldLongTile = tiles.find((tile) =>
+      isLongTile(tile) &&
+      tile.holdStarted &&
+      !tile.holdCompleted &&
+      !tile.holdReleased
+    );
+    
+    if (heldLongTile) {
+      // Mark the release point for proper tracking
+      heldLongTile.holdReleasedAt = heldLongTile.playing || 0;
+      heldLongTile.holdReleased = true;
+      heldLongTile.played = true;
+      heldLongTile.holdCompleted = true;
+      heldLongTile.clicked = true;
+      heldLongTile.ended = 1;
+      
+      // Calculate score based on completed height, same as normal release
+      const completedHeight = Math.max(0, heldLongTile.playing - (heldLongTile.tapPlaying || 0));
+      currentScore += Math.max(1, Math.ceil(completedHeight));
+    }
+    
     const nearestUntapped = getLowestManualTile();
     if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
       resetTileForResume(nearestUntapped);
       nearestUntapped.isStartTile = true;
+      
+      // Center the START tile on screen if it's not fully visible
+      const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
+      const tileHeight = getTileEffectiveHeight(nearestUntapped);
+      const tileTop = starthpos - adjHpos - tileHeight;
+      const tileBottom = starthpos - adjHpos;
+      
+      // Check if tile (or head of long tile) is fully visible on-screen
+      const isFullyVisible = tileBottom > 0 && tileTop < key;
+      
+      if (!isFullyVisible) {
+        // Calculate new starthpos to center the tile, shifted down by 1 tile height
+        starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
+        classicScrollTarget = starthpos;
+      }
     }
   } else {
     tiles.forEach((tile) => {
@@ -4728,6 +4793,7 @@ function startClassicMode() {
   isGameLoaded = false;
   isStarted = false;
   isPaused = false;
+  isPostReviveState = false; // Reset revive flag when starting classic mode
   tiles = [];
   currentScore = 0;
   hpos = 0;
@@ -5330,13 +5396,46 @@ bpmModal?.addEventListener('click', (event) => {
 });
 
 customSpeedInput?.addEventListener('input', (event) => {
-  let value = parseInt(event.target.value, 10);
-  // Clamp to whole numbers above 0 (0 = disabled, direct t/s value)
+  const input = event.target;
+  const inputValue = input.value;
+  
+  // Save cursor position before any modifications
+  const cursorPosition = input.selectionStart;
+  const cursorEnd = input.selectionEnd;
+  
+  // Allow empty input or input ending with dot (while typing decimal)
+  if (inputValue === '' || inputValue.endsWith('.')) {
+    if (inputValue === '' || inputValue === '.') {
+      customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
+      customSpeedDisplay.classList.remove('text-indigo-600');
+    } else {
+      // Display the current value without the trailing dot
+      const valueWithoutDot = parseFloat(inputValue);
+      if (!isNaN(valueWithoutDot) && valueWithoutDot > 0) {
+        customSpeedDisplay.textContent = `${valueWithoutDot} t/s`;
+        customSpeedDisplay.classList.add('text-indigo-600');
+      } else {
+        customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
+        customSpeedDisplay.classList.remove('text-indigo-600');
+      }
+    }
+    // Restore cursor position
+    input.setSelectionRange(cursorPosition, cursorEnd);
+    return;
+  }
+  
+  let value = parseFloat(inputValue);
+  // Clamp to decimal values above 0 (0 = disabled, direct t/s value)
   if (isNaN(value) || value < 0) {
     value = 0;
   }
   // Update the input value to reflect clamping
-  event.target.value = value;
+  input.value = value;
+  
+  // Restore cursor position (adjust if the value was shortened)
+  const newLength = String(value).length;
+  const newCursorPosition = Math.min(cursorPosition, newLength);
+  input.setSelectionRange(newCursorPosition, newCursorPosition);
   
   if (value === 0) {
     customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';

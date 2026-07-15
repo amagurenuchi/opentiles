@@ -65,7 +65,7 @@ body {
   }
 
   .combo-badge {
-    font-size: clamp(4.3rem, 15vh, 7rem) !important;
+    font-size: clamp(5.5rem, 18vh, 8.5rem) !important;
   }
 
   /* Increase all UI elements by 60% for tablet */

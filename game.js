@@ -3541,6 +3541,9 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         isStarted = true;
         hasStartedGameplay = true;
         startTime = performance.now();
+        if (isClassicMode) {
+          classicTimerStartedAt = performance.now(); // Start timer when START tile is tapped in Classic mode
+        }
         if (gameBoardWrapper) {
           gameBoardWrapper.classList.add('game-playing');
           updateGameplayBackground();
@@ -3980,20 +3983,9 @@ function updateHUD() {
     return;
   }
 
-  if (isChallengeMode) {
-    // In challenge mode: hide score, show challenge TPS, hide stars/crowns
-    if (isGameLoaded) {
-      tpsDisplayChallenge?.classList.remove('hidden');
-      if (tpsDisplayChallenge && tpsDisplayChallenge._lastText !== tpsText) {
-        tpsDisplayChallenge._lastText = tpsText;
-        // Wrap each character in an individual span for consistent positioning
-        tpsDisplayChallenge.innerHTML = tpsText.split('').map(char => 
-          `<span class="score-digit-wrapper">${char}</span>`
-        ).join('');
-      }
-    }
-  } else if (isClassicMode) {
+  if (isClassicMode) {
     // Classic mode: hide score, show timer with 3 decimal points, hide stars/crowns
+    // This takes precedence over challenge mode to prevent fallback
     if (isGameLoaded) {
       tpsDisplayChallenge?.classList.remove('hidden');
       if (tpsDisplayChallenge) {
@@ -4005,6 +3997,18 @@ function updateHUD() {
             `<span class="score-digit-wrapper">${char}</span>`
           ).join('');
         }
+      }
+    }
+  } else if (isChallengeMode) {
+    // In challenge mode: hide score, show challenge TPS, hide stars/crowns
+    if (isGameLoaded) {
+      tpsDisplayChallenge?.classList.remove('hidden');
+      if (tpsDisplayChallenge && tpsDisplayChallenge._lastText !== tpsText) {
+        tpsDisplayChallenge._lastText = tpsText;
+        // Wrap each character in an individual span for consistent positioning
+        tpsDisplayChallenge.innerHTML = tpsText.split('').map(char => 
+          `<span class="score-digit-wrapper">${char}</span>`
+        ).join('');
       }
     }
   } else {
@@ -5195,7 +5199,7 @@ function initializeClassicMode() {
   resetInputState();
   isClassicMode = true;
   classicTimer = classicTimerDuration;
-  classicTimerStartedAt = performance.now();
+  classicTimerStartedAt = 0; // Timer starts when START tile is tapped
   classicTappedTiles = 0;
   classicCurrentSongIndex = 0;
   classicLoadFailCount = 0;
@@ -5274,7 +5278,7 @@ function startClassicMode() {
   classicScrollTarget = starthpos;
   classicTimerDuration = 30;
   classicTimer = classicTimerDuration;
-  classicTimerStartedAt = performance.now();
+  classicTimerStartedAt = 0; // Timer starts when START tile is tapped
   sheet = [];
   info = [];
   currentSectionIndex = 0;

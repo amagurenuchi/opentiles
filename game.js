@@ -770,14 +770,7 @@ function getEffectiveSpeedState() {
     return { bpm: 0, beats: 0.5 };
   }
 
-  if (isPaused) {
-    return {
-      bpm: pausedSpeedBpm || currentBpm || 120,
-      beats: pausedSpeedBeats || currentBeats || 0.5
-    };
-  }
-
-  if (!isStarted) {
+  if (isPaused || !isStarted) {
     return {
       bpm: pausedSpeedBpm || currentBpm || 120,
       beats: pausedSpeedBeats || currentBeats || 0.5
@@ -2244,7 +2237,6 @@ function loadSongObject(data, label) {
   }
 
   getSpeed = speedGen(info, customBpmOverride, customSectionSpeedMultiplier);
-  _runtimeSpeedCache.clear();
   currentBpm = getSpeed(0).bpm;
   currentBeats = getSpeed(0).beats;
   if (isChallengeMode) {
@@ -3459,9 +3451,6 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
 }
 
 function tileMatchesColumn(tile, colIdx) {
-  if (tile.type === 5 && Array.isArray(tile.hitColumns) && tile.hitColumns.includes(colIdx)) {
-    return false;
-  }
   return getTileHitColumns(tile).includes(colIdx);
 }
 
@@ -4183,10 +4172,6 @@ function renderTiles() {
         comboBadgeEl.textContent = badgeVal;
         el.dataset.lastBadgeText = badgeVal;
       }
-      if (showStartLabel) {
-        startLabelEl.classList.remove('hidden');
-        startLabelEl.style.display = 'flex';
-      }
     } else if (isLongTile(tile) || isComboTile(tile)) {
       const played = tile.played || tile.clicked;
       const ended = tile.ended || tile.holdCompleted;
@@ -4294,14 +4279,9 @@ function updateEngineFrame(now) {
       nextBpm = currentBpm;
       nextBeats = currentBeats;
     } else {
-      if (hasStartedGameplay && currentBpm > 0 && currentBeats > 0) {
-        nextBpm = currentBpm;
-        nextBeats = currentBeats;
-      } else {
-        const baseSpeed = getRuntimeSpeed(speedLevel - 1);
-        nextBpm = baseSpeed.bpm;
-        nextBeats = baseSpeed.beats;
-      }
+      const baseSpeed = getRuntimeSpeed(speedLevel - 1);
+      nextBpm = baseSpeed.bpm;
+      nextBeats = baseSpeed.beats;
     }
   } else {
     nextBpm = pausedSpeedBpm;
@@ -4342,12 +4322,8 @@ function updateEngineFrame(now) {
   }
 
   // Capture the pre-slowdown BPM for the TPS display.
-  if (!isPaused) {
-    preslowdownBpm = nextBpm;
-  }
-  if (!isPaused) {
-    nextBpm *= comboSlowdownMultiplier;
-  }
+  preslowdownBpm = nextBpm;
+  nextBpm *= comboSlowdownMultiplier;
   currentBpm = nextBpm;
   currentBeats = nextBeats;
 
@@ -4851,15 +4827,13 @@ function resetTileForResume(tile) {
   tile.holdStarted = false;
   tile.holdCompleted = false;
   tile.holdReleased = false;
-  if (!Array.isArray(tile.hitColumns)) {
-    tile.hitColumns = [];
-  }
+  tile.hitColumns = [];
   delete tile.holdReleasedAt;
   delete tile.activeHoldColumn;
   delete tile.tapScreenY;
   delete tile.tapPlaying;
   delete tile.completionPlaying;
-  if (tile.type === 3 && tile.remainingTaps == null) {
+  if (tile.type === 3) {
     tile.remainingTaps = tile.taps || 2;
   }
 
@@ -4889,6 +4863,7 @@ function resetTileForResume(tile) {
 function continueFromPause() {
   if (!isPaused) return;
 
+  captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
 
@@ -4900,12 +4875,6 @@ function continueFromPause() {
         tile.isStartTile = true;
       }
     });
-  } else {
-    const nearestUntapped = getLowestManualTile();
-    if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
-      resetTileForResume(nearestUntapped);
-      nearestUntapped.isStartTile = true;
-    }
   }
   pausedWasStarted = false;
   pauseScreen.classList.add('hidden');

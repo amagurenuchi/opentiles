@@ -174,7 +174,7 @@ let challengeStartTime = 0;
 
 let isAwardAnimationRunning = false;
 let awardAnimationTimeout = null;
-let lastHudRewardState = null;
+let lastHudRewardState = { stars: 0, crowns: 0 };
 let lastAnimatedRewardTier = 0;
 
 function clearAwardAnimation() {
@@ -251,6 +251,7 @@ let isPaused = false;
 let isGameLoaded = false;
 let nextTileId = 0;
 let activeKeys = { 0: false, 1: false, 2: false, 3: false };
+let activePointerIds = { 0: null, 1: null, 2: null, 3: null };
 let bindingColIdx = null;
 let pendingHitEffects = [];
 let currentGameplayBackgroundIndex = 1;
@@ -710,6 +711,7 @@ function resumeAfterRevive() {
   if (nearestUntapped) {
     resetTileForResume(nearestUntapped);
     nearestUntapped.isStartTile = true;
+    nearestUntapped.isResumeStartTile = true;
   }
 
   if (pauseScreen) {
@@ -898,7 +900,7 @@ function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplie
 const _runtimeSpeedCache = new Map();
 
 function getRuntimeSpeed(index) {
-  const cacheKey = `${index}:${customStartingSpeed}`;
+  const cacheKey = `${songName}:${index}:${customStartingSpeed}`;
   if (_runtimeSpeedCache.has(cacheKey)) {
     return _runtimeSpeedCache.get(cacheKey);
   }
@@ -2118,6 +2120,7 @@ function resetEngineState() {
   tileDomCache.clear();
   tilesContainer.innerHTML = '';
   hitEffectsEl.innerHTML = '';
+  _runtimeSpeedCache.clear();
   updatePauseButtonVisibility();
   isStarted = false;
   isPaused = false;
@@ -2126,7 +2129,7 @@ function resetEngineState() {
   challengeBaseBpm = 120;
   challengeBaseBeats = 0.5;
   hasStartedGameplay = false;
-  lastHudRewardState = null;
+  lastHudRewardState = { stars: 0, crowns: 0 };
   preserveCurrentSpeedOnNextFrame = false;
   pausedSpeedBpm = 120;
   pausedSpeedBeats = 0.5;
@@ -2244,6 +2247,8 @@ function loadSongObject(data, label) {
     challengeBaseBeats = currentBeats;
   }
   songName = label;
+  // Clear runtime speed cache when loading a new song to prevent cached speeds from previous songs
+  _runtimeSpeedCache.clear();
   isGameLoaded = true;
   const localizedSongName = i18n ? i18n.getSongName(label) : label;
   setSongStatus(`Loaded ${localizedSongName} with ${sheet.length} sections`);
@@ -2796,19 +2801,23 @@ function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
   if (!tile || !isComboTile(tile)) return;
 
   const containerRect = hitEffectsEl.getBoundingClientRect();
-  const activeCols = getActiveColumns(tile);
-  const domKey = `${tile.id}:${activeCols.join('-')}`;
+  const domKey = `${tile.id}:${[1, 2].join('-')}`;
   const tileEl = tileDomCache.get(domKey);
   const rect = tileEl?.getBoundingClientRect();
-  const leftMost = Math.min(...activeCols);
-  const rightMost = Math.max(...activeCols);
-  const side = colIdx <= (leftMost + rightMost) / 2 ? 'left' : 'right';
+
+  // Position +1 on columns 0 (left) and 3 (right)
+  const leftColRect = colElements[0]?.getBoundingClientRect();
+  const rightColRect = colElements[3]?.getBoundingClientRect();
 
   let anchorX = pointerEvent ? pointerEvent.clientX : null;
   let anchorY = pointerEvent ? pointerEvent.clientY : null;
 
-  if (rect) {
-    anchorX = side === 'left' ? rect.left + rect.width * 0.2 : rect.right - rect.width * 0.2;
+  if (rect && leftColRect && rightColRect) {
+    // Alternate between left (col 0) and right (col 3) for each hit
+    const tapIndex = (tile.taps || 2) - (tile.remainingTaps || 0);
+    const useLeft = tapIndex % 2 === 0;
+    
+    anchorX = useLeft ? leftColRect.left + leftColRect.width / 2 : rightColRect.left + rightColRect.width / 2;
     anchorY = rect.top + rect.height * 0.25;
   }
 
@@ -3451,7 +3460,13 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
 }
 
 function tileMatchesColumn(tile, colIdx) {
-  return getTileHitColumns(tile).includes(colIdx);
+  const hitColumns = getTileHitColumns(tile);
+  // For partially hit double tiles, only match if the column hasn't been hit yet
+  if (isDoubleTile(tile) && tile.hitColumns && tile.hitColumns.length > 0) {
+    const remainingColumns = hitColumns.filter(col => !tile.hitColumns.includes(col));
+    return remainingColumns.includes(colIdx);
+  }
+  return hitColumns.includes(colIdx);
 }
 
 function checkNormalSongAwards(reachedSection) {
@@ -3508,12 +3523,21 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   
   // Handle start tile separately
   if (!isStarted) {
-    const startTile = tiles.find((tile) => tile.isStartTile) || tiles.find((tile) => tile.type === -1 && tile.hpos === -1);
+    const startTile = tiles.find((tile) => tile.isStartTile || tile.isResumeStartTile) || tiles.find((tile) => tile.type === -1 && tile.hpos === -1);
     if (startTile && tileMatchesColumn(startTile, colIdx)) {
       const tileBottom = getTileBottom(startTile);
       // Allow tapping start tile anywhere on-screen
       if (tileBottom >= 0) {
+        // For partially hit double tiles, only allow input on the untapped column
+        if (isDoubleTile(startTile) && startTile.hitColumns && startTile.hitColumns.length > 0) {
+          if (startTile.hitColumns.includes(colIdx)) {
+            // This column was already hit, ignore input
+            return;
+          }
+          // This is the untapped column, allow input to complete the tile and restart
+        }
         delete startTile.isStartTile;
+        delete startTile.isResumeStartTile;
         isStarted = true;
         hasStartedGameplay = true;
         startTime = performance.now();
@@ -3753,6 +3777,19 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   // Remove hit window restriction - allow tapping anywhere on-screen
   // Keep column matching and order logic
   if (!tileMatchesColumn(tile, colIdx)) {
+    // Check if there's an accompaniment long tile in the tapped column
+    // If so, ignore the input instead of failing (accompaniment tiles are optional)
+    const accompanimentLongInCol = tiles.find((t) =>
+      t.isAccompanimentTile &&
+      t.type === 9 &&
+      t.isAccompanimentLong &&
+      !t.clicked &&
+      !t.holdCompleted &&
+      tileMatchesColumn(t, colIdx)
+    );
+    if (accompanimentLongInCol) {
+      return;
+    }
     failRun('wrong_hit', tile, colIdx);
     return;
   }
@@ -3872,18 +3909,17 @@ function updateChallengeRewardAnimation() {
   }
 
   const rewardState = getChallengeRewardStateFromTps(currentBeats > 0 ? currentBpm / currentBeats / 60 : 0);
-  const previousRewardState = lastHudRewardState && lastHudRewardState.stars !== undefined && lastHudRewardState.crowns !== undefined
-    ? lastHudRewardState
-    : null;
+  const previousRewardState = lastHudRewardState;
   const previousTier = getRewardTierRank(previousRewardState);
   const currentTier = getRewardTierRank(rewardState);
-  const rewardTierImproved = previousTier > 0 && currentTier > previousTier;
+  const rewardTierImproved = currentTier > previousTier;
+  const rewardTierDecreased = currentTier < previousTier;
   const rewardTierVisible = currentTier > 0;
   const shouldAnimateTier = rewardTierImproved && rewardTierVisible && shouldShowRewardAnimationForTier(currentTier);
 
   if (shouldAnimateTier) {
     triggerAwardAnimation(rewardState);
-  } else {
+  } else if (rewardTierDecreased) {
     clearAwardAnimation();
   }
 
@@ -3898,18 +3934,17 @@ function updateClassicRewardAnimation() {
   }
 
   const rewardState = getClassicChallengeRewardStateFromTiles(Number(classicTappedTiles || 0));
-  const previousRewardState = lastHudRewardState && lastHudRewardState.stars !== undefined && lastHudRewardState.crowns !== undefined
-    ? lastHudRewardState
-    : null;
+  const previousRewardState = lastHudRewardState;
   const previousTier = getRewardTierRank(previousRewardState);
   const currentTier = getRewardTierRank(rewardState);
-  const rewardTierImproved = previousTier > 0 && currentTier > previousTier;
+  const rewardTierImproved = currentTier > previousTier;
+  const rewardTierDecreased = currentTier < previousTier;
   const rewardTierVisible = currentTier > 0;
   const shouldAnimateTier = rewardTierImproved && rewardTierVisible && shouldShowRewardAnimationForTier(currentTier);
 
   if (shouldAnimateTier) {
     triggerAwardAnimation(rewardState);
-  } else {
+  } else if (rewardTierDecreased) {
     clearAwardAnimation();
   }
 
@@ -4082,7 +4117,7 @@ function renderTiles() {
     const styleWidth = `${(widthCols / key) * 100}%`;
     const styleTop = `${(topUnits / key) * 100}%`;
     const styleHeight = `${(tileHeight / key) * 100}%`;
-    const styleFilter = (tile.type === 3 || tile.type >= 7) ? 'hue-rotate(-90deg)' : 'none';
+    const styleFilter = (tile.type === 3 || (tile.type >= 7 && !(tile.type === 9 && tile.isAccompanimentLong))) ? 'hue-rotate(-90deg)' : 'none';
 
     if (el._lastLeft !== styleLeft) { el.style.left = styleLeft; el._lastLeft = styleLeft; }
     if (el._lastWidth !== styleWidth) { el.style.width = styleWidth; el._lastWidth = styleWidth; }
@@ -4127,8 +4162,16 @@ function renderTiles() {
     startLabelEl.style.height = 'auto';
     startLabelEl.style.alignItems = 'center';
 
-    const showStartLabel = tile.isStartTile && !tile.played && !isStarted;
+    const showStartLabel = (tile.isStartTile || tile.isResumeStartTile) && !tile.played && !isStarted;
     const showStartLabelAtHead = showStartLabel && isLongTile(tile);
+    
+    // For double tiles, show START label only on the untapped column and only if it's a resume/revive start tile
+    let showStartLabelForDoubleTile = showStartLabel;
+    if (isDoubleTile(tile) && tile.hitColumns && tile.hitColumns.length > 0) {
+      // Only show START label if this specific column hasn't been hit yet AND it's a resume/revive start tile
+      const thisCol = cols[0];
+      showStartLabelForDoubleTile = !tile.hitColumns.includes(thisCol) && tile.isResumeStartTile;
+    }
 
     if (tile.type === -1 && tile.hpos === -1) {
       const animatedHitFrame = getTileHitAnimationFrame(tile);
@@ -4158,7 +4201,9 @@ function renderTiles() {
         ? getTileFinishImage(animatedHitFrame)
         : (isPlayed ? getTileFinishImage(isEnded) : 'tile_black');
       el.style.backgroundImage = `url("gameImage/${tileImageSuffix}.png")`;
-      if (showStartLabel) {
+      // Show START label for double tiles only if not partially hit
+      const shouldShowStartLabel = isDoubleTile(tile) ? showStartLabelForDoubleTile : showStartLabel;
+      if (shouldShowStartLabel) {
         startLabelEl.classList.remove('hidden');
         startLabelEl.style.display = 'flex';
       }
@@ -4171,6 +4216,11 @@ function renderTiles() {
       if (el.dataset.lastBadgeText !== badgeVal) {
         comboBadgeEl.textContent = badgeVal;
         el.dataset.lastBadgeText = badgeVal;
+      }
+      // Show START label for combo tiles when needed (post-revive/resume)
+      if (showStartLabel) {
+        startLabelEl.classList.remove('hidden');
+        startLabelEl.style.display = 'flex';
       }
     } else if (isLongTile(tile) || isComboTile(tile)) {
       const played = tile.played || tile.clicked;
@@ -4191,7 +4241,8 @@ function renderTiles() {
         headEl.style.display = 'block';
         headEl.style.bottom = '0';
         headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
-        headEl.style.backgroundImage = 'url("gameImage/long_head.png")';
+        const headImage = (tile.type === 9 && tile.isAccompanimentLong) ? 'a_long_head' : 'long_head';
+        headEl.style.backgroundImage = `url("gameImage/${headImage}.png")`;
       }
 
       if (played && !ended) {
@@ -4661,8 +4712,18 @@ function updateEngineFrame(now) {
     const missedTile = tiles.find((tile) => {
       if (tile.type === 1) return false;
       if (isComboTile(tile)) return false; // handled above
+      // Don't fail for accompaniment long tiles - they are optional
+      if (tile.type === 9 && tile.isAccompanimentLong) return false;
       // Don't fail while waiting for a START tap
-      if (!isStarted && (tile.isStartTile || (tile.type === -1 && tile.hpos === -1))) return false;
+      if (!isStarted && (tile.isStartTile || tile.isResumeStartTile || (tile.type === -1 && tile.hpos === -1))) return false;
+      // For double tiles, don't fail if it's the resume/revive start tile and has remaining columns to tap
+      if (!isStarted && isDoubleTile(tile) && (tile.isStartTile || tile.isResumeStartTile) && tile.hitColumns && tile.hitColumns.length > 0) {
+        // Check if there are still columns remaining to be tapped
+        const activeColumns = getActiveColumns(tile);
+        if (tile.hitColumns.length < activeColumns.length) {
+          return false;
+        }
+      }
       if (tile.clicked || tile.holdCompleted) return false;
       if (isLongTile(tile) && tile.holdStarted) return false;
       return getTileTop(tile) > key + 0.05;
@@ -4827,15 +4888,24 @@ function resetTileForResume(tile) {
   tile.holdStarted = false;
   tile.holdCompleted = false;
   tile.holdReleased = false;
-  tile.hitColumns = [];
+  // Preserve hitColumns for double tiles (type 5) to maintain partial hits
+  if (tile.type !== 5) {
+    tile.hitColumns = [];
+  }
   delete tile.holdReleasedAt;
   delete tile.activeHoldColumn;
   delete tile.tapScreenY;
   delete tile.tapPlaying;
   delete tile.completionPlaying;
   if (tile.type === 3) {
-    tile.remainingTaps = tile.taps || 2;
+    // Preserve remainingTaps for combo tiles to maintain partial progress
+    // Only reset if it hasn't been tapped yet (remainingTaps equals taps)
+    if (tile.remainingTaps === (tile.taps || 2)) {
+      tile.remainingTaps = tile.taps || 2;
+    }
   }
+  // Mark this tile as a resume/revive start tile to show START label
+  tile.isResumeStartTile = true;
 
   // Center the START tile on screen if it's not fully visible
   const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
@@ -4942,7 +5012,10 @@ function togglePause() {
   pausedWasStarted = isStarted;
 
   if (pausedWasStarted) {
-    tiles.forEach((tile) => delete tile.isStartTile);
+    tiles.forEach((tile) => {
+      delete tile.isStartTile;
+      delete tile.isResumeStartTile;
+    });
     
     // Force-drop any currently held long tile
     const heldLongTile = tiles.find((tile) =>
@@ -4970,6 +5043,7 @@ function togglePause() {
     if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
       resetTileForResume(nearestUntapped);
       nearestUntapped.isStartTile = true;
+      nearestUntapped.isResumeStartTile = true;
       
       // Center the START tile on screen if it's not fully visible
       const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
@@ -5979,6 +6053,7 @@ window.addEventListener('keyup', (event) => {
   if (colIdx !== -1) {
     if (activeKeys[colIdx]) {
       activeKeys[colIdx] = false;
+      activePointerIds[colIdx] = null;
       handleManualInputUp(colIdx);
     }
     event.preventDefault();
@@ -5988,25 +6063,33 @@ window.addEventListener('keyup', (event) => {
 colElements.forEach((colElement, colIdx) => {
   colElement.addEventListener('pointerdown', (event) => {
     activeKeys[colIdx] = true;
+    activePointerIds[colIdx] = event.pointerId;
     handleManualInputDown(colIdx, event);
     event.preventDefault();
   });
   colElement.addEventListener('pointerup', (event) => {
-    activeKeys[colIdx] = false;
-    handleManualInputUp(colIdx);
+    if (activePointerIds[colIdx] === event.pointerId) {
+      activeKeys[colIdx] = false;
+      activePointerIds[colIdx] = null;
+      handleManualInputUp(colIdx);
+    }
     event.preventDefault();
   });
-  colElement.addEventListener('pointercancel', () => {
-    activeKeys[colIdx] = false;
-    handleManualInputUp(colIdx);
+  colElement.addEventListener('pointercancel', (event) => {
+    if (activePointerIds[colIdx] === event.pointerId) {
+      activeKeys[colIdx] = false;
+      activePointerIds[colIdx] = null;
+      handleManualInputUp(colIdx);
+    }
   });
 });
 
 // Window level fallback to release key/pointer hold state reliably
 window.addEventListener('pointerup', (event) => {
   for (let colIdx = 0; colIdx < 4; colIdx++) {
-    if (activeKeys[colIdx]) {
+    if (activeKeys[colIdx] && activePointerIds[colIdx] === event.pointerId) {
       activeKeys[colIdx] = false;
+      activePointerIds[colIdx] = null;
       handleManualInputUp(colIdx);
     }
   }
@@ -6014,8 +6097,9 @@ window.addEventListener('pointerup', (event) => {
 
 window.addEventListener('pointercancel', (event) => {
   for (let colIdx = 0; colIdx < 4; colIdx++) {
-    if (activeKeys[colIdx]) {
+    if (activeKeys[colIdx] && activePointerIds[colIdx] === event.pointerId) {
       activeKeys[colIdx] = false;
+      activePointerIds[colIdx] = null;
       handleManualInputUp(colIdx);
     }
   }

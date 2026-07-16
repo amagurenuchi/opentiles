@@ -4390,7 +4390,7 @@ function updateEngineFrame(now) {
         challengeLastAccelerationTime = now;
       }
       const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000;
-      if (timeSinceLastAcceleration >= 0.1) {
+      if (timeSinceLastAcceleration >= 0.093303) {
         const bpmIncrease = challengeAcceleration * nextBeats * 60;
         challengeBpmOffset += bpmIncrease;
         challengeLastAccelerationTime = now;

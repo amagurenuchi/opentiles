@@ -468,10 +468,8 @@
           <!-- Latest changes card -->
           <div class="w-full bg-gray-100 rounded-2xl p-4">
             <h3 class="text-gray-800 font-bold text-sm mb-3" data-i18n="header_latest_changes">Latest changes:</h3>
-            <div class="space-y-2">
-              <div class="text-gray-600 text-xs">
-                <span class="font-semibold" data-i18n="version_placeholder">v0.0.0</span> - <span data-i18n="desc_placeholder_update">Placeholder update</span>
-              </div>
+            <div id="latest-updates-container" class="space-y-2">
+              <!-- Updates will be loaded from updates.json -->
             </div>
           </div>
 
@@ -483,8 +481,19 @@
               <p class="text-gray-500 text-xs text-center py-4" data-i18n="msg_no_favourites">No favourite songs yet. Tap the heart on any song to add it here!</p>
             </div>
           </div>
+
+          <!-- 700+ songs card -->
+          <div class="w-full bg-gray-100 rounded-2xl p-4">
+            <h3 class="text-gray-800 font-bold text-sm mb-3" data-i18n="header_700_plus_songs">Selection songs</h3>
+            <div id="700-plus-songs-container" class="flex flex-col gap-3">
+              <!-- 700+ song cards will be rendered here -->
+              <p class="text-gray-500 text-xs text-center py-4" data-i18n="msg_no_700_plus_songs">No songs 700+ found.</p>
+            </div>
+
+          </div>
+          <p class="text-gray-400 text-l text-center mt-2" data-i18n="msg_more_songs_expected">More songs to be expected...</p>
         </div>
-      </div>
+      </div>                            
 
       <!-- BPM Edit Modal -->
       <div id="bpm-modal" class="absolute inset-0 z-50 hidden transition-all duration-300">

@@ -61,10 +61,11 @@ placeholder_search,Type to search...,输入搜索...,検索...
 msg_no_song_played,No song played yet,尚未播放歌曲,まだ曲を再生していません
 btn_play,Play,播放,再生
 header_latest_changes,Latest changes:,最新更改:,最新の変更:
-version_placeholder,v0.0.0,v0.0.0,v0.0.0
-desc_placeholder_update,Placeholder update,占位符更新,プレースホルダーの更新
 header_favourite_songs,Your favourite songs,您喜欢的歌曲,お気に入りの曲
 msg_no_favourites,"No favourite songs yet. Tap the heart on any song to add it here!",还没有喜欢的歌曲。点击任何歌曲上的心形图标将其添加到这里！,お気に入りの曲がまだありません。曲のハートマークをタップしてここに追加してください！
+header_700_plus_songs,Selection songs,精选歌曲,セレクション曲
+msg_no_700_plus_songs,No selection songs found.,未找到700+歌曲。,700+曲が見つかりません。
+msg_more_songs_expected,More songs to be expected...,更多歌曲敬请期待...,さらに曲が予定されています...
 aria_close_energy,Close energy supply,关闭能量供应,エネルギー供給を閉じる
 title_energy_supply,Energy Supply,能量供应,エネルギー供給
 label_time_to_next_life,Time to next life: 03:18,下一生命时间: 03:18,次のライフまでの時間: 03:18

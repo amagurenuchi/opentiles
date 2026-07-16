@@ -2167,17 +2167,15 @@ body {
 }
 
 /* For ranked songs (medal) */
-.song-card-icon.ranked svg {
-  width: 32px;
+.song-card-icon.ranked .rank-icon-image {
+  width: 36px;
   height: 32px;
-  color: #ffa500;
-  /* orange */
 }
 
-/* Purple variant for song numbers 700+ */
-.song-card-icon.ranked.purple svg {
-  color: #a855f7;
-  /* purple */
+
+.song-card-icon.ranked.purple .rank-icon-image {
+  width: 36px;
+  height: 32px;
 }
 
 .song-card-icon.ranked .rank-number {
@@ -2185,6 +2183,7 @@ body {
   color: white;
   font-weight: normal;
   font-size: 0.9rem;
+  text-shadow: none;
 }
 
 /* For regular numbered songs */
@@ -2617,8 +2616,26 @@ body {
 
 /* Challenge card specific styles */
 .challenge-card {
-  min-height: 120px;
+  min-height: 180px;
   padding: 20px;
+  align-items: center;
+  gap: 16px;
+}
+
+.song-card-badge {
+  flex-shrink: 0;
+  width: 144px;
+  height: 144px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -30px;
+}
+
+.challenge-badge-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .challenge-card .song-card-artist {

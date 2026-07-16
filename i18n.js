@@ -278,6 +278,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof renderFavouriteSongs === 'function') {
       renderFavouriteSongs();
     }
+    if (typeof render700PlusSongs === 'function') {
+      render700PlusSongs();
+    }
     if (typeof populateMusicSelect === 'function') {
       populateMusicSelect();
     }

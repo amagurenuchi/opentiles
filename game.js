@@ -69,6 +69,7 @@ const loadingScreen = document.getElementById('loading-screen');
 const welcomeSongTitle = document.getElementById('welcome-song-title');
 const welcomePlayBtn = document.getElementById('welcome-play-btn');
 const favouriteSongsContainer = document.getElementById('favourite-songs-container');
+const songs700PlusContainer = document.getElementById('700-plus-songs-container');
 const dockHomeBtn = document.getElementById('dock-home-btn');
 const dockMusicBtn = document.getElementById('dock-music-btn');
 const dockChallengesBtn = document.getElementById('dock-challenges-btn');
@@ -1696,7 +1697,7 @@ function createCustomSongCard() {
     // Display loaded custom song
     card.innerHTML = `
       <div class="song-card-icon ranked">
-        <svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M50 4 C54 4 56 8 58 10 C61 7 65 6 68 8 C71 10 70 14 71 17 C75 16 79 17 81 20 C83 23 81 27 80 30 C84 30 87 32 88 36 C89 40 86 43 84 46 C88 47 90 50 90 50 C90 50 88 53 84 54 C86 57 89 60 88 64 C87 68 84 70 80 70 C81 73 83 77 81 80 C79 83 75 84 71 83 C70 86 71 90 68 92 C65 94 61 93 58 90 C56 92 54 96 50 96 C46 96 44 92 42 90 C39 93 35 94 32 92 C29 90 30 86 29 83 C25 84 21 83 19 80 C17 77 19 73 20 70 C16 70 13 68 12 64 C11 60 14 57 16 54 C12 53 10 50 10 50 C10 50 12 47 16 46 C14 43 11 40 12 36 C13 32 16 30 20 30 C18 27 16 23 18 20 C20 17 24 16 28 17 C29 14 28 10 31 8 C34 6 38 7 41 10 C43 8 46 4 50 4 Z"/><circle cx="50" cy="50" r="22" fill="white" opacity="0.25"/></svg>
+        <img src="gameImage/award.png" class="rank-icon-image">
         <div class="rank-number" style="color: #e879f9;">0</div>
       </div>
       <div class="song-card-content">
@@ -1830,7 +1831,7 @@ function createCustomSongCard() {
     // Display upload prompt
     card.innerHTML = `
       <div class="song-card-icon ranked" style="opacity: 0.5;">
-        <svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M50 4 C54 4 56 8 58 10 C61 7 65 6 68 8 C71 10 70 14 71 17 C75 16 79 17 81 20 C83 23 81 27 80 30 C84 30 87 32 88 36 C89 40 86 43 84 46 C88 47 90 50 90 50 C90 50 88 53 84 54 C86 57 89 60 88 64 C87 68 84 70 80 70 C81 73 83 77 81 80 C79 83 75 84 71 83 C70 86 71 90 68 92 C65 94 61 93 58 90 C56 92 54 96 50 96 C46 96 44 92 42 90 C39 93 35 94 32 92 C29 90 30 86 29 83 C25 84 21 83 19 80 C17 77 19 73 20 70 C16 70 13 68 12 64 C11 60 14 57 16 54 C12 53 10 50 10 50 C10 50 12 47 16 46 C14 43 11 40 12 36 C13 32 16 30 20 30 C18 27 16 23 18 20 C20 17 24 16 28 17 C29 14 28 10 31 8 C34 6 38 7 41 10 C43 8 46 4 50 4 Z"/><circle cx="50" cy="50" r="22" fill="white" opacity="0.25"/></svg>
+        <img src="gameImage/award.png" class="rank-icon-image">
         <div class="rank-number" style="color: #e879f9;">0</div>
       </div>
       <div class="song-card-content">
@@ -1880,7 +1881,7 @@ function createSongCard(song, isFavouriteView = false) {
   card.innerHTML = `
     <div class="song-card-icon ${isRanked ? `ranked ${isPurple ? 'purple' : ''}` : 'numbered'}">
       ${isRanked
-        ? `<svg viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M50 4 C54 4 56 8 58 10 C61 7 65 6 68 8 C71 10 70 14 71 17 C75 16 79 17 81 20 C83 23 81 27 80 30 C84 30 87 32 88 36 C89 40 86 43 84 46 C88 47 90 50 90 50 C90 50 88 53 84 54 C86 57 89 60 88 64 C87 68 84 70 80 70 C81 73 83 77 81 80 C79 83 75 84 71 83 C70 86 71 90 68 92 C65 94 61 93 58 90 C56 92 54 96 50 96 C46 96 44 92 42 90 C39 93 35 94 32 92 C29 90 30 86 29 83 C25 84 21 83 19 80 C17 77 19 73 20 70 C16 70 13 68 12 64 C11 60 14 57 16 54 C12 53 10 50 10 50 C10 50 12 47 16 46 C14 43 11 40 12 36 C13 32 16 30 20 30 C18 27 16 23 18 20 C20 17 24 16 28 17 C29 14 28 10 31 8 C34 6 38 7 41 10 C43 8 46 4 50 4 Z"/><circle cx="50" cy="50" r="22" fill="white" opacity="0.25"/></svg><div class="rank-number">${song.id}</div>`
+        ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
         : `${song.id}`
       }
     </div>
@@ -1918,6 +1919,7 @@ function createSongCard(song, isFavouriteView = false) {
       // Re-render favourite songs if on home screen
       if (!homeScreen.classList.contains('hidden')) {
         renderFavouriteSongs();
+        render700PlusSongs();
       }
     } else {
       // Remove card from favourite view if unfavourited
@@ -1945,10 +1947,28 @@ function createChallengeCard(challengeData) {
     : null;
   const rewardMarkup = rewardState ? renderRewardIcons(rewardState) : '';
 
+  // Map MID prefix to badge image
+  const midPrefix = String(challengeData.mid || '').substring(0, 6);
+  const badgeMap = {
+    '200001': 'beginner.png',
+    '200002': 'skilled.png',
+    '200003': 'master.png',
+    '200004': 'single.png',
+    '200005': 'double.png',
+    '200006': 'combo.png',
+    '200007': 'slider.png',
+    '200008': 'accompaniment.png',
+    '200009': 'classic.png'
+  };
+  const badgeImage = badgeMap[midPrefix] || 'star.png';
+
   const card = document.createElement('div');
   card.className = `song-card challenge-card`;
   const localizedSongName = i18n ? i18n.getSongName(challengeData.musicJson) : challengeData.musicJson;
   card.innerHTML = `
+    <div class="song-card-badge">
+      <img src="gameImage/${badgeImage}" class="challenge-badge-icon" alt="${challengeData.musicJson}">
+    </div>
     <div class="song-card-content">
       <div class="song-card-title">${localizedSongName}</div>
       <div class="song-card-progress">
@@ -2010,6 +2030,13 @@ function renderSongList(searchQuery = '') {
     const songCard = createSongCard(song, false);
     songListContainer.appendChild(songCard);
   });
+
+  // Add "More songs to be expected..." text at the end
+  const moreSongsText = document.createElement('div');
+  moreSongsText.className = 'mt-4';
+  const moreSongsMsg = i18n ? i18n.t('msg_more_songs_expected') : 'More songs to be expected...';
+  moreSongsText.innerHTML = `<p class="text-gray-400 text-l text-center">${moreSongsMsg}</p>`;
+  songListContainer.appendChild(moreSongsText);
 
   // Sync top dock data across both tabs
   syncTopDockData();
@@ -3356,6 +3383,7 @@ async function finishRun(showLibrary = false) {
             favBtn.classList.toggle('favourite', favouriteSongs.has(id));
             // update other UI that may show favourites
             renderFavouriteSongs();
+            render700PlusSongs();
           }
         };
       }
@@ -5395,6 +5423,10 @@ function renderHomeScreen() {
 
   // Render favourite songs
   renderFavouriteSongs();
+  // Render selection songs
+  render700PlusSongs();
+  // Render latest updates
+  renderLatestUpdates();
   
   // Sync top dock data (includes player name sync)
   syncTopDockData();
@@ -5476,6 +5508,70 @@ function renderFavouriteSongs() {
     const songCard = createSongCard(song, true);
     favouriteSongsContainer.appendChild(songCard);
   });
+}
+
+function render700PlusSongs() {
+  if (!songs700PlusContainer) return;
+  
+  const songs700PlusList = musicCsvData.filter(song => song.id >= 700 && !isChallengeSong(song));
+  
+  if (songs700PlusList.length === 0) {
+    const no700PlusMsg = i18n ? i18n.t('msg_no_700_plus_songs') : 'No songs 700+ found.';
+    songs700PlusContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${no700PlusMsg}</p>`;
+    return;
+  }
+
+  // Sort by id value
+  songs700PlusList.sort((a, b) => a.id - b.id);
+
+  songs700PlusContainer.innerHTML = '';
+  songs700PlusList.forEach(song => {
+    const songCard = createSongCard(song, true);
+    songs700PlusContainer.appendChild(songCard);
+  });
+}
+
+async function renderLatestUpdates() {
+  const updatesContainer = document.getElementById('latest-updates-container');
+  if (!updatesContainer) return;
+
+  try {
+    const response = await fetch('updates.json');
+    if (!response.ok) {
+      throw new Error('Failed to load updates.json');
+    }
+    const data = await response.json();
+    
+    if (!data.updates || data.updates.length === 0) {
+      updatesContainer.innerHTML = '<p class="text-gray-500 text-xs">No updates available.</p>';
+      return;
+    }
+
+    // Get the latest 3 updates (first 3 in array)
+    const latestUpdates = data.updates.slice(0, 3);
+    
+    let updatesHtml = latestUpdates.map(update => {
+      let changesHtml = update.changes.map(change => 
+        `<div class="text-gray-600 text-xs">• ${change}</div>`
+      ).join('');
+
+      return `
+        <div class="mb-3">
+          <div class="text-gray-600 text-xs">
+            <span class="font-semibold">${update.version}</span> <span class="text-gray-400">(${update.date})</span>
+          </div>
+          <div class="space-y-1 mt-1">
+            ${changesHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    updatesContainer.innerHTML = updatesHtml;
+  } catch (error) {
+    console.error('Error loading updates:', error);
+    updatesContainer.innerHTML = '<p class="text-gray-500 text-xs">Failed to load updates.</p>';
+  }
 }
 
 function updateDockSelection(nextTab) {
@@ -6147,6 +6243,7 @@ document.addEventListener('languageChanged', () => {
   if (typeof renderSongList === 'function') renderSongList();
   if (typeof renderHomeScreen === 'function') renderHomeScreen();
   if (typeof renderFavouriteSongs === 'function') renderFavouriteSongs();
+  if (typeof render700PlusSongs === 'function') render700PlusSongs();
   if (typeof populateMusicSelect === 'function') populateMusicSelect();
 });
 rafId = requestAnimationFrame(frame);

@@ -40,6 +40,8 @@ const settingsScreen = document.getElementById('settings-screen');
 const gameoverScreen = document.getElementById('gameover-screen');
 const songListScreen = document.getElementById('song-list-screen');
 const challengesScreen = document.getElementById('challenges-screen');
+const classScreen = document.getElementById('class-screen');
+const classContainer = document.getElementById('class-container');
 const pauseScreen = document.getElementById('pause-screen');
 const songListContainer = document.getElementById('song-list-container');
 const challengesContainer = document.getElementById('challenges-container');
@@ -73,6 +75,7 @@ const songs700PlusContainer = document.getElementById('700-plus-songs-container'
 const dockHomeBtn = document.getElementById('dock-home-btn');
 const dockMusicBtn = document.getElementById('dock-music-btn');
 const dockChallengesBtn = document.getElementById('dock-challenges-btn');
+const dockClassBtn = document.getElementById('dock-class-btn');
 const dockSettingsBtn = document.getElementById('dock-settings-btn');
 const lifeModal = document.getElementById('life-modal');
 const lifeModalCount = document.getElementById('life-modal-count');
@@ -127,6 +130,9 @@ let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
 let customStartingSpeed = parseFloat(localStorage.getItem('opentile_custom_speed') || '0'); // 0 = disabled, direct t/s value
+
+// Load highest Dan level
+let highestDanLevel = localStorage.getItem('opentile_highest_dan') || null;
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -241,6 +247,19 @@ let classicLoadFailCount = 0; // consecutive failure guard
 let classicTappedTiles = 0;
 let classicScrollTarget = 0;
 let classicTimerEnding = false;
+
+// Class mode variables
+let isClassMode = false;
+let classDanData = null;
+let classSongQueue = [];
+let classCurrentSongIndex = 0;
+let classLoadFailCount = 0;
+let classStageResults = [];
+let classPauseTimer = 60;
+let classPauseRemaining = 60;
+let classPauseInterval = null;
+let classScrollTarget = 0;
+let classTappedTiles = 0;
 let preserveCurrentSpeedOnNextFrame = false;
 let pausedSpeedBpm = 120;
 let pausedSpeedBeats = 0.5;
@@ -2060,6 +2079,70 @@ function renderChallenges() {
   syncTopDockData();
 }
 
+async function renderClassScreen() {
+  if (!classContainer) return;
+  classContainer.innerHTML = '';
+
+  try {
+    const response = await fetch('dan.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const danData = await response.json();
+
+    // Order: Kaidan first, then 10th Dan down to 1st Dan
+    const danOrder = ['Kaidan', '10th Dan', '9th Dan', '8th Dan', '7th Dan', '6th Dan', '5th Dan', '4th Dan', '3rd Dan', '2nd Dan', '1st Dan'];
+
+    danOrder.forEach((danKey) => {
+      if (!danData[danKey]) return;
+
+      const danInfo = danData[danKey];
+      const danCard = createDanCard(danKey, danInfo);
+      classContainer.appendChild(danCard);
+    });
+
+    syncTopDockData();
+  } catch (err) {
+    console.error('Error loading dan.json:', err);
+    classContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">Failed to load Class data.</p>';
+  }
+}
+
+function createDanCard(danKey, danInfo) {
+  const card = document.createElement('div');
+  card.className = 'dan-card';
+
+  // Set background color based on danInfo.color
+  if (danInfo.color === 'red') {
+    card.classList.add('dan-card-red');
+  } else if (danInfo.color === 'grey') {
+    card.classList.add('dan-card-grey');
+  } else {
+    card.classList.add('dan-card-normal');
+  }
+
+  const songsHtml = danInfo.songs.map((song, index) => `
+    <div class="dan-song-item">
+      <span class="dan-song-number">${index + 1}.</span>
+      <span class="dan-song-name">"${song.displayName}"</span>
+    </div>
+  `).join('');
+
+  card.innerHTML = `
+    <div class="dan-header">
+      <span class="dan-title">${danKey}</span>
+      <span class="dan-song-count">${danInfo.songs.length} songs</span>
+    </div>
+    <div class="dan-songs-list">
+      ${songsHtml}
+    </div>
+  `;
+
+  card.addEventListener('click', () => {
+    startClassMode(danKey, danInfo);
+  });
+
+  return card;
+}
+
 async function loadMusicCsv() {
   try {
     updateLoadingProgress('csv', 0, 1);
@@ -2147,6 +2230,20 @@ function resetEngineState() {
   tileDomCache.clear();
   tilesContainer.innerHTML = '';
   hitEffectsEl.innerHTML = '';
+
+  // Clean up Class mode state
+  if (classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
+  isClassMode = false;
+  classDanData = null;
+  classSongQueue = [];
+  classCurrentSongIndex = 0;
+  classStageResults = [];
+  classPauseRemaining = 60;
+  classScrollTarget = 0;
+  classTappedTiles = 0;
   _runtimeSpeedCache.clear();
   updatePauseButtonVisibility();
   isStarted = false;
@@ -3422,8 +3519,8 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   updatePauseButtonVisibility();
 
   let shouldOfferRevive = reviveRemaining > 0;
-  
-  if (isChallengeMode) {
+
+  if (isChallengeMode || isClassMode) {
     shouldOfferRevive = false;
   } else {
     const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
@@ -3451,7 +3548,11 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
       if (gameBoardWrapper) {
         gameBoardWrapper.classList.remove('game-playing');
       }
-      finishRun(false);
+      if (isClassMode) {
+        finishClassRun(false);
+      } else {
+        finishRun(false);
+      }
     }
   };
 
@@ -4776,6 +4877,13 @@ function updateEngineFrame(now) {
     loadNextClassicSong();
   }
 
+  // In Class mode, load next song when all tiles are cleared
+  if (isClassMode && tiles.length === 0) {
+    // Mark current song as passed
+    classStageResults.push('Pass');
+    loadNextClassSong();
+  }
+
   if (isClassicMode) {
     if (isStarted && !isPaused && classicTimerStartedAt) {
       classicTimer = Math.max(0, classicTimerDuration - (performance.now() - classicTimerStartedAt) / 1000);
@@ -4809,6 +4917,8 @@ function updateEngineFrame(now) {
       }
     }
     starthpos += (classicScrollTarget - starthpos) * 0.18;
+  } else if (isClassMode) {
+    starthpos += (classScrollTarget - starthpos) * 0.18;
   } else if (isStarted && !isPaused) {
     let effectiveTps = currentBpm / currentBeats / 60;
     if (isReviveSlowdownActive) {
@@ -4873,7 +4983,7 @@ function stopGame(showStart = true) {
 
 function returnToMainMenu() {
   clearQueuedTimeouts();
-  
+
   // Clean up classic mode timer
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -4883,7 +4993,16 @@ function returnToMainMenu() {
     classicTimerStartedAt = 0;
     isClassicMode = false;
   }
-  
+
+  // Clean up Class mode
+  if (isClassMode) {
+    if (classPauseInterval) {
+      clearInterval(classPauseInterval);
+      classPauseInterval = null;
+    }
+    isClassMode = false;
+  }
+
   resetEngineState();
   selectedSongData = null;
   lastLoadedJsonText = '';
@@ -4896,15 +5015,18 @@ function returnToMainMenu() {
   startScreen.classList.add('hidden');
   songListScreen.classList.add('hidden');
   challengesScreen.classList.add('hidden');
+  classScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  
+
   updatePauseButtonVisibility();
 
   if (currentDockTab === 'music') {
     showMusicScreen();
   } else if (currentDockTab === 'challenges') {
     showChallengesScreen();
+  } else if (currentDockTab === 'class') {
+    showClassScreen();
   } else if (currentDockTab === 'settings') {
     showSettingsScreen();
   } else {
@@ -4965,6 +5087,13 @@ function resetTileForResume(tile) {
 function continueFromPause() {
   if (!isPaused) return;
 
+  // Check if Class mode pause timer has expired
+  if (isClassMode && classPauseRemaining <= 0) {
+    // Timer expired - force quit
+    finishClassRun(false);
+    return;
+  }
+
   captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
@@ -4980,6 +5109,19 @@ function continueFromPause() {
   }
   pausedWasStarted = false;
   pauseScreen.classList.add('hidden');
+
+  // Stop Class mode pause timer and reset resume button
+  if (isClassMode) {
+    if (classPauseInterval) {
+      clearInterval(classPauseInterval);
+      classPauseInterval = null;
+    }
+    const resumeBtn = document.getElementById('pause-continue-btn');
+    if (resumeBtn) {
+      resumeBtn.disabled = false;
+      resumeBtn.textContent = 'Resume';
+    }
+  }
 
   if (gameBoardWrapper) {
     // Preserve the loaded background when resuming from pause.
@@ -5104,6 +5246,50 @@ function togglePause() {
   isStarted = false;
   challengeLastAccelerationTime = performance.now();
   pauseScreen.classList.remove('hidden');
+
+  // Handle Class mode pause timer
+  const classPauseTimerEl = document.getElementById('class-pause-timer');
+  const classPauseRemainingEl = document.getElementById('class-pause-remaining');
+  const resumeBtn = document.getElementById('pause-continue-btn');
+
+  // Hide timer and reset resume button for non-Class modes
+  if (!isClassMode) {
+    if (classPauseTimerEl) classPauseTimerEl.classList.add('hidden');
+    if (resumeBtn) {
+      resumeBtn.disabled = false;
+      resumeBtn.textContent = 'Resume';
+    }
+  } else {
+    // Show timer for Class mode
+    if (classPauseTimerEl) classPauseTimerEl.classList.remove('hidden');
+    if (classPauseRemainingEl) classPauseRemainingEl.textContent = `${classPauseRemaining}s`;
+
+    // Start countdown if timer hasn't expired
+    if (classPauseRemaining > 0) {
+      classPauseInterval = setInterval(() => {
+        classPauseRemaining--;
+        if (classPauseRemainingEl) {
+          classPauseRemainingEl.textContent = `${classPauseRemaining}s`;
+        }
+        if (classPauseRemaining <= 0) {
+          clearInterval(classPauseInterval);
+          classPauseInterval = null;
+          // Disable resume button
+          if (resumeBtn) {
+            resumeBtn.disabled = true;
+            resumeBtn.textContent = 'Time Expired';
+          }
+        }
+      }, 1000);
+    } else {
+      // Timer already expired - disable resume immediately
+      if (resumeBtn) {
+        resumeBtn.disabled = true;
+        resumeBtn.textContent = 'Time Expired';
+      }
+    }
+  }
+
   if (gameBoardWrapper) {
     // Keep the current gameplay background visible while paused.
     gameBoardWrapper.classList.add('game-playing');
@@ -5183,7 +5369,7 @@ function parseNote(notestr) {
       note.hasAccent = Boolean(arr[3]);
       erm.index = i;
       checkPitch(arr[4]);
-      note.pitch = arr[4];
+      note.pitch = arr[4].trim();
     } else {
       note.beats = lenToNum(arr[2], false);
     }
@@ -5205,7 +5391,7 @@ function checkPitch(pitch) {
     });
   } else {
     erm.index = i;
-    if (!pitches.includes(pitch)) throw unexpected(pitch);
+    if (!pitches.includes(pitch.trim())) throw unexpected(pitch);
   }
 }
 
@@ -5289,6 +5475,254 @@ function loadNextClassicSong() {
 
 function advanceClassicTilefield() {
   classicScrollTarget += 1;
+}
+
+function startClassMode(danKey, danInfo) {
+  // Reset game state
+  resetInputState();
+  isGameLoaded = false;
+  isStarted = false;
+  isPaused = false;
+  isPostReviveState = false;
+  isClassMode = true;
+  tiles = [];
+  currentScore = 0;
+  hpos = 0;
+  visualHposOffset = 0;
+  starthpos = key - 2;
+  classScrollTarget = starthpos;
+  classPauseTimer = 60;
+  classPauseRemaining = 60;
+  classTappedTiles = 0;
+  sheet = [];
+  info = [];
+  currentSectionIndex = 0;
+  currentSectionTileIndex = 0;
+  bgLevel = 1;
+  bgLevelPos = [];
+  speedLevel = 1;
+  speedLevelPos = [];
+  warr = new Array(key).fill(0);
+
+  // Store Dan data
+  classDanData = danInfo;
+  classDanData.key = danKey; // Store the Dan key for results display
+  classSongQueue = danInfo.songs.map(song => song.file);
+  classCurrentSongIndex = 0;
+  classStageResults = [];
+  classLoadFailCount = 0;
+
+  // Load first class song
+  loadNextClassSong();
+
+  // Show game interface
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.add('hidden');
+  classScreen.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  settingsScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+
+  // Hide dock during gameplay
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.add('hidden');
+  }
+
+  // Hide shared top bar during gameplay
+  const sharedTopBar = document.getElementById('shared-top-bar');
+  if (sharedTopBar) {
+    sharedTopBar.classList.add('hidden');
+  }
+
+  // Show background immediately
+  if (gameBoardWrapper) {
+    gameBoardWrapper.classList.add('game-playing');
+  }
+}
+
+function loadNextClassSong() {
+  // Guard: stop retrying if we've failed every song in the current queue
+  if (classLoadFailCount >= classSongQueue.length) {
+    console.error('All class songs failed to load. Offline with no cache?');
+    classLoadFailCount = 0;
+    return;
+  }
+
+  if (classCurrentSongIndex >= classSongQueue.length) {
+    // All songs completed - show results
+    finishClassRun(true);
+    return;
+  }
+
+  const songName = classSongQueue[classCurrentSongIndex];
+  classCurrentSongIndex++;
+
+  // Load the song JSON directly
+  fetch(`song/${songName}.json`)
+    .then(response => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    })
+    .then(data => {
+      classLoadFailCount = 0; // reset on success
+
+      // If this is not the first song, add 10-tile break
+      if (classCurrentSongIndex > 1) {
+        // Add 10 empty tiles at the beginning of the song data
+        const breakTiles = [];
+        for (let i = 0; i < 10; i++) {
+          breakTiles.push({
+            type: 0, // Empty tile
+            hpos: i,
+            col: 0
+          });
+        }
+        // Prepend break tiles to the sheet
+        if (data.sheet && Array.isArray(data.sheet)) {
+          data.sheet = [...breakTiles, ...data.sheet];
+        }
+      }
+
+      loadSongObject(data, songName);
+    })
+    .catch(err => {
+      console.error('Failed to load class song:', songName, err);
+      classLoadFailCount++;
+      loadNextClassSong(); // skip to next, bounded by guard above
+    });
+}
+
+function advanceClassTilefield() {
+  classScrollTarget += 1;
+}
+
+function finishClassRun(success) {
+  // Mark current song as passed or failed
+  if (success) {
+    classStageResults.push('Pass');
+  } else {
+    // Mark current and all remaining songs as failed/incomplete
+    while (classStageResults.length < classDanData.songs.length) {
+      classStageResults.push('Fail');
+    }
+  }
+
+  // Update highest Dan level if all songs passed
+  const allPassed = classStageResults.every(result => result === 'Pass');
+  if (allPassed && classDanData && classDanData.key) {
+    updateHighestDanLevel(classDanData.key);
+  }
+
+  // Clean up Class mode state
+  if (classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
+  isClassMode = false;
+  isPaused = false;
+  isStarted = false;
+  isGameLoaded = false;
+
+  // Show Class results screen
+  showClassResults();
+}
+
+function showClassResults() {
+  const resultsScreen = document.getElementById('results-screen');
+  if (!resultsScreen) return;
+
+  // Hide other screens
+  gameoverScreen.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.add('hidden');
+  classScreen.classList.add('hidden');
+  settingsScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+
+  // Show results screen
+  resultsScreen.classList.remove('hidden');
+
+  // Hide dock during results
+  const sharedDock = document.getElementById('shared-dock');
+  if (sharedDock) {
+    sharedDock.classList.add('hidden');
+  }
+
+  // Populate Class-specific results
+  const danTitle = document.getElementById('results-song-title');
+  if (danTitle) {
+    danTitle.textContent = classDanData && classDanData.key ? classDanData.key : 'Class Results';
+  }
+
+  // Show overall result (Cleared/Failed)
+  const allPassed = classStageResults.every(result => result === 'Pass');
+  const overallResult = allPassed ? 'Cleared' : 'Failed';
+  const overallResultEl = document.getElementById('results-subtext');
+  if (overallResultEl) {
+    overallResultEl.textContent = overallResult;
+    overallResultEl.classList.add('text-2xl', 'font-bold');
+    overallResultEl.classList.remove('text-xl');
+  }
+
+  // Hide normal score/TPS display
+  const tpsEl = document.getElementById('results-tps');
+  const scoreEl = document.getElementById('results-main-score');
+  const lapsEl = document.getElementById('results-laps');
+  if (tpsEl) tpsEl.classList.add('hidden');
+  if (scoreEl) scoreEl.classList.add('hidden');
+  if (lapsEl) lapsEl.classList.add('hidden');
+
+  // Hide medals
+  const medalsEl = document.getElementById('results-medals');
+  if (medalsEl) medalsEl.classList.add('hidden');
+
+  // Show Pass/Fail progress for each song
+  const scoreElMain = document.getElementById('results-score');
+  if (scoreElMain) {
+    const progressHtml = classDanData.songs.map((song, index) => {
+      const result = classStageResults[index] || 'Incomplete';
+      const resultColor = result === 'Pass' ? 'text-green-500' : 'text-red-500';
+      return `
+        <div class="flex items-center justify-between py-2 border-b border-gray-200">
+          <span class="text-sm">${index + 1}. "${song.displayName}"</span>
+          <span class="text-sm font-bold ${resultColor}">${result}</span>
+        </div>
+      `;
+    }).join('');
+    scoreElMain.innerHTML = progressHtml;
+    scoreElMain.classList.remove('font-game', 'text-8xl', 'font-bold');
+    scoreElMain.classList.add('text-base');
+  }
+
+  // Hide retry button, show only return button
+  const backBtn = document.getElementById('results-back-btn');
+  if (backBtn) backBtn.classList.add('hidden');
+
+  // Update top dock with new highest Dan level
+  syncTopDockData();
+}
+
+function updateHighestDanLevel(danKey) {
+  // Dan order from highest to lowest
+  const danOrder = ['Kaidan', '10th Dan', '9th Dan', '8th Dan', '7th Dan', '6th Dan', '5th Dan', '4th Dan', '3rd Dan', '2nd Dan', '1st Dan'];
+  const currentIndex = danOrder.indexOf(danKey);
+  const currentHighestIndex = highestDanLevel ? danOrder.indexOf(highestDanLevel) : -1;
+
+  // Update if this Dan is higher than current highest
+  if (currentIndex !== -1 && (currentHighestIndex === -1 || currentIndex < currentHighestIndex)) {
+    highestDanLevel = danKey;
+    localStorage.setItem('opentile_highest_dan', danKey);
+  }
+}
+
+function loadHighestDanLevel() {
+  const stored = localStorage.getItem('opentile_highest_dan');
+  if (stored) {
+    highestDanLevel = stored;
+  }
 }
 
 function startClassicMode() {
@@ -5576,7 +6010,7 @@ async function renderLatestUpdates() {
 
 function updateDockSelection(nextTab) {
   currentDockTab = nextTab;
-  [dockHomeBtn, dockMusicBtn, dockChallengesBtn, dockSettingsBtn].forEach((button) => button?.classList.remove('selected'));
+  [dockHomeBtn, dockMusicBtn, dockChallengesBtn, dockClassBtn, dockSettingsBtn].forEach((button) => button?.classList.remove('selected'));
 
   if (nextTab === 'home') {
     dockHomeBtn?.classList.add('selected');
@@ -5584,6 +6018,8 @@ function updateDockSelection(nextTab) {
     dockMusicBtn?.classList.add('selected');
   } else if (nextTab === 'challenges') {
     dockChallengesBtn?.classList.add('selected');
+  } else if (nextTab === 'class') {
+    dockClassBtn?.classList.add('selected');
   } else if (nextTab === 'settings') {
     dockSettingsBtn?.classList.add('selected');
   }
@@ -5599,20 +6035,30 @@ function setDockView(tab) {
     homeScreen.classList.remove('hidden');
     songListScreen.classList.add('hidden');
     challengesScreen.classList.add('hidden');
+    classScreen.classList.add('hidden');
     updateDockSelection('home');
     renderHomeScreen();
   } else if (tab === 'music') {
     homeScreen.classList.add('hidden');
     songListScreen.classList.remove('hidden');
     challengesScreen.classList.add('hidden');
+    classScreen.classList.add('hidden');
     updateDockSelection('music');
     renderSongList();
   } else if (tab === 'challenges') {
     homeScreen.classList.add('hidden');
     songListScreen.classList.add('hidden');
     challengesScreen.classList.remove('hidden');
+    classScreen.classList.add('hidden');
     updateDockSelection('challenges');
     renderChallenges();
+  } else if (tab === 'class') {
+    homeScreen.classList.add('hidden');
+    songListScreen.classList.add('hidden');
+    challengesScreen.classList.add('hidden');
+    classScreen.classList.remove('hidden');
+    updateDockSelection('class');
+    renderClassScreen();
   } else if (tab === 'settings') {
     updateSettingsUI();
     settingsScreen.classList.remove('hidden');
@@ -5645,6 +6091,10 @@ function showMusicScreen() {
 
 function showChallengesScreen() {
   setDockView('challenges');
+}
+
+function showClassScreen() {
+  setDockView('class');
 }
 
 function showSettingsScreen() {
@@ -5858,6 +6308,11 @@ dockMusicBtn?.addEventListener('click', () => {
 
 dockChallengesBtn?.addEventListener('click', () => {
   showChallengesScreen();
+  playMenuLoopCue();
+});
+
+dockClassBtn?.addEventListener('click', () => {
+  showClassScreen();
   playMenuLoopCue();
 });
 

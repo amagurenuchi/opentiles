@@ -25,7 +25,7 @@ body {
   padding: 0;
   user-select: none;
   -webkit-user-select: none;
-  text-shadow: 0px 3px 0px rgba(128, 128, 128, 0.3);
+  text-shadow: 0px 3px 0px rgba(128, 128, 128, 0.1);
   touch-action: manipulation;
   -webkit-touch-callout: none;
 }
@@ -53,7 +53,6 @@ body {
 
   /* Softer shadow for score/TPS on tablet */
   #score-display,
-  #tps-display-normal,
   #tps-display-challenge {
     text-shadow: 0px 7px 0px rgba(0.5, 0.5, 0.5, 0.5) !important;
   }
@@ -263,6 +262,12 @@ body {
 
   #tps-display-challenge {
     font-size: 4rem !important;
+  }
+
+  /* Darker shadow for score and challenge TPS on mobile and PC */
+  #score-display,
+  #tps-display-challenge {
+    text-shadow: 0px 3px 0px rgba(0, 0, 0, 0.4) !important;
   }
 }
 
@@ -1272,38 +1277,19 @@ body {
   position: relative;
   overflow: hidden;
   background-color: #111827;
-}
-
-.game-playing::before,
-.game-playing::after {
-  content: '';
-  position: absolute;
-  inset: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  pointer-events: none;
-  z-index: 0;
+  background-image: url('gameImage/bgani_01.png');
+  will-change: background-image;
 }
 
-.game-playing::before {
-  background-image: var(--game-bg-image-1, url('gameImage/bgani_01.png'));
-  opacity: 1;
-  transition: opacity 0.9s ease;
+.game-playing.bg-level-2 {
+  background-image: url('gameImage/bgani_02.png');
 }
 
-.game-playing::after {
-  background-image: var(--game-bg-image-2, url('gameImage/bgani_02.png'));
-  opacity: 0;
-  transition: opacity 0.9s ease;
-}
-
-.game-playing.game-bg-transition-active::before {
-  opacity: 0;
-}
-
-.game-playing.game-bg-transition-active::after {
-  opacity: 1;
+.game-playing.bg-level-3 {
+  background-image: url('gameImage/bgani_03.png');
 }
 
 .game-playing > * {

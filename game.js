@@ -273,6 +273,11 @@ let pendingHitEffects = [];
 let currentGameplayBackgroundIndex = 1;
 let gameplayBackgroundTransitionTimeout = null;
 let gameplayBackgroundTransitionTargetIndex = null;
+let pendingBackgroundUpdate = false;
+let pendingBgLevelIncrement = false;
+let pendingSpeedLevelIncrement = false;
+let bgLevelPosIndex = 0;
+let speedLevelPosIndex = 0;
 const LIFE_MAX = 9999;
 const LIFE_REGEN_STOP_THRESHOLD = 30;
 const LIFE_REGEN_INTERVAL_MS = 5 * 60 * 1000;
@@ -816,43 +821,21 @@ function updateGameplayBackground() {
   if (!gameBoardWrapper) return;
 
   const targetBackgroundIndex = getGameplayBackgroundIndex();
-  const currentImage = `url("gameImage/bgani_${String(currentGameplayBackgroundIndex).padStart(2, '0')}.png")`;
-  const targetImage = `url("gameImage/bgani_${String(targetBackgroundIndex).padStart(2, '0')}.png")`;
-
+  
   if (targetBackgroundIndex === currentGameplayBackgroundIndex) {
-    if (gameplayBackgroundTransitionTimeout) {
-      clearTimeout(gameplayBackgroundTransitionTimeout);
-      gameplayBackgroundTransitionTimeout = null;
-    }
-    gameplayBackgroundTransitionTargetIndex = null;
-    gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
-    gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
-    gameBoardWrapper.classList.remove('game-bg-transition-active');
     return;
   }
 
-  if (gameplayBackgroundTransitionTimeout && gameplayBackgroundTransitionTargetIndex === targetBackgroundIndex) {
-    return;
+  // Use CSS classes for background switching (more performant than inline styles)
+  gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
+  
+  if (targetBackgroundIndex === 2) {
+    gameBoardWrapper.classList.add('bg-level-2');
+  } else if (targetBackgroundIndex === 3) {
+    gameBoardWrapper.classList.add('bg-level-3');
   }
-
-  if (gameplayBackgroundTransitionTimeout) {
-    clearTimeout(gameplayBackgroundTransitionTimeout);
-    gameplayBackgroundTransitionTimeout = null;
-  }
-
-  gameplayBackgroundTransitionTargetIndex = targetBackgroundIndex;
-  gameBoardWrapper.style.setProperty('--game-bg-image-1', currentImage);
-  gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
-  gameBoardWrapper.classList.add('game-bg-transition-active');
-
-  gameplayBackgroundTransitionTimeout = window.setTimeout(() => {
-    gameBoardWrapper.style.setProperty('--game-bg-image-1', targetImage);
-    gameBoardWrapper.style.setProperty('--game-bg-image-2', targetImage);
-    gameBoardWrapper.classList.remove('game-bg-transition-active');
-    currentGameplayBackgroundIndex = targetBackgroundIndex;
-    gameplayBackgroundTransitionTargetIndex = null;
-    gameplayBackgroundTransitionTimeout = null;
-  }, 900);
+  
+  currentGameplayBackgroundIndex = targetBackgroundIndex;
 }
 
 function unexpected(str) {
@@ -2155,8 +2138,10 @@ function resetEngineState() {
   starthpos = key - 2;
   bgLevel = 1;
   bgLevelPos = [];
+  bgLevelPosIndex = 0;
   speedLevel = 1;
   speedLevelPos = [];
+  speedLevelPosIndex = 0;
   normalSongAwardLevel = 1;
   starterColumn = Math.floor(Math.random() * key);
   warr = new Array(key).fill(0).map((_, idx) => (idx === starterColumn ? 1 : 0));
@@ -3327,7 +3312,6 @@ async function finishRun(showLibrary = false) {
             await playFile('Audio/NewBest');
           }
         }
-      }
 
         if (medalsEl) {
           medalsEl.innerHTML = '';
@@ -3369,6 +3353,7 @@ async function finishRun(showLibrary = false) {
           // play the result audio sequence (do not block UI)
           playResultAudioSequence().catch(() => {});
         }
+      }
       }
 
       if (playerNameEl) playerNameEl.textContent = playerName || 'Player';
@@ -4113,8 +4098,6 @@ function updateHUD() {
   tpsDisplayChallenge?.classList.add('hidden');
   scoreDisplay.classList.add('hidden');
 
-  updateGameplayBackground();
-
   updateNormalSongAwardDisplay();
 
   if (isAwardAnimationRunning) {
@@ -4563,14 +4546,14 @@ function updateEngineFrame(now) {
   currentBpm = nextBpm;
   currentBeats = nextBeats;
 
-  if (bgLevelPos.length && bgLevelPos[0] < starthpos) {
-    bgLevelPos.shift();
-    bgLevel++;
+  if (bgLevelPos.length && bgLevelPos[bgLevelPosIndex] < starthpos) {
+    pendingBgLevelIncrement = true;
+    pendingBackgroundUpdate = true;
   }
-  if (speedLevelPos.length && speedLevelPos[0] < starthpos) {
-    speedLevelPos.shift();
+  if (speedLevelPos.length && speedLevelPos[speedLevelPosIndex] < starthpos) {
     if (!isChallengeMode && !isClassicMode) {
-      speedLevel++;
+      pendingSpeedLevelIncrement = true;
+      pendingBackgroundUpdate = true;
     }
   }
 
@@ -5022,6 +5005,26 @@ function frame(now) {
     updateEngineFrame(now);
     updateHUD();
     renderTiles();
+    
+    // Handle deferred level increments and background update after critical frame work
+    if (pendingBackgroundUpdate) {
+      pendingBackgroundUpdate = false;
+      
+      // Perform the actual level increments using index counters (O(1) instead of O(n) shift)
+      if (pendingBgLevelIncrement) {
+        pendingBgLevelIncrement = false;
+        bgLevelPosIndex++;
+        bgLevel++;
+      }
+      if (pendingSpeedLevelIncrement) {
+        pendingSpeedLevelIncrement = false;
+        speedLevelPosIndex++;
+        speedLevel++;
+      }
+      
+      // Update background after level changes
+      requestAnimationFrame(() => updateGameplayBackground());
+    }
   }
   rafId = requestAnimationFrame(frame);
 }
@@ -5562,8 +5565,10 @@ function startClassicMode() {
   currentSectionTileIndex = 0;
   bgLevel = 1;
   bgLevelPos = [];
+  bgLevelPosIndex = 0;
   speedLevel = 1;
   speedLevelPos = [];
+  speedLevelPosIndex = 0;
   warr = new Array(key).fill(0);
   
   // Initialize classic mode

@@ -1,102 +1,248 @@
-{
-  "1st Dan": {
-    "color": "normal",
+[
+  {
+    "id": "1st_dan",
+    "name": "1st Dan",
     "songs": [
-      {"file": "Piano Tiles", "displayName": "The Beginning"},
-      {"file": "Little Star", "displayName": "Little Steps"},
-      {"file": "A La Claire Fontaine", "displayName": "Lost Love Upon a Fountain"},
-      {"file": "Bluestone Alley", "displayName": "The Alley of Hope"},
-      {"file": "Jingle Bells", "displayName": "It's Christmas"}
+      {
+        "fileName": "Piano Tiles",
+        "customName": "The Beginning"
+      },
+      {
+        "fileName": "Little Star",
+        "customName": "Little Steps"
+      },
+      {
+        "fileName": "A La Claire Fontaine",
+        "customName": "Lost Love Upon a Fountain"
+      },
+      {
+        "fileName": "Bluestone Alley",
+        "customName": "The Alley of Hope"
+      },
+      {
+        "fileName": "Jingle Bells",
+        "customName": "It's Christmas"
+      }
     ]
   },
-  "2nd Dan": {
-    "color": "normal",
+  {
+    "id": "2nd_dan",
+    "name": "2nd Dan",
     "songs": [
-      {"file": "Happy New Year", "displayName": "Happy New Year"},
-      {"file": "Romance De Amor", "displayName": "Love Comes Too Soon"},
-      {"file": "Nocturne Op.9 No.2", "displayName": "Nighttime by the Window"},
-      {"file": "Canon", "displayName": "The Classic"}
+      {
+        "fileName": "Happy New Year",
+        "customName": "Happy New Year"
+      },
+      {
+        "fileName": "Romance De Amor",
+        "customName": "Love Comes Too Soon"
+      },
+      {
+        "fileName": "Nocturne Op.9 No.2",
+        "customName": "Nighttime by the Window"
+      },
+      {
+        "fileName": "Canon",
+        "customName": "The Classic"
+      }
     ]
   },
-  "3rd Dan": {
-    "color": "normal",
+  {
+    "id": "3rd_dan",
+    "name": "3rd Dan",
     "songs": [
-      {"file": "Two Tigers", "displayName": "Fierce Tiger Within You"},
-      {"file": "Beyer No.8", "displayName": "Waltz of the Fleas"},
-      {"file": "Waltz of the Flowers", "displayName": "When the Flowers Bloom"},
-      {"file": "Moments Musicaux", "displayName": "The Uncaptured Moment"}
+      {
+        "fileName": "Two Tigers",
+        "customName": "Fierce Tiger Within You"
+      },
+      {
+        "fileName": "Beyer No.8",
+        "customName": "Waltz of the Fleas"
+      },
+      {
+        "fileName": "Waltz of the Flowers",
+        "customName": "When the Flowers Bloom"
+      },
+      {
+        "fileName": "Moments Musicaux",
+        "customName": "The Uncaptured Moment"
+      }
     ]
   },
-  "4th Dan": {
-    "color": "normal",
+  {
+    "id": "4th_dan",
+    "name": "4th Dan",
     "songs": [
-      {"file": "Dance of the Sugar Fairy", "displayName": "Dance of the Sugar Fairy"},
-      {"file": "Prelude in C Major No.1", "displayName": "The Beginning, Again"},
-      {"file": "Oh! Susanna", "displayName": "The Sun So Hot, I Froze To death"},
-      {"file": "Wedding March", "displayName": "The Happiest Day of My Life"}
+      {
+        "fileName": "Dance of the Sugar Fairy",
+        "customName": "Dance of the Sugar Fairy"
+      },
+      {
+        "fileName": "Prelude in C Major No.1",
+        "customName": "The Beginning, Again"
+      },
+      {
+        "fileName": "Oh! Susanna",
+        "customName": "The Sun So Hot, I Froze To death"
+      },
+      {
+        "fileName": "Wedding March",
+        "customName": "The Happiest Day of My Life"
+      }
     ]
   },
-  "5th Dan": {
-    "color": "normal",
+  {
+    "id": "5th_dan",
+    "name": "5th Dan",
     "songs": [
-      {"file": "New World Symphony Mvt.4", "displayName": "The Score of the New World"},
-      {"file": "Don Juan Paraphrase Part.2", "displayName": "Lone on an Island"},
-      {"file": "First Noel", "displayName": "Our First Noel Together"},
-      {"file": "Jesus Christ is risen today", "displayName": "Jesus Christ is risen today"}
+      {
+        "fileName": "New World Symphony Mvt.4",
+        "customName": "The Score of the New World"
+      },
+      {
+        "fileName": "Don Juan Paraphrase Part.2",
+        "customName": "Lone on an Island"
+      },
+      {
+        "fileName": "First Noel",
+        "customName": "Our First Noel Together"
+      },
+      {
+        "fileName": "Jesus Christ is risen today",
+        "customName": "Jesus Christ is risen today"
+      }
     ]
   },
-  "6th Dan": {
-    "color": "normal",
+  {
+    "id": "6th_dan",
+    "name": "6th Dan",
     "songs": [
-      {"file": "Clair de Lune", "displayName": "Lonely Under the Moon"},
-      {"file": "Ten Little Indians", "displayName": "One Little, Two Little, Three Little Indians"},
-      {"file": "Little Star 12Var K265", "displayName": "Starry Variations"},
-      {"file": "Beo dat may troi", "displayName": "Waiting For Your Return Each Passing Day"}
+      {
+        "fileName": "Clair de Lune",
+        "customName": "Lonely Under the Moon"
+      },
+      {
+        "fileName": "Ten Little Indians",
+        "customName": "One Little, Two Little, Three Little Indians"
+      },
+      {
+        "fileName": "Little Star 12Var K265",
+        "customName": "Starry Variations"
+      },
+      {
+        "fileName": "Beo dat may troi",
+        "customName": "Waiting For Your Return Each Passing Day"
+      }
     ]
   },
-  "7th Dan": {
-    "color": "normal",
+  {
+    "id": "7th_dan",
+    "name": "7th Dan",
     "songs": [
-      {"file": "L'Arlesienne", "displayName": "Your Unseen Face"},
-      {"file": "Cancan", "displayName": "The Grand Reveal"},
-      {"file": "G minor Bach", "displayName": "False Prelude"},
-      {"file": "The Fountain", "displayName": "The Fountain of Joy"}
+      {
+        "fileName": "L'Arlesienne",
+        "customName": "Your Unseen Face"
+      },
+      {
+        "fileName": "Cancan",
+        "customName": "The Grand Reveal"
+      },
+      {
+        "fileName": "G minor Bach",
+        "customName": "False Prelude"
+      },
+      {
+        "fileName": "The Fountain",
+        "customName": "The Fountain of Joy"
+      }
     ]
   },
-  "8th Dan": {
-    "color": "normal",
+  {
+    "id": "8th_dan",
+    "name": "8th Dan",
     "songs": [
-      {"file": "Nocturne Op.9 No.1", "displayName": "Prelude of the Quiet Night"},
-      {"file": "Spanish Dances", "displayName": "Spanish Dances"},
-      {"file": "Solfeggietto", "displayName": "Short Study"},
-      {"file": "Flight of the Bumblebee", "displayName": "Swarmed by the Bees"}
+      {
+        "fileName": "Nocturne Op.9 No.1",
+        "customName": "Prelude of the Quiet Night"
+      },
+      {
+        "fileName": "Spanish Dances",
+        "customName": "Spanish Dances"
+      },
+      {
+        "fileName": "Solfeggietto",
+        "customName": "Short Study"
+      },
+      {
+        "fileName": "Flight of the Bumblebee",
+        "customName": "Swarmed by the Bees"
+      }
     ]
   },
-  "9th Dan": {
-    "color": "grey",
+  {
+    "id": "9th_dan",
+    "name": "9th Dan",
     "songs": [
-      {"file": "Etude de Virtuosite in E", "displayName": "First Boss"},
-      {"file": "Hungarian Dance No.5", "displayName": "The Dance of Union"},
-      {"file": "Etude Op.849 No.21", "displayName": "Handful of Speeds"},
-      {"file": "Star Clock", "displayName": "Little Campanella"}
+      {
+        "fileName": "Etude de Virtuosite in E",
+        "customName": "First Boss"
+      },
+      {
+        "fileName": "Hungarian Dance No.5",
+        "customName": "The Dance of Union"
+      },
+      {
+        "fileName": "Etude Op.849 No.21",
+        "customName": "Handful of Speeds"
+      },
+      {
+        "fileName": "Star Clock",
+        "customName": "Little Campanella"
+      }
     ]
   },
-  "10th Dan": {
-    "color": "grey",
+  {
+    "id": "10th_dan",
+    "name": "10th Dan",
     "songs": [
-      {"file": "Hungarian Rhapsody No.2 (Full Ver)", "displayName": "Hungarian Revolution"},
-      {"file": "Fantasie Impromptu (Full Ver)", "displayName": "Speed Fantasy"},
-      {"file": "Four Seasons - Winter", "displayName": "To Cold, Shiver in Snow..."},
-      {"file": "Moonlight Sonata Mvt.3 (Full Ver)", "displayName": "Conclusion of the Moonlight"}
+      {
+        "fileName": "Flight of the Bumblebee (Full Ver)",
+        "customName": "Buzzing Mind, Literally"
+      },
+      {
+        "fileName": "Fantasie Impromptu (Full Ver)",
+        "customName": "Speed Fantasy"
+      },
+      {
+        "fileName": "Four Seasons - Winter",
+        "customName": "To Cold, Shiver in Snow..."
+      },
+      {
+        "fileName": "Moonlight Sonata Mvt.3 (Full ver)",
+        "customName": "Conclusion of the Moonlight"
+      }
     ]
   },
-  "Kaidan": {
-    "color": "red",
+  {
+    "id": "kaidan",
+    "name": "Kaidan",
     "songs": [
-      {"file": "Final Boss Csardas Macabre", "displayName": "Death in Two"},
-      {"file": "Final Boss Invention", "displayName": "Invention of Death"},
-      {"file": "Final Boss Serenade", "displayName": "Standchen de muerte"},
-      {"file": "Final Boss Recuerdos de la Alhambra", "displayName": "The Final Hurdle"}
+      {
+        "fileName": "Final Boss Csardas Macabre",
+        "customName": "Death in Two"
+      },
+      {
+        "fileName": "Final Boss Invention",
+        "customName": "Invention of Death"
+      },
+      {
+        "fileName": "Final Boss Serenade",
+        "customName": "Standchen de muerte"
+      },
+      {
+        "fileName": "Final Boss Recuerdos de la Alhambra",
+        "customName": "The Final Hurdle"
+      }
     ]
   }
-}
+]

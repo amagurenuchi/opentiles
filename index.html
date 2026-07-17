@@ -280,10 +280,9 @@
           <div class="screen-top-bar-left">
             <div class="screen-top-bar-box screen-top-bar-entry screen-top-bar-profile">
               <div class="screen-top-bar-profile-inner">
-                <span id="player-name-text" class="screen-top-bar-text font-bold text-sm" data-i18n="default_player_name">Player</span>
-                <div id="classification-display" class="screen-top-bar-classification">
-                  <span class="screen-top-bar-text text-[10px] font-semibold">Classification</span>
-                  <span id="highest-dan-display" class="screen-top-bar-text font-bold text-sm">None</span>
+                <div class="flex flex-col items-start">
+                  <span id="player-name-text" class="screen-top-bar-text font-bold text-sm" data-i18n="default_player_name">Player</span>
+                  <span id="class-highest-cleared" class="screen-top-bar-text text-[10px] font-semibold opacity-80 mt-[-2px]">Class: None</span>
                 </div>
                 <div class="screen-top-bar-points">
                   <span class="screen-top-bar-text text-[10px] font-semibold" data-i18n="label_p_points">P-Points</span>
@@ -361,20 +360,27 @@
             <!-- Song title (number + title) appears directly under the top bar -->
             <div id="results-song-title" class="font-game text-2xl font-bold mb-3 text-center">3. Nocturne Op. 55 No. 1</div>
 
-            <!-- Medals (always render 3 icons; unearned ones are shown as silhouettes) -->
-            <div class="mb-6 flex justify-center items-center gap-6" id="results-medals">
-              <!-- medals injected here -->
+            <!-- Class mode specific results -->
+            <div id="results-class-mode" class="hidden w-full flex-col gap-2 mt-4 px-4 overflow-y-auto max-h-[400px]">
+              <!-- Pass/Fail list injected here -->
             </div>
 
-            <!-- Score area centered vertically in screen -->
-            <div class="flex-1 flex items-center justify-center">
-              <div class="w-full flex items-center justify-center gap-8 px-4">
-                <div id="results-tps" class="text-2xl font-game">0.000 TPS</div>
-                <div id="results-main-score" class="text-center">
-                  <div id="results-score" class="font-game text-8xl font-bold">0</div>
-                  <div id="results-subtext" class="text-xl font-game mt-2">New Best!</div>
+            <div id="results-standard-mode" class="w-full flex-1 flex flex-col">
+              <!-- Medals (always render 3 icons; unearned ones are shown as silhouettes) -->
+              <div class="mb-6 flex justify-center items-center gap-6" id="results-medals">
+                <!-- medals injected here -->
+              </div>
+
+              <!-- Score area centered vertically in screen -->
+              <div class="flex-1 flex items-center justify-center">
+                <div class="w-full flex items-center justify-center gap-8 px-4">
+                  <div id="results-tps" class="text-2xl font-game">0.000 TPS</div>
+                  <div id="results-main-score" class="text-center">
+                    <div id="results-score" class="font-game text-8xl font-bold">0</div>
+                    <div id="results-subtext" class="text-xl font-game mt-2">New Best!</div>
+                  </div>
+                  <div id="results-laps" class="text-lg">0 Laps</div>
                 </div>
-                <div id="results-laps" class="text-lg">0 Laps</div>
               </div>
             </div>
           </div>
@@ -415,9 +421,8 @@
       <!-- Pause Screen -->
       <div id="pause-screen" class="pause-screen hidden">
         <h2 class="pause-screen-title" data-i18n="title_game_paused">Game Paused</h2>
-        <div id="class-pause-timer" class="class-pause-timer hidden">
-          <span class="class-pause-label">Pause Time Remaining:</span>
-          <span id="class-pause-remaining" class="class-pause-remaining">60s</span>
+        <div id="class-pause-timer-container" class="hidden text-center text-red-500 font-bold mb-4 font-game text-2xl">
+          Time left: <span id="class-pause-timer">60</span>s
         </div>
         <div class="pause-screen-actions">
           <button id="pause-exit-btn" class="pause-screen-btn" type="button" data-i18n="btn_quit">Quit</button>
@@ -455,16 +460,18 @@
         </div>
       </div>
 
+      <!-- Home Screen -->
       <!-- Class Screen -->
       <div id="class-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
-        <!-- top bar moved to shared #shared-top-bar -->
-
-        <div id="class-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0">
-          <!-- Class Dan levels will be rendered here -->
+        <div class="flex-1 overflow-y-auto">
+          <div class="p-6 pt-20 pb-24">
+            <div id="class-list-container" class="flex flex-col gap-4">
+              <!-- dynamically populated -->
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Home Screen -->
       <div id="home-screen" class="absolute inset-0 flex flex-col bg-white z-40 transition-all duration-300 hidden">
         <!-- top bar moved to shared #shared-top-bar -->
 
@@ -762,19 +769,13 @@
           </div>
 
           <!-- Class Button -->
-          <div id="dock-class-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="orange">
+          <div id="dock-class-btn" class="dock-button flex flex-col items-center cursor-pointer text-gray-600 hover:text-gray-900 transition-colors" data-color="red">
             <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-orange-500">
-                <!-- Graduation cap silhouette -->
-                <path d="M12 2L2 7l10 5 10-5-10-5z" opacity="0.9"/>
-                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 7l10 5v10l-10-5V7z"/>
-                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M22 7l-10 5v10l10-5V7z"/>
-                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 12v10"/>
-                <!-- Tassel -->
-                <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 7l3 3"/>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-red-500">
+                <path d="M12.378 1.602a.75.75 0 00-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03zM21.75 6.93l-9 5.25v9l8.628-5.032a.75.75 0 00.372-.648V6.93zM11.25 21.18v-9l-9-5.25v8.57a.75.75 0 00.372.648l8.628 5.033z" />
               </svg>
             </div>
-            <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_class">Class</span>
+            <span class="text-[11px] font-bold tracking-tight">Class</span>
           </div>
 
           <!-- Settings Button -->

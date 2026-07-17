@@ -41,7 +41,6 @@ const gameoverScreen = document.getElementById('gameover-screen');
 const songListScreen = document.getElementById('song-list-screen');
 const challengesScreen = document.getElementById('challenges-screen');
 const classScreen = document.getElementById('class-screen');
-const classContainer = document.getElementById('class-container');
 const pauseScreen = document.getElementById('pause-screen');
 const songListContainer = document.getElementById('song-list-container');
 const challengesContainer = document.getElementById('challenges-container');
@@ -130,9 +129,6 @@ let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
 let customStartingSpeed = parseFloat(localStorage.getItem('opentile_custom_speed') || '0'); // 0 = disabled, direct t/s value
-
-// Load highest Dan level
-let highestDanLevel = localStorage.getItem('opentile_highest_dan') || null;
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -146,6 +142,10 @@ let currentSectionIndex = 0;
 let currentSectionTileIndex = 0;
 let songLoopCount = 0;
 let currentScore = 0;
+let classTotalPlayableTiles = 0;
+let classCurrentHitTiles = 0;
+let classSongSectionStarts = [];
+let classSongTotalTiles = [];
 let starthpos = key - 2;
 let hpos = 0;
 let visualHposOffset = 0; // accumulated compression from combo tiles (hlen - 2 each)
@@ -172,6 +172,15 @@ let sectionScoreThresholds = [];
 
 // Challenge mode variables
 let isChallengeMode = false;
+let isClassMode = false;
+let classData = [];
+let classCurrentData = null;
+let classSongIndex = 0;
+let classPauseTimer = 60;
+let classPauseInterval = null;
+let classHighestCleared = parseInt(localStorage.getItem('classHighestCleared') || '0', 10);
+let classSongProgress = [];
+
 let challengeAcceleration = 0;
 let challengeLastAccelerationTime = 0;
 let challengeBpmOffset = 0;
@@ -247,19 +256,6 @@ let classicLoadFailCount = 0; // consecutive failure guard
 let classicTappedTiles = 0;
 let classicScrollTarget = 0;
 let classicTimerEnding = false;
-
-// Class mode variables
-let isClassMode = false;
-let classDanData = null;
-let classSongQueue = [];
-let classCurrentSongIndex = 0;
-let classLoadFailCount = 0;
-let classStageResults = [];
-let classPauseTimer = 60;
-let classPauseRemaining = 60;
-let classPauseInterval = null;
-let classScrollTarget = 0;
-let classTappedTiles = 0;
 let preserveCurrentSpeedOnNextFrame = false;
 let pausedSpeedBpm = 120;
 let pausedSpeedBeats = 0.5;
@@ -722,6 +718,10 @@ function resumeAfterRevive() {
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
   isPaused = false;
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   isStarted = false;
   hasStartedGameplay = true;
   isPostReviveState = true; // Set flag to indicate we're in post-revive state
@@ -925,7 +925,8 @@ function getRuntimeSpeed(index) {
     return _runtimeSpeedCache.get(cacheKey);
   }
 
-  if (customStartingSpeed > 0) {
+  // Dans (Class mode) ignore Custom Speed settings
+  if (customStartingSpeed > 0 && !isClassMode) {
     const baseSpeed = getSpeed(index);
     const customStartTps = customStartingSpeed;
     
@@ -954,7 +955,8 @@ function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
   const tpm = lastBpm / lastBeats;
   const effectiveLoopTimes = isChallengeMode && loopTimes > 1 ? 1 : loopTimes;
 
-  if (customStartingSpeed > 0) {
+  // Dans (Class mode) ignore Custom Speed settings
+  if (customStartingSpeed > 0 && !isClassMode) {
     const customStartTps = customStartingSpeed;
     const sectionIndex = loopTimes * 0 + 1;
     
@@ -2079,70 +2081,6 @@ function renderChallenges() {
   syncTopDockData();
 }
 
-async function renderClassScreen() {
-  if (!classContainer) return;
-  classContainer.innerHTML = '';
-
-  try {
-    const response = await fetch('dan.json');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const danData = await response.json();
-
-    // Order: Kaidan first, then 10th Dan down to 1st Dan
-    const danOrder = ['Kaidan', '10th Dan', '9th Dan', '8th Dan', '7th Dan', '6th Dan', '5th Dan', '4th Dan', '3rd Dan', '2nd Dan', '1st Dan'];
-
-    danOrder.forEach((danKey) => {
-      if (!danData[danKey]) return;
-
-      const danInfo = danData[danKey];
-      const danCard = createDanCard(danKey, danInfo);
-      classContainer.appendChild(danCard);
-    });
-
-    syncTopDockData();
-  } catch (err) {
-    console.error('Error loading dan.json:', err);
-    classContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">Failed to load Class data.</p>';
-  }
-}
-
-function createDanCard(danKey, danInfo) {
-  const card = document.createElement('div');
-  card.className = 'dan-card';
-
-  // Set background color based on danInfo.color
-  if (danInfo.color === 'red') {
-    card.classList.add('dan-card-red');
-  } else if (danInfo.color === 'grey') {
-    card.classList.add('dan-card-grey');
-  } else {
-    card.classList.add('dan-card-normal');
-  }
-
-  const songsHtml = danInfo.songs.map((song, index) => `
-    <div class="dan-song-item">
-      <span class="dan-song-number">${index + 1}.</span>
-      <span class="dan-song-name">"${song.displayName}"</span>
-    </div>
-  `).join('');
-
-  card.innerHTML = `
-    <div class="dan-header">
-      <span class="dan-title">${danKey}</span>
-      <span class="dan-song-count">${danInfo.songs.length} songs</span>
-    </div>
-    <div class="dan-songs-list">
-      ${songsHtml}
-    </div>
-  `;
-
-  card.addEventListener('click', () => {
-    startClassMode(danKey, danInfo);
-  });
-
-  return card;
-}
-
 async function loadMusicCsv() {
   try {
     updateLoadingProgress('csv', 0, 1);
@@ -2155,6 +2093,14 @@ async function loadMusicCsv() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     musicCsvData = parseMusicCsv(text);
+    
+    try {
+      const danResp = await fetch('dan.json');
+      if (danResp.ok) {
+        classData = await danResp.json();
+      }
+    } catch (e) { console.error('Failed to load dan.json', e); }
+
     populateMusicSelect();
     renderSongList();
     renderHomeScreen();
@@ -2202,6 +2148,8 @@ function resetEngineState() {
   }
   info = [];
   currentScore = 0;
+  classCurrentHitTiles = 0;
+  classTotalPlayableTiles = 0;
   hpos = 0;
   visualHposOffset = 0;
   starthpos = key - 2;
@@ -2230,24 +2178,14 @@ function resetEngineState() {
   tileDomCache.clear();
   tilesContainer.innerHTML = '';
   hitEffectsEl.innerHTML = '';
-
-  // Clean up Class mode state
-  if (classPauseInterval) {
-    clearInterval(classPauseInterval);
-    classPauseInterval = null;
-  }
-  isClassMode = false;
-  classDanData = null;
-  classSongQueue = [];
-  classCurrentSongIndex = 0;
-  classStageResults = [];
-  classPauseRemaining = 60;
-  classScrollTarget = 0;
-  classTappedTiles = 0;
   _runtimeSpeedCache.clear();
   updatePauseButtonVisibility();
   isStarted = false;
   isPaused = false;
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   isGameLoaded = false;
   challengeBpmOffset = 0;
   challengeBaseBpm = 120;
@@ -2348,13 +2286,20 @@ function loadSongObject(data, label) {
       baseBpm = music.bpm;
       baseBeats = music.baseBeats;
     }
-    info.push({ bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats), beats: sectionBaseBeats, id: music.id });
+    info.push({ 
+      bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats), 
+      beats: sectionBaseBeats, 
+      id: music.id,
+      isExplicitBreak: music.isExplicitBreak || false,
+      breakDurationSeconds: music.breakDurationSeconds || 3
+    });
   }
 
   // Calculate custom BPM if custom starting speed is set
+  // Dans (Class mode) ignore Custom Speed settings
   let customBpmOverride = null;
   let customSectionSpeedMultiplier = null;
-  if (customStartingSpeed > 0) {
+  if (customStartingSpeed > 0 && !isClassMode) {
     const customTps = customStartingSpeed; // direct t/s value
     const originalFirstSectionTps = info[0] ? calculateTpsFromBpm(info[0].bpm, info[0].beats) : 0;
     customBpmOverride = calculateBpmFromTps(customTps, info[0].beats);
@@ -2391,15 +2336,44 @@ function computeSectionScoreThresholds() {
   // Calculate through all available sections
   for (let s = 0; s < sheet.length; s++) {
     const section = sheet[s];
+    let songIndex = 0;
+    if (isClassMode && classSongSectionStarts && classSongSectionStarts.length > 0) {
+      for (let i = 0; i < classSongSectionStarts.length; i++) {
+        if (s >= classSongSectionStarts[i]) songIndex = i;
+      }
+      if (classSongTotalTiles[songIndex] === undefined) {
+        classSongTotalTiles[songIndex] = 0;
+      }
+    }
+
     for (const tile of section) {
+      let isPlayable = false;
       switch (tile.type) {
-        case 5: runningScore += 4; break;             // combo start tile
-        case 3: runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); break; // multi-tap combo
-        case 6: runningScore += Math.round(tile.hlen) + 1; break; // long hold
+        case 5: 
+          runningScore += 4; 
+          isPlayable = true;
+          break; // combo start tile
+        case 3: 
+          runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); 
+          isPlayable = true;
+          break; // multi-tap combo
+        case 6: 
+          runningScore += Math.round(tile.hlen) + 1; 
+          isPlayable = true;
+          break; // long hold
         case 9:
         case 1:
           break; // accompaniment and blank tiles give no score
-        default: runningScore += 1; break;             // regular tap (type 2) and others
+        default: 
+          runningScore += 1; 
+          isPlayable = true;
+          break; // regular tap (type 2) and others
+      }
+      if (isPlayable) {
+        classTotalPlayableTiles += 1;
+        if (isClassMode && classSongTotalTiles) {
+          classSongTotalTiles[songIndex] += 1;
+        }
       }
     }
     sectionScoreThresholds.push(runningScore);
@@ -3060,6 +3034,21 @@ async function finishRun(showLibrary = false) {
   }
   updatePauseButtonVisibility();
 
+  if (isClassMode) {
+    // If we failed, populate classSongProgress dynamically
+    if (classSongProgress.length === 0 && classCurrentData) {
+      classCurrentData.songs.forEach((s, idx) => {
+        if (idx < classSongIndex) {
+          classSongProgress.push({ name: s.customName, status: 'Pass' });
+        } else if (idx === classSongIndex) {
+          classSongProgress.push({ name: s.customName, status: 'Fail' });
+        } else {
+          classSongProgress.push({ name: s.customName, status: 'Fail' }); // Or 'Unplayed'
+        }
+      });
+    }
+  }
+
   if (isChallengeMode) {
     // In challenge mode: save best TPS, display final TPS and earned medals
     const finalTps = currentBpm / currentBeats / 60;
@@ -3201,7 +3190,21 @@ async function finishRun(showLibrary = false) {
         if (artistEl) artistEl.textContent = localizedArtistName || '';
       }
 
-      if (isChallengeMode) {
+      if (isClassMode) {
+        document.getElementById('results-standard-mode')?.classList.add('hidden');
+        document.getElementById('results-class-mode')?.classList.remove('hidden');
+        document.getElementById('results-class-mode').innerHTML = classSongProgress.map(p => 
+          `<div class="class-pass-fail-item">
+            <span>${p.name}</span>
+            <span class="${p.status === 'Pass' ? 'class-pass' : 'class-fail'}">${p.status}</span>
+          </div>`
+        ).join('');
+        if (titleEl) titleEl.textContent = classCurrentData.name;
+      } else {
+        document.getElementById('results-standard-mode')?.classList.remove('hidden');
+        document.getElementById('results-class-mode')?.classList.add('hidden');
+        
+        if (isChallengeMode) {
         const finalTps = currentBpm / currentBeats / 60;
         if (tpsEl) {
           tpsEl.classList.add('hidden');
@@ -3324,6 +3327,7 @@ async function finishRun(showLibrary = false) {
             await playFile('Audio/NewBest');
           }
         }
+      }
 
         if (medalsEl) {
           medalsEl.innerHTML = '';
@@ -3390,6 +3394,15 @@ async function finishRun(showLibrary = false) {
       const backBtn = document.getElementById('results-back-btn');
       const homeBtn = document.getElementById('results-home-btn');
       const favBtn = document.getElementById('results-fav-btn');
+      
+      if (isClassMode) {
+        if (backBtn) backBtn.classList.add('hidden');
+        if (favBtn) favBtn.classList.add('hidden');
+      } else {
+        if (backBtn) backBtn.classList.remove('hidden');
+        if (favBtn) favBtn.classList.remove('hidden');
+      }
+
       if (backBtn) {
         backBtn.onclick = () => {
           // Check and spend life cost before proceeding
@@ -3519,7 +3532,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   updatePauseButtonVisibility();
 
   let shouldOfferRevive = reviveRemaining > 0;
-
+  
   if (isChallengeMode || isClassMode) {
     shouldOfferRevive = false;
   } else {
@@ -3548,11 +3561,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
       if (gameBoardWrapper) {
         gameBoardWrapper.classList.remove('game-playing');
       }
-      if (isClassMode) {
-        finishClassRun(false);
-      } else {
-        finishRun(false);
-      }
+      finishRun(false);
     }
   };
 
@@ -3719,7 +3728,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           startTile.ended = 1;
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
-          if (!startTile.isAccompanimentSingle) currentScore += 1;
+          if (!startTile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
 
         } else if (startTile.type === 5) {
           if (!startTile.hitColumns.includes(colIdx)) {
@@ -3729,7 +3738,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
               startTile.clicked = true;
               startTile.ended = 1;
               triggerTileHitAnimation(startTile);
-              currentScore += 4;
+              currentScore += 4; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
 
             }
           }
@@ -3741,7 +3750,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           if (startTile.remainingTaps <= 0) {
             startTile.clicked = true;
             startTile.ended = 1;
-            currentScore += Math.max(2, startTile.taps || 2);
+            currentScore += Math.max(2, startTile.taps || 2); if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
 
           }
         } else {
@@ -3898,7 +3907,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       activeLongInOtherCol.played = true;
       
       const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight));
+      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; classCurrentHitTiles++; }
       
       if (!tileMatchesColumn(tile, colIdx)) {
         return;
@@ -3936,7 +3945,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     tile.ended = 1;
     triggerTileHitAnimation(tile);
     playTileAudioNow(tile);
-    if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1;
+    if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
 
     
     // Classic mode: increment tapped tiles and advance field
@@ -3955,7 +3964,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         tile.clicked = true;
         tile.ended = 1;
         triggerTileHitAnimation(tile);
-        currentScore += 4;
+        currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
 
         
         // Classic mode: increment tapped tiles and advance field
@@ -3976,7 +3985,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     if (tile.remainingTaps <= 0) {
       tile.clicked = true;
       tile.ended = 1;
-      currentScore += Math.max(2, tile.taps || 2);
+      currentScore += Math.max(2, tile.taps || 2); if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
 
       
       // Classic mode: increment tapped tiles and advance field
@@ -4028,13 +4037,13 @@ function handleManualInputUp(colIdx) {
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
     
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
-    currentScore += Math.max(1, Math.ceil(completedHeight));
+    currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; classCurrentHitTiles++; }
 
   }
 }
 
 function updateChallengeRewardAnimation() {
-  if (!isChallengeMode || !shouldAnimateChallengeRewards(selectedSongData)) {
+  if (!isChallengeMode || !shouldAnimateChallengeRewards(selectedSongData) || isClassMode) {
     lastHudRewardState = { stars: 0, crowns: 0 };
     clearAwardAnimation();
     return;
@@ -4112,7 +4121,41 @@ function updateHUD() {
     return;
   }
 
-  if (isClassicMode) {
+  if (isClassMode) {
+    scoreDisplay.classList.remove('hidden');
+    let scoreStr = '';
+    if (!isStarted && !isPaused && classPauseTimer > 0 && classPauseInterval) {
+      scoreStr = String(Math.ceil(classPauseTimer));
+    } else {
+      const songTiles = (classSongTotalTiles && classSongTotalTiles[classSongIndex]) || 1;
+      const songProgressFrac = Math.min(1, Math.max(0, classCurrentHitTiles / songTiles));
+      const songProgress = songProgressFrac * 100;
+      scoreStr = `${songProgress.toFixed(1)}%`;
+    }
+    if (scoreDisplay._lastText !== scoreStr) {
+      scoreDisplay._lastText = scoreStr;
+      scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
+        `<span class="score-digit-wrapper">${digit}</span>`
+      ).join('');
+    }
+
+    if (isGameLoaded) {
+      tpsDisplayNormal?.classList.remove('hidden');
+      if (tpsDisplayNormal) {
+        const totalSongs = classCurrentData.songs.length;
+        const songTiles = (classSongTotalTiles && classSongTotalTiles[classSongIndex]) || 1;
+        const songProgressFrac = Math.min(1, Math.max(0, classCurrentHitTiles / songTiles));
+        const danProgress = ((classSongIndex + songProgressFrac) / totalSongs) * 100;
+        const danText = `${danProgress.toFixed(1)}%`;
+        if (tpsDisplayNormal._lastText !== danText) {
+          tpsDisplayNormal._lastText = danText;
+          tpsDisplayNormal.innerHTML = danText.split('').map(char => 
+            `<span class="score-digit-wrapper">${char}</span>`
+          ).join('');
+        }
+      }
+    }
+  } else if (isClassicMode) {
     // Classic mode: hide score, show timer with 3 decimal points, hide stars/crowns
     // This takes precedence over challenge mode to prevent fallback
     if (isGameLoaded) {
@@ -4462,6 +4505,15 @@ function updateEngineFrame(now) {
     } else if (isClassicMode) {
       nextBpm = currentBpm;
       nextBeats = currentBeats;
+    } else if (isClassMode && info[currentSectionIndex] && info[currentSectionIndex].isExplicitBreak) {
+      // Use explicit time-based break for Class mode
+      // breakDurationSeconds is stored in the section info, convert to beats-based equivalent
+      const breakDuration = info[currentSectionIndex].breakDurationSeconds || 3;
+      const baseBpm = info[currentSectionIndex].bpm || 120;
+      const baseBeats = info[currentSectionIndex].beats || 0.5;
+      // Calculate beats needed for the desired time duration
+      nextBpm = baseBpm;
+      nextBeats = (baseBpm * breakDuration) / 60; // beats = bpm * seconds / 60
     } else {
       const baseSpeed = getRuntimeSpeed(speedLevel - 1);
       nextBpm = baseSpeed.bpm;
@@ -4659,9 +4711,11 @@ function updateEngineFrame(now) {
         currentSectionTileIndex = 0;
       }
     } else {
+      if (isClassicMode || isClassMode) break;
       currentSectionIndex = 0;
       songLoopCount += 1;
     }
+
   }
 
   let maxEffectiveSectionReached = -1;
@@ -4717,7 +4771,7 @@ function updateEngineFrame(now) {
               tile.ended++;
             }
           } else if (tile.played && !tile.ended) {
-            currentScore++;
+            currentScore++; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -4726,7 +4780,7 @@ function updateEngineFrame(now) {
           break;
         case 5:
           if (tile.played && !tile.ended) {
-            currentScore += 4;
+            currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -4754,7 +4808,7 @@ function updateEngineFrame(now) {
               spawnComboPlusOne(tile, autoComboColIdx, null);
               spawnHitRipple(autoRippleX, autoRippleY, { tile, colIdx: autoComboColIdx, big: true });
               tile.remainingTaps = Math.max(0, (tile.remainingTaps || tile.taps || 2) - 1);
-              currentScore += 1;
+              currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
               if (tile.remainingTaps <= 0) {
                 tile.clicked = true;
                 tile.ended = 1;
@@ -4767,7 +4821,7 @@ function updateEngineFrame(now) {
         case 6:
           if (tile.playing > tile.hlen - 1) {
             if (!tile.ended) {
-              currentScore += Math.round(tile.hlen) + 1;
+              currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
               tile.clicked = true;
               tile.ended = 1;
             } else {
@@ -4790,7 +4844,7 @@ function updateEngineFrame(now) {
             if (tile.type === 3) scoreDelta = tile.scores.length - 1;
             if (tile.type === 10) scoreDelta = 0;
             if (!tile.ended) {
-              currentScore += Math.round(scoreDelta) + 1;
+              currentScore += Math.round(scoreDelta) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
               tile.clicked = true;
               tile.ended = 1;
             } else {
@@ -4804,7 +4858,7 @@ function updateEngineFrame(now) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
-        currentScore += Math.round(tile.hlen) + 1;
+        currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
       } else if ((tile.clicked || tile.holdCompleted) && tile.ended) {
         tile.ended++;
       }
@@ -4876,13 +4930,43 @@ function updateEngineFrame(now) {
   if (isClassicMode && tiles.length === 0) {
     loadNextClassicSong();
   }
+  
+  if (isClassMode) {
+    let newIndex = 0;
+    if (classSongSectionStarts && classSongSectionStarts.length > 0) {
+      for (let i = 0; i < classSongSectionStarts.length; i++) {
+        if (currentSectionIndex >= classSongSectionStarts[i]) newIndex = i;
+      }
+    }
+    // Only reset progress when we actually encounter tiles from the next song
+    // (not when entering a break section between songs)
+    if (newIndex !== classSongIndex) {
+      // Check if the current section has tiles (break sections have empty scores array)
+      const currentSectionHasTiles = sheet[currentSectionIndex] && sheet[currentSectionIndex].length > 0;
+      if (currentSectionHasTiles) {
+        // Only update classSongIndex if we're actually transitioning to a new song
+        // This prevents premature resets when the section index changes within the same song
+        if (newIndex > classSongIndex) {
+          classSongIndex = newIndex;
+          classCurrentHitTiles = 0; // reset hit counter for the new song
+        }
+      }
+    }
 
-  // In Class mode, load next song when all tiles are cleared
-  if (isClassMode && tiles.length === 0) {
-    // Mark current song as passed
-    classStageResults.push('Pass');
-    loadNextClassSong();
+    // Complete Dan course when all tiles are cleared and sheet is exhausted
+    if (tiles.length === 0 && currentSectionIndex >= sheet.length) {
+      isClassMode = false; // end mode
+      const danNum = classCurrentData.id === 'kaidan' ? 11 : parseInt(classCurrentData.id);
+      if (danNum && danNum > classHighestCleared) {
+        classHighestCleared = danNum;
+        localStorage.setItem('classHighestCleared', classHighestCleared);
+      }
+      classSongProgress = classCurrentData.songs.map(s => ({ name: s.customName, status: 'Pass' }));
+      finishRun(false);
+      return;
+    }
   }
+
 
   if (isClassicMode) {
     if (isStarted && !isPaused && classicTimerStartedAt) {
@@ -4917,8 +5001,6 @@ function updateEngineFrame(now) {
       }
     }
     starthpos += (classicScrollTarget - starthpos) * 0.18;
-  } else if (isClassMode) {
-    starthpos += (classScrollTarget - starthpos) * 0.18;
   } else if (isStarted && !isPaused) {
     let effectiveTps = currentBpm / currentBeats / 60;
     if (isReviveSlowdownActive) {
@@ -4955,6 +5037,10 @@ function startGame() {
   isStarted = true;
   hasStartedGameplay = true;
   isPaused = false;
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   startTime = performance.now();
   updatePauseButtonVisibility();
   isPlayInProgress = false; // Reset play progress flag when game actually starts
@@ -4962,6 +5048,10 @@ function startGame() {
 }
 
 function stopGame(showStart = true) {
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   clearQueuedTimeouts();
   resetEngineState();
   selectedSongData = null;
@@ -4983,7 +5073,13 @@ function stopGame(showStart = true) {
 
 function returnToMainMenu() {
   clearQueuedTimeouts();
+  isClassMode = false;
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
 
+  
   // Clean up classic mode timer
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -4993,16 +5089,7 @@ function returnToMainMenu() {
     classicTimerStartedAt = 0;
     isClassicMode = false;
   }
-
-  // Clean up Class mode
-  if (isClassMode) {
-    if (classPauseInterval) {
-      clearInterval(classPauseInterval);
-      classPauseInterval = null;
-    }
-    isClassMode = false;
-  }
-
+  
   resetEngineState();
   selectedSongData = null;
   lastLoadedJsonText = '';
@@ -5015,18 +5102,15 @@ function returnToMainMenu() {
   startScreen.classList.add('hidden');
   songListScreen.classList.add('hidden');
   challengesScreen.classList.add('hidden');
-  classScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-
+  
   updatePauseButtonVisibility();
 
   if (currentDockTab === 'music') {
     showMusicScreen();
   } else if (currentDockTab === 'challenges') {
     showChallengesScreen();
-  } else if (currentDockTab === 'class') {
-    showClassScreen();
   } else if (currentDockTab === 'settings') {
     showSettingsScreen();
   } else {
@@ -5087,18 +5171,15 @@ function resetTileForResume(tile) {
 function continueFromPause() {
   if (!isPaused) return;
 
-  // Check if Class mode pause timer has expired
-  if (isClassMode && classPauseRemaining <= 0) {
-    // Timer expired - force quit
-    finishClassRun(false);
-    return;
-  }
-
   captureCurrentSpeedState();
   preserveCurrentSpeedOnNextFrame = true;
   challengeLastAccelerationTime = performance.now();
 
   isPaused = false;
+  if (!isClassMode && typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   isStarted = false;
   if (!pausedWasStarted) {
     tiles.forEach((tile) => {
@@ -5109,19 +5190,6 @@ function continueFromPause() {
   }
   pausedWasStarted = false;
   pauseScreen.classList.add('hidden');
-
-  // Stop Class mode pause timer and reset resume button
-  if (isClassMode) {
-    if (classPauseInterval) {
-      clearInterval(classPauseInterval);
-      classPauseInterval = null;
-    }
-    const resumeBtn = document.getElementById('pause-continue-btn');
-    if (resumeBtn) {
-      resumeBtn.disabled = false;
-      resumeBtn.textContent = 'Resume';
-    }
-  }
 
   if (gameBoardWrapper) {
     // Preserve the loaded background when resuming from pause.
@@ -5210,7 +5278,7 @@ function togglePause() {
       
       // Calculate score based on completed height, same as normal release
       const completedHeight = Math.max(0, heldLongTile.playing - (heldLongTile.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight));
+      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; classCurrentHitTiles++; }
     }
     
     const nearestUntapped = getLowestManualTile();
@@ -5246,50 +5314,41 @@ function togglePause() {
   isStarted = false;
   challengeLastAccelerationTime = performance.now();
   pauseScreen.classList.remove('hidden');
-
-  // Handle Class mode pause timer
-  const classPauseTimerEl = document.getElementById('class-pause-timer');
-  const classPauseRemainingEl = document.getElementById('class-pause-remaining');
-  const resumeBtn = document.getElementById('pause-continue-btn');
-
-  // Hide timer and reset resume button for non-Class modes
-  if (!isClassMode) {
-    if (classPauseTimerEl) classPauseTimerEl.classList.add('hidden');
-    if (resumeBtn) {
-      resumeBtn.disabled = false;
-      resumeBtn.textContent = 'Resume';
+  if (isClassMode) {
+    const classTimerContainer = document.getElementById('class-pause-timer-container');
+    const classTimerEl = document.getElementById('class-pause-timer');
+    const btnResume = document.getElementById('pause-continue-btn');
+    if (classTimerContainer) classTimerContainer.classList.remove('hidden');
+    if (classTimerEl) classTimerEl.textContent = Math.ceil(classPauseTimer);
+    if (btnResume) btnResume.disabled = classPauseTimer <= 0;
+    if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+      clearInterval(classPauseInterval);
     }
-  } else {
-    // Show timer for Class mode
-    if (classPauseTimerEl) classPauseTimerEl.classList.remove('hidden');
-    if (classPauseRemainingEl) classPauseRemainingEl.textContent = `${classPauseRemaining}s`;
-
-    // Start countdown if timer hasn't expired
-    if (classPauseRemaining > 0) {
-      classPauseInterval = setInterval(() => {
-        classPauseRemaining--;
-        if (classPauseRemainingEl) {
-          classPauseRemainingEl.textContent = `${classPauseRemaining}s`;
-        }
-        if (classPauseRemaining <= 0) {
-          clearInterval(classPauseInterval);
-          classPauseInterval = null;
-          // Disable resume button
-          if (resumeBtn) {
-            resumeBtn.disabled = true;
-            resumeBtn.textContent = 'Time Expired';
-          }
-        }
-      }, 1000);
-    } else {
-      // Timer already expired - disable resume immediately
-      if (resumeBtn) {
-        resumeBtn.disabled = true;
-        resumeBtn.textContent = 'Time Expired';
+    classPauseInterval = setInterval(() => {
+      if (isStarted) {
+        clearInterval(classPauseInterval);
+        classPauseInterval = null;
+        return;
       }
-    }
+      classPauseTimer -= 1;
+      if (classTimerEl) classTimerEl.textContent = Math.ceil(classPauseTimer);
+      if (classPauseTimer <= 0) {
+        classPauseTimer = 0;
+        if (classTimerEl) classTimerEl.textContent = 0;
+        if (btnResume) btnResume.disabled = true;
+        clearInterval(classPauseInterval);
+        classPauseInterval = null;
+        if (!isPaused && !isStarted) {
+          failRun('timeout');
+        }
+      }
+    }, 1000);
+  } else {
+    const classTimerContainer = document.getElementById('class-pause-timer-container');
+    const btnResume = document.getElementById('pause-continue-btn');
+    if (classTimerContainer) classTimerContainer.classList.add('hidden');
+    if (btnResume) btnResume.disabled = false;
   }
-
   if (gameBoardWrapper) {
     // Keep the current gameplay background visible while paused.
     gameBoardWrapper.classList.add('game-playing');
@@ -5477,260 +5536,16 @@ function advanceClassicTilefield() {
   classicScrollTarget += 1;
 }
 
-function startClassMode(danKey, danInfo) {
-  // Reset game state
-  resetInputState();
-  isGameLoaded = false;
-  isStarted = false;
-  isPaused = false;
-  isPostReviveState = false;
-  isClassMode = true;
-  tiles = [];
-  currentScore = 0;
-  hpos = 0;
-  visualHposOffset = 0;
-  starthpos = key - 2;
-  classScrollTarget = starthpos;
-  classPauseTimer = 60;
-  classPauseRemaining = 60;
-  classTappedTiles = 0;
-  sheet = [];
-  info = [];
-  currentSectionIndex = 0;
-  currentSectionTileIndex = 0;
-  bgLevel = 1;
-  bgLevelPos = [];
-  speedLevel = 1;
-  speedLevelPos = [];
-  warr = new Array(key).fill(0);
-
-  // Store Dan data
-  classDanData = danInfo;
-  classDanData.key = danKey; // Store the Dan key for results display
-  classSongQueue = danInfo.songs.map(song => song.file);
-  classCurrentSongIndex = 0;
-  classStageResults = [];
-  classLoadFailCount = 0;
-
-  // Load first class song
-  loadNextClassSong();
-
-  // Show game interface
-  songListScreen.classList.add('hidden');
-  challengesScreen.classList.add('hidden');
-  classScreen.classList.add('hidden');
-  startScreen.classList.add('hidden');
-  gameoverScreen.classList.add('hidden');
-  settingsScreen.classList.add('hidden');
-  homeScreen.classList.add('hidden');
-
-  // Hide dock during gameplay
-  const sharedDock = document.getElementById('shared-dock');
-  if (sharedDock) {
-    sharedDock.classList.add('hidden');
-  }
-
-  // Hide shared top bar during gameplay
-  const sharedTopBar = document.getElementById('shared-top-bar');
-  if (sharedTopBar) {
-    sharedTopBar.classList.add('hidden');
-  }
-
-  // Show background immediately
-  if (gameBoardWrapper) {
-    gameBoardWrapper.classList.add('game-playing');
-  }
-}
-
-function loadNextClassSong() {
-  // Guard: stop retrying if we've failed every song in the current queue
-  if (classLoadFailCount >= classSongQueue.length) {
-    console.error('All class songs failed to load. Offline with no cache?');
-    classLoadFailCount = 0;
-    return;
-  }
-
-  if (classCurrentSongIndex >= classSongQueue.length) {
-    // All songs completed - show results
-    finishClassRun(true);
-    return;
-  }
-
-  const songName = classSongQueue[classCurrentSongIndex];
-  classCurrentSongIndex++;
-
-  // Load the song JSON directly
-  fetch(`song/${songName}.json`)
-    .then(response => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
-    })
-    .then(data => {
-      classLoadFailCount = 0; // reset on success
-
-      // If this is not the first song, add 10-tile break
-      if (classCurrentSongIndex > 1) {
-        // Add 10 empty tiles at the beginning of the song data
-        const breakTiles = [];
-        for (let i = 0; i < 10; i++) {
-          breakTiles.push({
-            type: 0, // Empty tile
-            hpos: i,
-            col: 0
-          });
-        }
-        // Prepend break tiles to the sheet
-        if (data.sheet && Array.isArray(data.sheet)) {
-          data.sheet = [...breakTiles, ...data.sheet];
-        }
-      }
-
-      loadSongObject(data, songName);
-    })
-    .catch(err => {
-      console.error('Failed to load class song:', songName, err);
-      classLoadFailCount++;
-      loadNextClassSong(); // skip to next, bounded by guard above
-    });
-}
-
-function advanceClassTilefield() {
-  classScrollTarget += 1;
-}
-
-function finishClassRun(success) {
-  // Mark current song as passed or failed
-  if (success) {
-    classStageResults.push('Pass');
-  } else {
-    // Mark current and all remaining songs as failed/incomplete
-    while (classStageResults.length < classDanData.songs.length) {
-      classStageResults.push('Fail');
-    }
-  }
-
-  // Update highest Dan level if all songs passed
-  const allPassed = classStageResults.every(result => result === 'Pass');
-  if (allPassed && classDanData && classDanData.key) {
-    updateHighestDanLevel(classDanData.key);
-  }
-
-  // Clean up Class mode state
-  if (classPauseInterval) {
-    clearInterval(classPauseInterval);
-    classPauseInterval = null;
-  }
-  isClassMode = false;
-  isPaused = false;
-  isStarted = false;
-  isGameLoaded = false;
-
-  // Show Class results screen
-  showClassResults();
-}
-
-function showClassResults() {
-  const resultsScreen = document.getElementById('results-screen');
-  if (!resultsScreen) return;
-
-  // Hide other screens
-  gameoverScreen.classList.add('hidden');
-  startScreen.classList.add('hidden');
-  songListScreen.classList.add('hidden');
-  challengesScreen.classList.add('hidden');
-  classScreen.classList.add('hidden');
-  settingsScreen.classList.add('hidden');
-  homeScreen.classList.add('hidden');
-
-  // Show results screen
-  resultsScreen.classList.remove('hidden');
-
-  // Hide dock during results
-  const sharedDock = document.getElementById('shared-dock');
-  if (sharedDock) {
-    sharedDock.classList.add('hidden');
-  }
-
-  // Populate Class-specific results
-  const danTitle = document.getElementById('results-song-title');
-  if (danTitle) {
-    danTitle.textContent = classDanData && classDanData.key ? classDanData.key : 'Class Results';
-  }
-
-  // Show overall result (Cleared/Failed)
-  const allPassed = classStageResults.every(result => result === 'Pass');
-  const overallResult = allPassed ? 'Cleared' : 'Failed';
-  const overallResultEl = document.getElementById('results-subtext');
-  if (overallResultEl) {
-    overallResultEl.textContent = overallResult;
-    overallResultEl.classList.add('text-2xl', 'font-bold');
-    overallResultEl.classList.remove('text-xl');
-  }
-
-  // Hide normal score/TPS display
-  const tpsEl = document.getElementById('results-tps');
-  const scoreEl = document.getElementById('results-main-score');
-  const lapsEl = document.getElementById('results-laps');
-  if (tpsEl) tpsEl.classList.add('hidden');
-  if (scoreEl) scoreEl.classList.add('hidden');
-  if (lapsEl) lapsEl.classList.add('hidden');
-
-  // Hide medals
-  const medalsEl = document.getElementById('results-medals');
-  if (medalsEl) medalsEl.classList.add('hidden');
-
-  // Show Pass/Fail progress for each song
-  const scoreElMain = document.getElementById('results-score');
-  if (scoreElMain) {
-    const progressHtml = classDanData.songs.map((song, index) => {
-      const result = classStageResults[index] || 'Incomplete';
-      const resultColor = result === 'Pass' ? 'text-green-500' : 'text-red-500';
-      return `
-        <div class="flex items-center justify-between py-2 border-b border-gray-200">
-          <span class="text-sm">${index + 1}. "${song.displayName}"</span>
-          <span class="text-sm font-bold ${resultColor}">${result}</span>
-        </div>
-      `;
-    }).join('');
-    scoreElMain.innerHTML = progressHtml;
-    scoreElMain.classList.remove('font-game', 'text-8xl', 'font-bold');
-    scoreElMain.classList.add('text-base');
-  }
-
-  // Hide retry button, show only return button
-  const backBtn = document.getElementById('results-back-btn');
-  if (backBtn) backBtn.classList.add('hidden');
-
-  // Update top dock with new highest Dan level
-  syncTopDockData();
-}
-
-function updateHighestDanLevel(danKey) {
-  // Dan order from highest to lowest
-  const danOrder = ['Kaidan', '10th Dan', '9th Dan', '8th Dan', '7th Dan', '6th Dan', '5th Dan', '4th Dan', '3rd Dan', '2nd Dan', '1st Dan'];
-  const currentIndex = danOrder.indexOf(danKey);
-  const currentHighestIndex = highestDanLevel ? danOrder.indexOf(highestDanLevel) : -1;
-
-  // Update if this Dan is higher than current highest
-  if (currentIndex !== -1 && (currentHighestIndex === -1 || currentIndex < currentHighestIndex)) {
-    highestDanLevel = danKey;
-    localStorage.setItem('opentile_highest_dan', danKey);
-  }
-}
-
-function loadHighestDanLevel() {
-  const stored = localStorage.getItem('opentile_highest_dan');
-  if (stored) {
-    highestDanLevel = stored;
-  }
-}
-
 function startClassicMode() {
   // Reset game state
   resetInputState();
   isGameLoaded = false;
   isStarted = false;
   isPaused = false;
+  if (typeof classPauseInterval !== 'undefined' && classPauseInterval) {
+    clearInterval(classPauseInterval);
+    classPauseInterval = null;
+  }
   isPostReviveState = false; // Reset revive flag when starting classic mode
   tiles = [];
   currentScore = 0;
@@ -6010,7 +5825,7 @@ async function renderLatestUpdates() {
 
 function updateDockSelection(nextTab) {
   currentDockTab = nextTab;
-  [dockHomeBtn, dockMusicBtn, dockChallengesBtn, dockClassBtn, dockSettingsBtn].forEach((button) => button?.classList.remove('selected'));
+  [dockHomeBtn, dockMusicBtn, dockChallengesBtn, dockSettingsBtn, dockClassBtn].forEach((button) => button?.classList.remove('selected'));
 
   if (nextTab === 'home') {
     dockHomeBtn?.classList.add('selected');
@@ -6031,32 +5846,25 @@ function setDockView(tab) {
     settingsScreen.classList.add('hidden');
   }
 
+  homeScreen.classList.add('hidden');
+  songListScreen.classList.add('hidden');
+  challengesScreen.classList.add('hidden');
+  if (classScreen) classScreen.classList.add('hidden');
+
   if (tab === 'home') {
     homeScreen.classList.remove('hidden');
-    songListScreen.classList.add('hidden');
-    challengesScreen.classList.add('hidden');
-    classScreen.classList.add('hidden');
     updateDockSelection('home');
     renderHomeScreen();
   } else if (tab === 'music') {
-    homeScreen.classList.add('hidden');
     songListScreen.classList.remove('hidden');
-    challengesScreen.classList.add('hidden');
-    classScreen.classList.add('hidden');
     updateDockSelection('music');
     renderSongList();
   } else if (tab === 'challenges') {
-    homeScreen.classList.add('hidden');
-    songListScreen.classList.add('hidden');
     challengesScreen.classList.remove('hidden');
-    classScreen.classList.add('hidden');
     updateDockSelection('challenges');
     renderChallenges();
   } else if (tab === 'class') {
-    homeScreen.classList.add('hidden');
-    songListScreen.classList.add('hidden');
-    challengesScreen.classList.add('hidden');
-    classScreen.classList.remove('hidden');
+    if (classScreen) classScreen.classList.remove('hidden');
     updateDockSelection('class');
     renderClassScreen();
   } else if (tab === 'settings') {
@@ -6096,6 +5904,7 @@ function showChallengesScreen() {
 function showClassScreen() {
   setDockView('class');
 }
+
 
 function showSettingsScreen() {
   previousDockTabBeforeSettings = currentDockTab === 'settings' ? previousDockTabBeforeSettings : currentDockTab;
@@ -6660,16 +6469,6 @@ window.addEventListener('pointercancel', (event) => {
   }
 });
 
-// Prevent double-tap zoom on iOS devices
-let lastTouchEnd = 0;
-document.addEventListener('touchend', (event) => {
-  const now = Date.now();
-  if (now - lastTouchEnd <= 300) {
-    event.preventDefault();
-  }
-  lastTouchEnd = now;
-}, false);
-
 // Prevent iOS zoom on pinch
 document.addEventListener('gesturestart', (event) => {
   event.preventDefault();
@@ -6702,3 +6501,142 @@ document.addEventListener('languageChanged', () => {
   if (typeof populateMusicSelect === 'function') populateMusicSelect();
 });
 rafId = requestAnimationFrame(frame);
+
+function renderClassScreen() {
+  const container = document.getElementById('class-list-container');
+  const highestCleared = document.getElementById('class-highest-cleared');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  let clearedText = "None";
+  if (classHighestCleared > 0) {
+    if (classHighestCleared === 11) clearedText = "Kaidan";
+    else clearedText = classHighestCleared + (classHighestCleared === 1 ? "st" : classHighestCleared === 2 ? "nd" : classHighestCleared === 3 ? "rd" : "th") + " Dan";
+  }
+  if (highestCleared) highestCleared.textContent = "Classification: " + clearedText;
+
+  // Render from highest (Kaidan) down to 1st
+  const sortedData = [...classData].reverse();
+  
+  sortedData.forEach((dan, index) => {
+    const item = document.createElement('div');
+    item.className = 'class-item';
+    if (dan.id === 'kaidan') item.classList.add('bg-kaidan');
+    else if (dan.id === '9th_dan' || dan.id === '10th_dan') item.classList.add('bg-grey');
+    
+    item.innerHTML = `
+      <div class="class-item-title">${dan.name}</div>
+      <div class="class-song-list">
+        ${dan.songs.map(s => `<span>"${s.customName}"</span>`).join('')}
+      </div>
+    `;
+    item.onclick = () => {
+      if (isPlayInProgress) return;
+      if (!spendLifeCost(1)) return;
+
+      isPlayInProgress = true;
+      animateLifeSpendFromTopBar();
+      playLifeIntroSound();
+      
+      const buttonEl = item;
+      buttonEl.style.transform = 'scale(0.9)';
+      setTimeout(() => {
+        buttonEl.style.transform = 'scale(1)';
+      }, 150);
+      
+      window.setTimeout(() => {
+        startClassMode(dan);
+      }, 1000);
+    };
+    container.appendChild(item);
+  });
+}
+
+function startClassMode(dan) {
+  isClassMode = true;
+  isClassicMode = false;
+  isChallengeMode = false;
+  classCurrentData = dan;
+  classSongIndex = 0;
+  classPauseTimer = 60;
+  classSongProgress = [];
+  classSongSectionStarts = [];
+  classSongTotalTiles = [];
+  
+  if (classScreen) classScreen.classList.add('hidden');
+  
+  loadClassCourse();
+}
+
+async function loadClassCourse() {
+  try {
+    let allMergedMusics = [];
+    let currentSectionOffset = 0;
+
+    for (let i = 0; i < classCurrentData.songs.length; i++) {
+      const songInfo = classCurrentData.songs[i];
+      const musicData = musicCsvData.find(m => m.musicJson === songInfo.fileName);
+      if (!musicData) throw new Error("Song not found: " + songInfo.fileName);
+
+      const r = await fetch(`song/${songInfo.fileName}.json`);
+      const sourceJson = await r.json();
+
+      const sectionIds = Object.keys(musicData.sections).map(Number).sort((a, b) => a - b);
+      const musics = Array.isArray(sourceJson.musics) ? sourceJson.musics : [];
+      
+      classSongSectionStarts.push(currentSectionOffset);
+      let lastBpm = 120;
+
+      sectionIds.forEach((sectionId) => {
+        const music = musics.find((entry) => parseInt(entry.id, 10) === sectionId);
+        const csvSection = musicData.sections[sectionId];
+        if (!music || !csvSection) return;
+        
+        lastBpm = csvSection.bpm || music.bpm || 120;
+        
+        allMergedMusics.push({
+          ...music,
+          id: currentSectionOffset++,
+          bpm: lastBpm,
+          baseBeats: music.baseBeats || csvSection.baseBeats || 0.5
+        });
+      });
+      
+      // Inject a break area (blank section) with explicit time-based duration
+      if (i < classCurrentData.songs.length - 1) {
+        allMergedMusics.push({
+          id: currentSectionOffset++,
+          bpm: lastBpm,
+          baseBeats: 8, // Several seconds of blank space
+          scores: [],
+          isExplicitBreak: true,
+          breakDurationSeconds: 3 // Explicit 3-second break
+        });
+      }
+    }
+
+    selectedSongData = {
+      label: classCurrentData.name,
+      scrollDuration: 100, 
+      musicJson: classCurrentData.songs[0].fileName,
+      bpm: allMergedMusics[0].bpm
+    };
+
+    loadSongObject({
+      baseBpm: allMergedMusics[0].bpm,
+      musics: allMergedMusics
+    }, classCurrentData.name);
+
+    const sharedDock = document.getElementById('shared-dock');
+    if (sharedDock) sharedDock.classList.add('hidden');
+
+    const sharedTopBar = document.getElementById('shared-top-bar');
+    if (sharedTopBar) sharedTopBar.classList.add('hidden');
+
+    if (gameBoardWrapper) gameBoardWrapper.classList.add('game-playing');
+
+  } catch (err) {
+    console.error(err);
+    finishRun(false);
+  }
+}

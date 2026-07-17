@@ -1,13 +1,14 @@
 {
   "updates": [
     {
-      "version": "v0.99.1 - RC1",
+      "version": "v0.99.2 - RC2",
       "date": "2026-07-16",
       "changes": [
 "Added selection songs display",
 "Added badges for challenges",
 "Changed the medal song number to actually use the PT2 sprite",
-"Corrected the acceleration constant period"
+"Corrected the acceleration constant period",
+"Added Dan system (beta)"
       ]
     }
   ]

@@ -2700,3 +2700,47 @@ body {
   color: #dc2626;
 }
 
+/* Responsive top bar on small devices */
+@media (max-width: 420px) {
+  .screen-top-bar {
+    gap: 0.25rem;
+    padding: 0.4rem 0.2rem;
+  }
+  .screen-top-bar-left,
+  .screen-top-bar-right {
+    gap: 0.25rem;
+  }
+  .screen-top-bar-box {
+    padding: 0.2rem 0.3rem;
+  }
+  .screen-top-bar-right .life-display-trigger {
+    padding: 0.2rem 0.3rem;
+  }
+  .screen-top-bar-profile-inner {
+    gap: 0.25rem;
+  }
+  .screen-top-bar-left {
+    max-width: calc(100% - 150px);
+  }
+  #player-name-text {
+    font-size: 0.75rem;
+  }
+  #class-highest-cleared {
+    font-size: 0.55rem;
+  }
+  #p-points-display {
+    font-size: 0.9rem;
+  }
+  #total-crowns, #total-stars, #life-count, .life-display-timer {
+    font-size: 0.75rem;
+  }
+  .screen-top-bar-right .life-display-icon svg {
+    width: 1rem;
+    height: 1rem;
+  }
+  .screen-top-bar-box img {
+    width: 1rem;
+    height: auto;
+  }
+}
+

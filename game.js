@@ -201,6 +201,13 @@ let lastAnimatedRewardTier = 0;
 // rather than the global classSongIndex (which is a look-ahead loading cursor
 // that advances before the hitline reaches the new song).
 function incrementClassHitTiles(tile) {
+  // Accompaniment tiles (long and single) are excluded from classSongTotalTiles
+  // in computeSectionScoreThresholds (type 9 / isAccompanimentTile).
+  // The numerator must match: skip them here so the denominator and numerator
+  // count exactly the same set of tiles, preventing premature 100%.
+  if (tile && (tile.isAccompanimentTile || tile.isAccompanimentSingle || tile.isAccompanimentLong)) {
+    return;
+  }
   const songIdx = (tile && tile.classSongIdx != null) ? tile.classSongIdx : (classSongIndex || 0);
   classCurrentHitTiles = (classCurrentHitTiles || 0) + 1;
   if (!classSongHitTiles[songIdx]) {
@@ -4171,11 +4178,19 @@ function updateHUD() {
     if (!isStarted && !isPaused && classPauseTimer > 0 && classPauseInterval) {
       scoreStr = String(Math.ceil(classPauseTimer));
     } else {
-      // Detect whether we're currently in the inter-song break gap:
-      // a _isClassBreakSpacer tile is only present in the tiles array while that
-      // invisible spacer tile is still scrolling between the hitline and the top.
+      // Detect whether we're currently in the visible blank gap between songs.
+      // Condition 1: a break spacer tile is in the buffer (confirms we're between songs).
+      // Condition 2: no non-spacer tile has entered the visible board area yet.
+      //   getTileBottom(t) >= 0 means the tile's bottom edge has crossed onto screen;
+      //   the moment that is true the board is no longer blank.
       const inDanBreak = tiles.some(t => t._isClassBreakSpacer);
-      if (inDanBreak) {
+      const boardStillBlank = inDanBreak && !tiles.some(t =>
+        !t._isClassBreakSpacer &&
+        !t.isAccompanimentTile &&
+        t.type !== 1 &&
+        getTileBottom(t) >= 0
+      );
+      if (boardStillBlank) {
         // Show which stage just finished (1-based).
         const completedStage = (classLastHitSongIndex || 0) + 1;
         scoreStr = `Stage ${completedStage} complete`;
@@ -4766,6 +4781,7 @@ function updateEngineFrame(now) {
             awardGranted: false,
             sectionIndex: currentSectionIndex,
             classSongIdx: classSongIdxForTile,
+            _isClassBreakSpacer: currentTile._isClassBreakSpacer || false,
             loopCount: songLoopCount
           });
           manualTileCount++;

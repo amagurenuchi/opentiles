@@ -143,7 +143,8 @@ let currentSectionTileIndex = 0;
 let songLoopCount = 0;
 let currentScore = 0;
 let classTotalPlayableTiles = 0;
-let classCurrentHitTiles = 0;
+let classSongHitTiles = []; // per-song hit tile counts (replaces old scalar classCurrentHitTiles)
+let classCurrentHitTiles = 0; // kept for legacy references, mirrors classSongHitTiles[classSongIndex]
 let classSongSectionStarts = [];
 let classSongTotalTiles = [];
 let starthpos = key - 2;
@@ -180,6 +181,8 @@ let classPauseTimer = 60;
 let classPauseInterval = null;
 let classHighestCleared = parseInt(localStorage.getItem('classHighestCleared') || '0', 10);
 let classSongProgress = [];
+let classLastHitSongIndex = 0; // song index of the most recently hit tile (hitline-based)
+let classCourseCleared = false; // true when all Dan songs are passed (set before finishRun)
 
 let challengeAcceleration = 0;
 let challengeLastAccelerationTime = 0;
@@ -192,6 +195,20 @@ let isAwardAnimationRunning = false;
 let awardAnimationTimeout = null;
 let lastHudRewardState = { stars: 0, crowns: 0 };
 let lastAnimatedRewardTier = 0;
+
+// Increment the class-mode hit-tile counter for both the legacy scalar and the
+// per-song array. Always use the HIT TILE's own song index (tile.classSongIdx)
+// rather than the global classSongIndex (which is a look-ahead loading cursor
+// that advances before the hitline reaches the new song).
+function incrementClassHitTiles(tile) {
+  const songIdx = (tile && tile.classSongIdx != null) ? tile.classSongIdx : (classSongIndex || 0);
+  classCurrentHitTiles = (classCurrentHitTiles || 0) + 1;
+  if (!classSongHitTiles[songIdx]) {
+    classSongHitTiles[songIdx] = 0;
+  }
+  classSongHitTiles[songIdx]++;
+  classLastHitSongIndex = songIdx; // track which song the player is currently on
+}
 
 function clearAwardAnimation() {
   if (awardAnimationTimeout) {
@@ -278,6 +295,9 @@ let pendingBgLevelIncrement = false;
 let pendingSpeedLevelIncrement = false;
 let bgLevelPosIndex = 0;
 let speedLevelPosIndex = 0;
+// Cached board rect — refreshed once per animation frame so touch handlers
+// never have to call getBoundingClientRect() themselves (avoids layout flushes).
+let _cachedBoardRect = null;
 const LIFE_MAX = 9999;
 const LIFE_REGEN_STOP_THRESHOLD = 30;
 const LIFE_REGEN_INTERVAL_MS = 5 * 60 * 1000;
@@ -2126,12 +2146,16 @@ function resetEngineState() {
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.remove('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
     gameBoardWrapper.style.removeProperty('--game-bg-image-1');
     gameBoardWrapper.style.removeProperty('--game-bg-image-2');
   }
   info = [];
   currentScore = 0;
   classCurrentHitTiles = 0;
+  classSongHitTiles = [];
+  classLastHitSongIndex = 0;
+  classCourseCleared = false;
   classTotalPlayableTiles = 0;
   hpos = 0;
   visualHposOffset = 0;
@@ -2748,7 +2772,8 @@ function getTileHitColumns(tile) {
 
 function isTileNearTap(tile, pointerEvent) {
   if (!pointerEvent) return true; // Keyboard input, assume proximity
-  const boardRect = boardEl.getBoundingClientRect();
+  // Use the per-frame cached rect to avoid forcing a layout flush here.
+  const boardRect = _cachedBoardRect || boardEl.getBoundingClientRect();
   const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
   const clickRow = Math.floor(clickYRel * key);
   
@@ -2756,7 +2781,9 @@ function isTileNearTap(tile, pointerEvent) {
   const tileBottomRow = Math.max(tileTopRow, Math.floor(getTileBottom(tile) - 0.01));
   
   // Check if tap is within the tile's vertical range
-  return clickRow >= tileTopRow && clickRow <= tileBottomRow;
+  // Use a ±1 row buffer so fast-scrolling tiles are still registerable when
+  // event delivery slightly lags the visual position.
+  return clickRow >= tileTopRow - 1 && clickRow <= tileBottomRow + 1;
 }
 
 function isTileNearAccompaniment(tile, pointerEvent) {
@@ -3020,8 +3047,8 @@ async function finishRun(showLibrary = false) {
   updatePauseButtonVisibility();
 
   if (isClassMode) {
-    // If we failed, populate classSongProgress dynamically
-    if (classSongProgress.length === 0 && classCurrentData) {
+    // If we failed (classCourseCleared is false), populate classSongProgress dynamically
+    if (!classCourseCleared && classSongProgress.length === 0 && classCurrentData) {
       classCurrentData.songs.forEach((s, idx) => {
         if (idx < classSongIndex) {
           classSongProgress.push({ name: s.customName, status: 'Pass' });
@@ -3164,6 +3191,8 @@ async function finishRun(showLibrary = false) {
       const ppointsEl = document.getElementById('p-points-display');
       const totalCrownsEl = document.getElementById('total-crowns');
       const totalStarsEl = document.getElementById('total-stars');
+      // Snapshot before the panel block may clear isClassMode
+      const wasClassMode = isClassMode;
 
       if (selectedSongData) {
         const num = selectedSongData.id ?? selectedSongData.mid ?? '';
@@ -3184,7 +3213,10 @@ async function finishRun(showLibrary = false) {
             <span class="${p.status === 'Pass' ? 'class-pass' : 'class-fail'}">${p.status}</span>
           </div>`
         ).join('');
-        if (titleEl) titleEl.textContent = classCurrentData.name;
+        if (titleEl) titleEl.textContent = classCurrentData?.name || '';
+        // Now that the results panel is fully rendered, tear down the class-mode state.
+        isClassMode = false;
+        classCourseCleared = false;
       } else {
         document.getElementById('results-standard-mode')?.classList.remove('hidden');
         document.getElementById('results-class-mode')?.classList.add('hidden');
@@ -3380,7 +3412,7 @@ async function finishRun(showLibrary = false) {
       const homeBtn = document.getElementById('results-home-btn');
       const favBtn = document.getElementById('results-fav-btn');
       
-      if (isClassMode) {
+      if (wasClassMode) {
         if (backBtn) backBtn.classList.add('hidden');
         if (favBtn) favBtn.classList.add('hidden');
       } else {
@@ -3593,7 +3625,7 @@ function tileMatchesColumn(tile, colIdx) {
 }
 
 function checkNormalSongAwards(reachedSection) {
-  if (!isStarted || isPaused || isClassicMode || isChallengeMode) {
+  if (!isStarted || isPaused || isClassicMode || isChallengeMode || isClassMode) {
     return;
   }
 
@@ -3693,18 +3725,24 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           playTileAudioNow(startTile);
           startTile.holdStarted = true;
           startTile.activeHoldColumn = colIdx;
-          const el = document.querySelector(`[data-tile-id="${startTile.id}"]`);
           if (pointerEvent) {
             startTile.tapScreenY = pointerEvent.clientY;
-          } else if (el) {
-            const rect = el.getBoundingClientRect();
-            const unitHeight = rect.height / startTile.hlen;
-            startTile.tapScreenY = rect.bottom - (unitHeight / 2);
+          } else {
+            // Keyboard fallback: derive tapScreenY from board geometry, avoiding
+            // a querySelector + getBoundingClientRect on the input hot path.
+            const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+            const tileBottom = getTileBottom(startTile);
+            const unitHeightPx = br.height / key;
+            startTile.tapScreenY = br.top + (tileBottom / key) * br.height - unitHeightPx / 2;
           }
-          if (el && startTile.tapScreenY) {
-            const rect = el.getBoundingClientRect();
-            const unitHeight = rect.height / startTile.hlen;
-            const tapDistFromTop = (startTile.tapScreenY - rect.top) / unitHeight;
+          {
+            // Compute completionPlaying from tile geometry (no DOM rect needed).
+            const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+            const tileTop = getTileTop(startTile);
+            const tileBottom = getTileBottom(startTile);
+            const tileTopPx = br.top + (tileTop / key) * br.height;
+            const tileHeightPx = ((tileBottom - tileTop) / key) * br.height;
+            const tapDistFromTop = (startTile.tapScreenY - tileTopPx) / tileHeightPx * startTile.hlen;
             startTile.completionPlaying = startTile.playing + tapDistFromTop - 0.5;
             startTile.tapPlaying = startTile.playing;
           }
@@ -3713,7 +3751,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
           startTile.ended = 1;
           triggerTileHitAnimation(startTile);
           playTileAudioNow(startTile);
-          if (!startTile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
+          if (!startTile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; incrementClassHitTiles(startTile); }
 
         } else if (startTile.type === 5) {
           if (!startTile.hitColumns.includes(colIdx)) {
@@ -3723,19 +3761,23 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
               startTile.clicked = true;
               startTile.ended = 1;
               triggerTileHitAnimation(startTile);
-              currentScore += 4; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
+              currentScore += 4; if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; incrementClassHitTiles(startTile); }
 
             }
           }
         } else if (startTile.type === 3) {
           playComboTapAudio(startTile);
-          spawnComboPlusOne(startTile, colIdx, pointerEvent);
-          spawnHitRipple(pointerEvent?.clientX ?? null, pointerEvent?.clientY ?? null, { tile: startTile, colIdx, big: true });
+          // Defer cosmetic DOM mutations so they don't delay the next touch event.
+          const _stSnapTile = startTile, _stSnapCol = colIdx, _stSnapPx = pointerEvent?.clientX ?? null, _stSnapPy = pointerEvent?.clientY ?? null;
+          queueMicrotask(() => {
+            spawnComboPlusOne(_stSnapTile, _stSnapCol, null);
+            spawnHitRipple(_stSnapPx, _stSnapPy, { tile: _stSnapTile, colIdx: _stSnapCol, big: true });
+          });
           startTile.remainingTaps = Math.max(0, (startTile.remainingTaps || startTile.taps || 2) - 1);
           if (startTile.remainingTaps <= 0) {
             startTile.clicked = true;
             startTile.ended = 1;
-            currentScore += Math.max(2, startTile.taps || 2); if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; classCurrentHitTiles++; }
+            currentScore += Math.max(2, startTile.taps || 2); if (isClassMode && !startTile.classHitCounted) { startTile.classHitCounted = true; incrementClassHitTiles(startTile); }
 
           }
         } else {
@@ -3763,14 +3805,19 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   }
 
   if (pointerEvent) {
-    const boardRect = boardEl.getBoundingClientRect();
+    // Use the per-frame cached rect to avoid a synchronous layout flush.
+    const boardRect = _cachedBoardRect || boardEl.getBoundingClientRect();
     const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
     const clickUnits = clickYRel * key;
     
     const tileTop = getTileTop(tile);
     const tileBottom = getTileBottom(tile);
 
-    if (clickUnits < tileTop || clickUnits > tileBottom) {
+    // Add a vertical forgiveness buffer (±1.5 tile-units) so that taps whose
+    // pointer events arrive slightly after the tile has scrolled past the exact
+    // touch point are still accepted.  Column (X) discrimination stays strict.
+    const yBuffer = 1.5;
+    if (clickUnits < tileTop - yBuffer || clickUnits > tileBottom + yBuffer) {
       return;
     }
   }
@@ -3809,18 +3856,22 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         longAccompanimentTile.activeHoldColumn = colIdx;
         longAccompanimentTile.played = true;
         longAccompanimentTile.audioPlayed = true;
-        const el = document.querySelector(`[data-tile-id="${longAccompanimentTile.id}"]`);
         if (pointerEvent) {
           longAccompanimentTile.tapScreenY = pointerEvent.clientY;
-        } else if (el) {
-          const rect = el.getBoundingClientRect();
-          const unitHeight = rect.height / longAccompanimentTile.hlen;
-          longAccompanimentTile.tapScreenY = rect.bottom - (unitHeight / 2);
+        } else {
+          // Keyboard fallback: derive tapScreenY from board geometry.
+          const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+          const tileBottom = getTileBottom(longAccompanimentTile);
+          const unitHeightPx = br.height / key;
+          longAccompanimentTile.tapScreenY = br.top + (tileBottom / key) * br.height - unitHeightPx / 2;
         }
-        if (el && longAccompanimentTile.tapScreenY) {
-          const rect = el.getBoundingClientRect();
-          const unitHeight = rect.height / longAccompanimentTile.hlen;
-          const tapDistFromTop = (longAccompanimentTile.tapScreenY - rect.top) / unitHeight;
+        {
+          const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+          const tileTop = getTileTop(longAccompanimentTile);
+          const tileBottom = getTileBottom(longAccompanimentTile);
+          const tileTopPx = br.top + (tileTop / key) * br.height;
+          const tileHeightPx = ((tileBottom - tileTop) / key) * br.height;
+          const tapDistFromTop = (longAccompanimentTile.tapScreenY - tileTopPx) / tileHeightPx * longAccompanimentTile.hlen;
           longAccompanimentTile.completionPlaying = longAccompanimentTile.playing + tapDistFromTop - 0.5;
           longAccompanimentTile.tapPlaying = longAccompanimentTile.playing;
         }
@@ -3892,7 +3943,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       activeLongInOtherCol.played = true;
       
       const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; classCurrentHitTiles++; }
+      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
       
       if (!tileMatchesColumn(tile, colIdx)) {
         return;
@@ -3930,7 +3981,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     tile.ended = 1;
     triggerTileHitAnimation(tile);
     playTileAudioNow(tile);
-    if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+    if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
     
     // Classic mode: increment tapped tiles and advance field
@@ -3949,7 +4000,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         tile.clicked = true;
         tile.ended = 1;
         triggerTileHitAnimation(tile);
-        currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+        currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
         
         // Classic mode: increment tapped tiles and advance field
@@ -3964,13 +4015,17 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
 
   if (tile.type === 3) {
     playComboTapAudio(tile);
-    spawnComboPlusOne(tile, colIdx, pointerEvent);
-    spawnHitRipple(pointerEvent?.clientX ?? null, pointerEvent?.clientY ?? null, { tile, colIdx, big: true });
+    // Defer cosmetic DOM mutations so they don't delay the next touch event.
+    const _snapTile = tile, _snapCol = colIdx, _snapPx = pointerEvent?.clientX ?? null, _snapPy = pointerEvent?.clientY ?? null;
+    queueMicrotask(() => {
+      spawnComboPlusOne(_snapTile, _snapCol, null);
+      spawnHitRipple(_snapPx, _snapPy, { tile: _snapTile, colIdx: _snapCol, big: true });
+    });
     tile.remainingTaps = Math.max(0, (tile.remainingTaps || tile.taps || 2) - 1);
     if (tile.remainingTaps <= 0) {
       tile.clicked = true;
       tile.ended = 1;
-      currentScore += Math.max(2, tile.taps || 2); if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+      currentScore += Math.max(2, tile.taps || 2); if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
       
       // Classic mode: increment tapped tiles and advance field
@@ -3990,20 +4045,26 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       playTileAudioNow(tile);
       tile.holdStarted = true;
       tile.activeHoldColumn = colIdx;
-      
-      const el = document.querySelector(`[data-tile-id="${tile.id}"]`);
+
       if (pointerEvent) {
         tile.tapScreenY = pointerEvent.clientY;
-      } else if (el) {
-        const rect = el.getBoundingClientRect();
-        const unitHeight = rect.height / tile.hlen;
-        tile.tapScreenY = rect.bottom - (unitHeight / 2);
+      } else {
+        // Keyboard fallback: derive tapScreenY from board geometry, avoiding
+        // a querySelector + getBoundingClientRect on the input hot path.
+        const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+        const tileBottom = getTileBottom(tile);
+        const unitHeightPx = br.height / key;
+        tile.tapScreenY = br.top + (tileBottom / key) * br.height - unitHeightPx / 2;
       }
 
-      if (el && tile.tapScreenY) {
-        const rect = el.getBoundingClientRect();
-        const unitHeight = rect.height / tile.hlen;
-        const tapDistFromTop = (tile.tapScreenY - rect.top) / unitHeight;
+      {
+        // Compute completionPlaying from tile geometry (no DOM rect needed).
+        const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+        const tileTop = getTileTop(tile);
+        const tileBottom = getTileBottom(tile);
+        const tileTopPx = br.top + (tileTop / key) * br.height;
+        const tileHeightPx = ((tileBottom - tileTop) / key) * br.height;
+        const tapDistFromTop = (tile.tapScreenY - tileTopPx) / tileHeightPx * tile.hlen;
         tile.completionPlaying = tile.playing + tapDistFromTop - 0.5;
         tile.tapPlaying = tile.playing;
       }
@@ -4022,7 +4083,7 @@ function handleManualInputUp(colIdx) {
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
     
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
-    currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; classCurrentHitTiles++; }
+    currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
 
   }
 }
@@ -4110,15 +4171,29 @@ function updateHUD() {
     if (!isStarted && !isPaused && classPauseTimer > 0 && classPauseInterval) {
       scoreStr = String(Math.ceil(classPauseTimer));
     } else {
-      const songTiles = (classSongTotalTiles && classSongTotalTiles[classSongIndex]) || 1;
-      const songProgressFrac = Math.min(1, Math.max(0, classCurrentHitTiles / songTiles));
-      const songProgress = songProgressFrac * 100;
-      scoreStr = `${songProgress.toFixed(1)}%`;
+      // Detect whether we're currently in the inter-song break gap:
+      // a _isClassBreakSpacer tile is only present in the tiles array while that
+      // invisible spacer tile is still scrolling between the hitline and the top.
+      const inDanBreak = tiles.some(t => t._isClassBreakSpacer);
+      if (inDanBreak) {
+        // Show which stage just finished (1-based).
+        const completedStage = (classLastHitSongIndex || 0) + 1;
+        scoreStr = `Stage ${completedStage} complete`;
+      } else {
+        // Use classLastHitSongIndex — the song of the most recently hit tile —
+        // so the % is always tied to the hitline, not the look-ahead loading cursor.
+        const displaySong = classLastHitSongIndex || 0;
+        const hitForSong = (classSongHitTiles && classSongHitTiles[displaySong]) || 0;
+        const songTiles = (classSongTotalTiles && classSongTotalTiles[displaySong]) || 1;
+        const songProgressFrac = Math.min(1, Math.max(0, hitForSong / songTiles));
+        const songProgress = songProgressFrac * 100;
+        scoreStr = `${songProgress.toFixed(1)}%`;
+      }
     }
     if (scoreDisplay._lastText !== scoreStr) {
       scoreDisplay._lastText = scoreStr;
-      scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
-        `<span class="score-digit-wrapper">${digit}</span>`
+      scoreDisplay.innerHTML = scoreStr.split('').map(ch =>
+        `<span class="score-digit-wrapper">${ch}</span>`
       ).join('');
     }
 
@@ -4126,9 +4201,18 @@ function updateHUD() {
       tpsDisplayNormal?.classList.remove('hidden');
       if (tpsDisplayNormal) {
         const totalSongs = classCurrentData.songs.length;
-        const songTiles = (classSongTotalTiles && classSongTotalTiles[classSongIndex]) || 1;
-        const songProgressFrac = Math.min(1, Math.max(0, classCurrentHitTiles / songTiles));
-        const danProgress = ((classSongIndex + songProgressFrac) / totalSongs) * 100;
+        // Sum across all per-song buckets for the overall Dan % bar.
+        // Each bucket only grows when tiles of that song are actually hit,
+        // so this value can never jump backwards or skip ahead.
+        let totalHit = 0;
+        let totalExpected = 0;
+        for (let si = 0; si < totalSongs; si++) {
+          const songTiles = (classSongTotalTiles && classSongTotalTiles[si]) || 1;
+          const hitCount = (classSongHitTiles && classSongHitTiles[si]) || 0;
+          totalHit += Math.min(hitCount, songTiles);
+          totalExpected += songTiles;
+        }
+        const danProgress = totalExpected > 0 ? (totalHit / totalExpected) * 100 : 0;
         const danText = `${danProgress.toFixed(1)}%`;
         if (tpsDisplayNormal._lastText !== danText) {
           tpsDisplayNormal._lastText = danText;
@@ -4407,15 +4491,19 @@ function renderTiles() {
       if (played && !ended) {
         let orbCenterBottomPercent = 0;
         
-        // Keep the light orb at the absolute screen position where it was tapped
+        // Keep the light orb at the absolute screen position where it was tapped.
+        // Compute from board geometry instead of calling getBoundingClientRect() each
+        // frame — that was causing a layout flush on every RAF tick per held tile.
         if (tile.tapScreenY && !isReleased) {
-          const tileRect = el.getBoundingClientRect();
-          const tileScreenTop = tileRect.top;
-          
-          const orbScreenY = tile.tapScreenY;
-          const orbRelativeY = orbScreenY - tileScreenTop;
-          const orbRelativePercent = (orbRelativeY / tileRect.height) * 100;
-          
+          const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+          const tileTop = getTileTop(tile);
+          const tileEffH = getTileEffectiveHeight(tile);
+          const tileScreenTop = br.top + (tileTop / key) * br.height;
+          const tileScreenHeight = (tileEffH / key) * br.height;
+
+          const orbRelativeY = tile.tapScreenY - tileScreenTop;
+          const orbRelativePercent = (orbRelativeY / tileScreenHeight) * 100;
+
           orbCenterBottomPercent = 100 - orbRelativePercent;
         } else {
           // Fallback to normal behavior for released tiles or when tapScreenY is not available
@@ -4488,15 +4576,6 @@ function updateEngineFrame(now) {
     } else if (isClassicMode) {
       nextBpm = currentBpm;
       nextBeats = currentBeats;
-    } else if (isClassMode && info[currentSectionIndex] && info[currentSectionIndex].isExplicitBreak) {
-      // Use explicit time-based break for Class mode
-      // breakDurationSeconds is stored in the section info, convert to beats-based equivalent
-      const breakDuration = info[currentSectionIndex].breakDurationSeconds || 3;
-      const baseBpm = info[currentSectionIndex].bpm || 120;
-      const baseBeats = info[currentSectionIndex].beats || 0.5;
-      // Calculate beats needed for the desired time duration
-      nextBpm = baseBpm;
-      nextBeats = (baseBpm * breakDuration) / 60; // beats = bpm * seconds / 60
     } else {
       const baseSpeed = getRuntimeSpeed(speedLevel - 1);
       nextBpm = baseSpeed.bpm;
@@ -4571,6 +4650,16 @@ function updateEngineFrame(now) {
         const isLastTileInSection = sectionTileIndex === sheet[currentSectionIndex].length - 1;
         currentSectionTileIndex++;
 
+        // Compute which Dan song this tile belongs to at spawn time so that
+        // incrementClassHitTiles can credit the correct per-song bucket even
+        // when currentSectionIndex (the loading cursor) is already ahead.
+        let classSongIdxForTile = 0;
+        if (isClassMode && classSongSectionStarts && classSongSectionStarts.length > 0) {
+          for (let si = 0; si < classSongSectionStarts.length; si++) {
+            if (currentSectionIndex >= classSongSectionStarts[si]) classSongIdxForTile = si;
+          }
+        }
+
         if (isAccompanimentTile) {
           const { longColumn } = getAccompanimentTilePos();
           const longWarr = new Array(key).fill(0);
@@ -4605,6 +4694,7 @@ function updateEngineFrame(now) {
             isAccompanimentTile: true,
             accompanimentSequenceId: currentSequenceId,
             sectionIndex: currentSectionIndex,
+            classSongIdx: classSongIdxForTile,
             loopCount: songLoopCount
           });
 
@@ -4644,6 +4734,7 @@ function updateEngineFrame(now) {
               isAccompanimentTile: true,
               accompanimentSequenceId: currentSequenceId,
               sectionIndex: currentSectionIndex,
+              classSongIdx: classSongIdxForTile,
               loopCount: songLoopCount
             });
           }
@@ -4674,6 +4765,7 @@ function updateEngineFrame(now) {
             isSectionAwardTile: isLastTileInSection,
             awardGranted: false,
             sectionIndex: currentSectionIndex,
+            classSongIdx: classSongIdxForTile,
             loopCount: songLoopCount
           });
           manualTileCount++;
@@ -4686,10 +4778,16 @@ function updateEngineFrame(now) {
           visualHposOffset += currentTile.hlen - 2;
         }
       } else {
-        bgLevelPos.push(hpos - 4 + key);
+        // Class mode suppresses background transitions between sections.
+        if (!isClassMode) {
+          bgLevelPos.push(hpos - 4 + key);
+        }
         // Advance the normal-song award threshold one tile earlier so it can trigger
         // at the end of the current section rather than the next section's first tile.
-        speedLevelPos.push(hpos - 2 + key);
+        // Class mode has no star/crown awards, so skip the speedLevelPos push too.
+        if (!isClassMode) {
+          speedLevelPos.push(hpos - 2 + key);
+        }
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }
@@ -4754,7 +4852,7 @@ function updateEngineFrame(now) {
               tile.ended++;
             }
           } else if (tile.played && !tile.ended) {
-            currentScore++; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+            currentScore++; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -4763,7 +4861,7 @@ function updateEngineFrame(now) {
           break;
         case 5:
           if (tile.played && !tile.ended) {
-            currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+            currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -4791,7 +4889,7 @@ function updateEngineFrame(now) {
               spawnComboPlusOne(tile, autoComboColIdx, null);
               spawnHitRipple(autoRippleX, autoRippleY, { tile, colIdx: autoComboColIdx, big: true });
               tile.remainingTaps = Math.max(0, (tile.remainingTaps || tile.taps || 2) - 1);
-              currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+              currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
               if (tile.remainingTaps <= 0) {
                 tile.clicked = true;
                 tile.ended = 1;
@@ -4804,7 +4902,7 @@ function updateEngineFrame(now) {
         case 6:
           if (tile.playing > tile.hlen - 1) {
             if (!tile.ended) {
-              currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+              currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
               tile.clicked = true;
               tile.ended = 1;
             } else {
@@ -4827,7 +4925,7 @@ function updateEngineFrame(now) {
             if (tile.type === 3) scoreDelta = tile.scores.length - 1;
             if (tile.type === 10) scoreDelta = 0;
             if (!tile.ended) {
-              currentScore += Math.round(scoreDelta) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+              currentScore += Math.round(scoreDelta) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
               tile.clicked = true;
               tile.ended = 1;
             } else {
@@ -4841,7 +4939,7 @@ function updateEngineFrame(now) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
-        currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; classCurrentHitTiles++; }
+        currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
       } else if ((tile.clicked || tile.holdCompleted) && tile.ended) {
         tile.ended++;
       }
@@ -4921,24 +5019,32 @@ function updateEngineFrame(now) {
         if (currentSectionIndex >= classSongSectionStarts[i]) newIndex = i;
       }
     }
-    // Only reset progress when we actually encounter tiles from the next song
-    // (not when entering a break section between songs)
+    // Advance the loading song index when we actually enter a new song's sections.
+    // Break sections (isExplicitBreak) have only spacer tiles and no playable content;
+    // we skip advancing while in those to avoid premature index changes.
     if (newIndex !== classSongIndex) {
-      // Check if the current section has tiles (break sections have empty scores array)
-      const currentSectionHasTiles = sheet[currentSectionIndex] && sheet[currentSectionIndex].length > 0;
+      // Check if the current section contains a non-break tile (break sections only have spacers)
+      const currentSectionIsBreak = sheet[currentSectionIndex] &&
+        sheet[currentSectionIndex].length > 0 &&
+        sheet[currentSectionIndex].every(t => t._isClassBreakSpacer);
+      const currentSectionHasTiles = sheet[currentSectionIndex] &&
+        sheet[currentSectionIndex].length > 0 &&
+        !currentSectionIsBreak;
       if (currentSectionHasTiles) {
-        // Only update classSongIndex if we're actually transitioning to a new song
-        // This prevents premature resets when the section index changes within the same song
+        // Only advance when we're entering real playable sections of the next song
         if (newIndex > classSongIndex) {
           classSongIndex = newIndex;
-          classCurrentHitTiles = 0; // reset hit counter for the new song
+          // Do NOT reset classCurrentHitTiles here; per-song tracking uses classSongHitTiles[]
+          classCurrentHitTiles = (classSongHitTiles && classSongHitTiles[classSongIndex]) || 0;
         }
       }
     }
 
     // Complete Dan course when all tiles are cleared and sheet is exhausted
     if (tiles.length === 0 && currentSectionIndex >= sheet.length) {
-      isClassMode = false; // end mode
+      // Signal a successful clear BEFORE calling finishRun so that isClassMode
+      // remains true inside finishRun and the class results panel is shown.
+      classCourseCleared = true;
       const danNum = classCurrentData.id === 'kaidan' ? 11 : parseInt(classCurrentData.id);
       if (danNum && danNum > classHighestCleared) {
         classHighestCleared = danNum;
@@ -5001,6 +5107,10 @@ function updateEngineFrame(now) {
 }
 
 function frame(now) {
+  // Refresh the board rect cache once per frame so all gameplay code can read
+  // it without triggering synchronous layout calculations.
+  _cachedBoardRect = boardEl.getBoundingClientRect();
+
   if (isGameLoaded) {
     updateEngineFrame(now);
     updateHUD();
@@ -5116,6 +5226,9 @@ function returnToMainMenu() {
     showChallengesScreen();
   } else if (currentDockTab === 'settings') {
     showSettingsScreen();
+  } else if (currentDockTab === 'class') {
+    // Return to the class screen so the updated Classification rank is shown immediately.
+    showClassScreen();
   } else {
     showHomeScreen();
   }
@@ -5281,7 +5394,7 @@ function togglePause() {
       
       // Calculate score based on completed height, same as normal release
       const completedHeight = Math.max(0, heldLongTile.playing - (heldLongTile.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; classCurrentHitTiles++; }
+      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; incrementClassHitTiles(heldLongTile); }
     }
     
     const nearestUntapped = getLowestManualTile();
@@ -6577,6 +6690,8 @@ async function loadClassCourse() {
   try {
     let allMergedMusics = [];
     let currentSectionOffset = 0;
+    const breakSectionIndices = []; // track which section offsets are inter-song breaks
+    const BREAK_DURATION_SECONDS = 3;
 
     for (let i = 0; i < classCurrentData.songs.length; i++) {
       const songInfo = classCurrentData.songs[i];
@@ -6591,6 +6706,7 @@ async function loadClassCourse() {
       
       classSongSectionStarts.push(currentSectionOffset);
       let lastBpm = 120;
+      let lastBaseBeats = 0.5;
 
       sectionIds.forEach((sectionId) => {
         const music = musics.find((entry) => parseInt(entry.id, 10) === sectionId);
@@ -6598,24 +6714,30 @@ async function loadClassCourse() {
         if (!music || !csvSection) return;
         
         lastBpm = csvSection.bpm || music.bpm || 120;
+        lastBaseBeats = music.baseBeats || csvSection.baseBeats || 0.5;
         
         allMergedMusics.push({
           ...music,
           id: currentSectionOffset++,
           bpm: lastBpm,
-          baseBeats: music.baseBeats || csvSection.baseBeats || 0.5
+          baseBeats: lastBaseBeats
         });
       });
       
-      // Inject a break area (blank section) with explicit time-based duration
+      // Inject a break gap between songs (not after the last song)
       if (i < classCurrentData.songs.length - 1) {
+        // Record this section offset so we can inject spacer tiles after loadSongObject
+        breakSectionIndices.push(currentSectionOffset);
+        // Use baseBeats matching the last song section so tile size is consistent.
+        // scores is a single rest character to ensure strToTiles produces a non-empty base
+        // for the section — the actual spacer tile will be injected post-load.
         allMergedMusics.push({
           id: currentSectionOffset++,
           bpm: lastBpm,
-          baseBeats: 8, // Several seconds of blank space
-          scores: [],
+          baseBeats: lastBaseBeats,
+          scores: [''], // empty string → strToTiles returns [] → sheet entry becomes []
           isExplicitBreak: true,
-          breakDurationSeconds: 3 // Explicit 3-second break
+          breakDurationSeconds: BREAK_DURATION_SECONDS
         });
       }
     }
@@ -6631,6 +6753,29 @@ async function loadClassCourse() {
       baseBpm: allMergedMusics[0].bpm,
       musics: allMergedMusics
     }, classCurrentData.name);
+
+    // Post-process: inject blank spacer tiles into each break section so the gap
+    // is visually represented as scrolling empty space between songs.
+    // At scroll speed = bpm/beats/60 tiles-per-second, a gap of BREAK_DURATION_SECONDS
+    // seconds needs hlen = speed * duration tiles of blank space.
+    for (const breakIdx of breakSectionIndices) {
+      if (sheet[breakIdx] !== undefined) {
+        // Determine the speed from the info entry for this section
+        const breakInfo = info[breakIdx];
+        const bpm = (breakInfo && breakInfo.bpm) || allMergedMusics[0].bpm || 120;
+        const beats = (breakInfo && breakInfo.beats) || 0.5;
+        const tilesPerSecond = bpm / beats / 60;
+        const spacerHlen = Math.max(1, tilesPerSecond * BREAK_DURATION_SECONDS);
+        // Insert a single invisible (type 1) spacer tile tagged so the engine can
+        // identify it as a break spacer and ignore it for song-index tracking.
+        sheet[breakIdx] = [{
+          type: 1,
+          scores: [],
+          hlen: spacerHlen,
+          _isClassBreakSpacer: true
+        }];
+      }
+    }
 
     const sharedDock = document.getElementById('shared-dock');
     if (sharedDock) sharedDock.classList.add('hidden');

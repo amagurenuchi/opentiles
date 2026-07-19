@@ -54,6 +54,7 @@
     "electron@32.3.3": true
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "firebase": "^12.16.0"
   }
 }

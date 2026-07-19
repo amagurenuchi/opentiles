@@ -6,6 +6,7 @@
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
+require('dotenv').config();
 
 // Load Firebase configuration from environment variables
 const firebaseConfig = {

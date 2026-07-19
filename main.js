@@ -2,6 +2,7 @@ const { app, BrowserWindow, session, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+require('dotenv').config();
 
 let mainWindow;
 let server;

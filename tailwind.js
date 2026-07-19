@@ -21,7 +21,8 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0;
-  user-select: none;
+  -moz-user-select: none;
+       user-select: none;
   -webkit-user-select: none;
   text-shadow: 0px 3px 0px rgba(128, 128, 128, 0.1);
   touch-action: manipulation;
@@ -317,6 +318,7 @@ body {
 }
 
 .screen-top-bar-entry {
+  min-width: -moz-max-content;
   min-width: max-content;
 }
 
@@ -2130,7 +2132,9 @@ body {
   padding: 12px 16px;
   gap: 16px;
   min-height: 120px;
-  user-select: none;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
   position: relative;
 }
 
@@ -2619,7 +2623,8 @@ body {
 .challenge-badge-icon {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  -o-object-fit: contain;
+     object-fit: contain;
 }
 
 .challenge-card .song-card-artist {

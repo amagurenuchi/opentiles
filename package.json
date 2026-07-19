@@ -1,0 +1,56 @@
+{
+  "name": "opentile",
+  "version": "1.0.0",
+  "description": "Piano Tiles 2 clone",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "piano-tiles",
+    "game",
+    "electron",
+    "offline"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "autoprefixer": "^10.5.4",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.5.20",
+    "postcss-cli": "^11.0.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "build": {
+    "appId": "com.opentile.game",
+    "productName": "OpenTile",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "special/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "special/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "special/icon.png"
+    }
+  },
+  "allowScripts": {
+    "electron@32.3.3": true
+  }
+}

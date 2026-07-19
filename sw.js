@@ -8,6 +8,7 @@ const CORE_ASSETS = [
   './style.css',
   './game.js',
   './i18n.js',
+  './tailwind.js',
   './translations.csv',
   './language_music.csv',
   './music_json.csv',
@@ -26,10 +27,7 @@ self.addEventListener('install', (event) => {
       const resolvedUrls = CORE_ASSETS.map(asset => new URL(asset, self.location.href).href);
       resolvedUrls.forEach(url => CORE_URLS.add(url));
       
-      // Add Tailwind CSS CDN to core assets for offline styles
-      const tailwindUrl = 'https://cdn.tailwindcss.com';
-      
-      return cache.addAll([...resolvedUrls, tailwindUrl]).catch(err => {
+      return cache.addAll(resolvedUrls).catch(err => {
         console.warn('Failed to pre-cache some core assets during install:', err);
       });
     })
@@ -57,11 +55,9 @@ self.addEventListener('fetch', (event) => {
 
   const requestUrl = new URL(event.request.url);
   const isSameOrigin = requestUrl.origin === self.location.origin;
-  const isTailwind = requestUrl.hostname === 'cdn.tailwindcss.com';
-  const isGoogleFonts = requestUrl.hostname === 'fonts.googleapis.com' || requestUrl.hostname === 'fonts.gstatic.com';
 
-  // Only intercept same-origin and approved CDNs
-  if (!isSameOrigin && !isTailwind && !isGoogleFonts) return;
+  // Only intercept same-origin requests (all assets are now local)
+  if (!isSameOrigin) return;
 
   const urlHref = event.request.url;
   

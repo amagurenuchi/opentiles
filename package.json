@@ -39,18 +39,21 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "special/icon.ico"
+      "icon": "special/logo.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "special/icon.icns"
+      "icon": "special/logo.png"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "special/icon.png"
+      "icon": "special/logo.png"
     }
   },
   "allowScripts": {
     "electron@32.3.3": true
+  },
+  "dependencies": {
+    "firebase": "^12.16.0"
   }
 }

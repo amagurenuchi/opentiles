@@ -1,5 +1,22 @@
 'use strict';
 
+// Firebase imports from CDN (for direct auth usage in game.js)
+import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+// Firebase integration functions
+import {
+  initializeGameFirebase,
+  getAuthInstance,
+  isFirebaseAvailable,
+  syncLivesToFirestore,
+  saveSongLevelToFirestore,
+  syncAllUserDataToFirestore,
+  loadAllUserDataFromFirestore
+} from './firebase-integration.js';
+
+let firebaseReady = false;
+let auth = null;
+
 const restMap = { Q: 8, R: 4, S: 2, T: 1, U: 0.5, V: 0.25, W: 0.125, X: 0.0625, Y: 0.03125 };
 const beatsMap = { H: 8, I: 4, J: 2, K: 1, L: 0.5, M: 0.25, N: 0.125, O: 0.0625, P: 0.03125 };
 const playTypes = {
@@ -77,8 +94,210 @@ const lifeCountEls = [
 const lifeTimerEls = [
   document.getElementById('life-timer')
 ].filter(Boolean);
+const googleLoginCard = document.getElementById('google-login-card');
+const googleLoginBtn = document.getElementById('google-login-btn');
+const loginPillPPoints = document.getElementById('login-pill-ppoints');
+const loginPillCrowns = document.getElementById('login-pill-crowns');
+const loginPillStars = document.getElementById('login-pill-stars');
 let currentDockTab = 'home';
 let previousDockTabBeforeSettings = 'home';
+
+// Firebase configuration - loaded from firebase-config-browser.js
+const firebaseConfig = window.firebaseConfig || {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+
+// Firebase Authentication functions
+function updateLoginPillStats() {
+  const { earnedPPoints, totalStars, totalCrowns } = calculateEarnedPPoints();
+  if (loginPillPPoints) loginPillPPoints.textContent = String(earnedPPoints);
+  if (loginPillCrowns) loginPillCrowns.textContent = String(totalCrowns);
+  if (loginPillStars) loginPillStars.textContent = String(totalStars);
+}
+
+function handleAuthStateChange(user) {
+  const profilePill = document.getElementById('profile-pill');
+  
+  if (user) {
+    // User is signed in, hide the login pill
+    if (googleLoginCard) googleLoginCard.classList.add('hidden');
+    
+    // Set player name from Google account display name (override local name)
+    if (user.displayName) {
+      playerName = user.displayName;
+      localStorage.setItem('opentile_playername', playerName);
+      syncTopDockData();
+    }
+    
+    // Update profile pill to show "Profile"
+    if (profilePill) {
+      profilePill.innerHTML = `
+        <div class="flex items-center gap-4">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 text-gray-600">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0zM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+          <span class="text-base font-semibold text-gray-800" data-i18n="label_profile">Profile</span>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 text-gray-400">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+      `;
+    }
+  } else {
+    // User is signed out, show the login pill
+    if (googleLoginCard) {
+      googleLoginCard.classList.remove('hidden');
+      updateLoginPillStats();
+    }
+    
+    // Reset player name to local storage
+    playerName = localStorage.getItem('opentile_playername') || 'Player';
+    syncTopDockData();
+    
+    // Update profile pill to show Google sign in button
+    if (profilePill) {
+      profilePill.innerHTML = `
+        <div class="flex items-center gap-4">
+          <svg class="w-6 h-6" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C.78 9.08 0 11.43 0 14s.78 4.92 2.18 6.93l2.85-2.84z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          <span class="text-base font-semibold text-gray-800">Sign in with Google</span>
+        </div>
+      `;
+    }
+  }
+}
+
+async function setupFirebaseAuth() {
+  // Initialize Firestore integration (this will also initialize auth)
+  try {
+    firebaseReady = await initializeGameFirebase();
+    if (firebaseReady) {
+      // Get the auth instance from the initialized Firebase services
+      auth = getAuthInstance();
+      console.log('Firestore integration initialized');
+    }
+  } catch (error) {
+    console.warn('Firestore initialization failed:', error);
+    firebaseReady = false;
+  }
+
+  if (!auth) {
+    console.warn('Firebase auth not initialized');
+    return;
+  }
+
+  // Listen for auth state changes
+  onAuthStateChanged(auth, async (user) => {
+    await handleAuthStateChange(user);
+    
+    // Load user data from Firestore when signed in
+    if (user && firebaseReady) {
+      try {
+        const loaded = await loadAllUserDataFromFirestore();
+        if (loaded) {
+          console.log('User data loaded from Firestore');
+          // Refresh UI with loaded data
+          invalidateEarnedPPointsCache();
+          syncTopDockData();
+          updateLifeUi();
+          // Refresh song list to show updated star/crown states
+          if (typeof renderSongList === 'function') {
+            renderSongList();
+          }
+          // Reinitialize settings UI with loaded settings
+          if (typeof updateSettingsUI === 'function') {
+            updateSettingsUI();
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load user data from Firestore:', error);
+      }
+    }
+  });
+
+  // Wire up login button
+  if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', async () => {
+      try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+        console.log('Google sign in successful');
+        
+        // Sync local data to Firestore after sign in
+        if (firebaseReady && musicCsvData) {
+          syncAllUserDataToFirestore(musicCsvData).catch(err => {
+            console.warn('Failed to sync data to Firestore after sign in:', err);
+          });
+        }
+      } catch (error) {
+        console.error('Google sign in error:', error);
+      }
+    });
+  }
+
+  // Set up periodic sync for when user comes back online
+  setupPeriodicSync();
+}
+
+// Periodic sync to handle offline-to-online transitions
+let syncIntervalId = null;
+
+function setupPeriodicSync() {
+  // Clear any existing interval
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+  }
+
+  // Sync every 30 seconds when online and authenticated
+  syncIntervalId = setInterval(async () => {
+    if (!firebaseReady || !isFirebaseAvailable() || !musicCsvData) {
+      return;
+    }
+
+    // Only sync if document is visible (user is actively using the app)
+    if (document.visibilityState === 'visible') {
+      try {
+        await syncAllUserDataToFirestore(musicCsvData);
+        console.debug('Periodic sync to Firestore completed');
+      } catch (error) {
+        console.debug('Periodic sync failed (likely offline):', error.message);
+      }
+    }
+  }, 30000); // 30 seconds
+
+  // Also sync when page becomes visible
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && firebaseReady && isFirebaseAvailable() && musicCsvData) {
+      try {
+        await syncAllUserDataToFirestore(musicCsvData);
+        console.debug('Sync on page visibility change completed');
+      } catch (error) {
+        console.debug('Sync on visibility change failed (likely offline):', error.message);
+      }
+    }
+  });
+
+  // Sync when network comes back online
+  window.addEventListener('online', async () => {
+    if (firebaseReady && isFirebaseAvailable() && musicCsvData) {
+      try {
+        await syncAllUserDataToFirestore(musicCsvData);
+        console.log('Sync on network reconnection completed');
+      } catch (error) {
+        console.warn('Sync on network reconnection failed:', error);
+      }
+    }
+  });
+}
 
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
@@ -104,6 +323,7 @@ let selectedSongData = null;
 let lastLoadedJsonText = '';
 let lastLoadedLabel = '';
 let isPlayInProgress = false;
+let currentSongIsSongOfTheDay = false;
 
 let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
@@ -321,6 +541,14 @@ function clampNumber(value, min, max) {
 function saveLifeState() {
   localStorage.setItem('opentile_life_count', String(lifeCount));
   localStorage.setItem('opentile_life_last_updated_at', String(lifeLastUpdatedAt));
+  
+  // Sync to Firestore when online (non-blocking, won't affect offline gameplay)
+  if (firebaseReady && isFirebaseAvailable()) {
+    syncLivesToFirestore(lifeCount, lifeLastUpdatedAt).catch(err => {
+      // Silently fail - offline gameplay continues normally
+      console.debug('Firestore sync failed (likely offline):', err.message);
+    });
+  }
 }
 
 let _earnedPPointsCache = null;
@@ -1211,7 +1439,7 @@ function getPlayLifeCost(songData) {
   return isChallengeSong(songData) ? 2 : 1;
 }
 
-function startSongTransition(songData) {
+function startSongTransition(songData, isSongOfTheDay = false) {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
@@ -1221,6 +1449,7 @@ function startSongTransition(songData) {
   }
 
   isPlayInProgress = true;
+  currentSongIsSongOfTheDay = isSongOfTheDay;
   animateLifeSpendFromTopBar();
   playLifeIntroSound();
   window.setTimeout(() => {
@@ -1611,6 +1840,38 @@ function updateSettingsUI() {
   }
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  
+  // Update language pill status
+  updateLanguageSelection();
+  
+  // Update sound status based on audio context state
+  const soundStatus = document.getElementById('sound-status');
+  if (soundStatus && audioContext) {
+    soundStatus.textContent = audioContext.state === 'suspended' ? (i18n?.t('status_off') || 'Off') : (i18n?.t('status_on') || 'On');
+  }
+  
+  // Update autoplay pill status
+  const autoplayStatus = document.getElementById('autoplay-status');
+  if (autoplayStatus) {
+    autoplayStatus.textContent = autoplayEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
+  
+  // Update revive slowdown pill status
+  const reviveSlowdownStatus = document.getElementById('revive-slowdown-status');
+  if (reviveSlowdownStatus) {
+    reviveSlowdownStatus.textContent = reviveSlowdownEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
+  
+  // Update speed pill status
+  const speedStatus = document.getElementById('speed-status');
+  if (speedStatus) {
+    if (customStartingSpeed === 0) {
+      speedStatus.textContent = i18n?.t('label_disabled') || 'Disabled';
+    } else {
+      speedStatus.textContent = `${customStartingSpeed} t/s`;
+    }
+  }
+  
   updateTpsDisplayColor();
 }
 
@@ -3045,13 +3306,40 @@ async function finishRun(showLibrary = false) {
     if (!classCourseCleared && classSongProgress.length === 0 && classCurrentData) {
       classCurrentData.songs.forEach((s, idx) => {
         if (idx < classSongIndex) {
-          classSongProgress.push({ name: s.customName, status: 'Pass' });
+          classSongProgress.push({ name: s.customName, status: 'Pass', reached: true });
         } else if (idx === classSongIndex) {
-          classSongProgress.push({ name: s.customName, status: 'Fail' });
+          classSongProgress.push({ name: s.customName, status: 'Fail', reached: true });
         } else {
-          classSongProgress.push({ name: s.customName, status: 'Fail' }); // Or 'Unplayed'
+          classSongProgress.push({ name: s.customName, status: 'Unreached', reached: false });
         }
       });
+    }
+    
+    // Play appropriate audio based on class mode result
+    const ctx = ensureAudioEngine();
+    if (ctx) {
+      async function playClassAudio(base) {
+        const buffer = await getCachedAudioBuffer(base);
+        if (!buffer) return;
+        const source = ctx.createBufferSource();
+        const gainNode = ctx.createGain();
+        const startAt = ctx.currentTime + 0.01;
+        source.buffer = buffer;
+        gainNode.gain.setValueAtTime(1.0, startAt);
+        source.connect(gainNode);
+        gainNode.connect(audioGainNode);
+        source.start(startAt);
+        return new Promise((resolve) => {
+          source.onended = () => resolve();
+          setTimeout(resolve, (buffer.duration || 0) * 1000 + 100);
+        });
+      }
+      
+      if (classCourseCleared) {
+        await playClassAudio('Audio/NewBest');
+      } else {
+        await playClassAudio('Audio/FailPage');
+      }
     }
   }
 
@@ -3123,6 +3411,22 @@ async function finishRun(showLibrary = false) {
         if (normalSongAwardLevel > bestLevel) {
           localStorage.setItem(key, String(normalSongAwardLevel));
           invalidateEarnedPPointsCache();
+          
+          // Sync to Firestore when online (non-blocking, won't affect offline gameplay)
+          if (firebaseReady && isFirebaseAvailable() && selectedSongData.mid) {
+            saveSongLevelToFirestore(String(selectedSongData.mid), normalSongAwardLevel).catch(err => {
+              console.debug('Firestore sync failed (likely offline):', err.message);
+            });
+          }
+          
+          // Song of the Day reward: award P-Points if completed with 3 stars
+          if (currentSongIsSongOfTheDay && normalSongAwardLevel >= 4 && !isSongOfTheDayCompleted()) {
+            const currentStreak = updateSongOfTheDayStreak();
+            const reward = getSongOfTheDayReward(currentStreak);
+            spentPPoints -= reward; // Add P-Points by reducing spent amount
+            localStorage.setItem('opentile_spent_ppoints', String(spentPPoints));
+            syncTopDockData();
+          }
         }
       }
       // Save last played song
@@ -3130,6 +3434,9 @@ async function finishRun(showLibrary = false) {
         saveLastPlayed(String(selectedSongData.mid));
       }
     }
+    
+    // Reset Song of the Day flag
+    currentSongIsSongOfTheDay = false;
 
     if (showLibrary) {
       gameoverScreen.classList.add('hidden');
@@ -3201,12 +3508,32 @@ async function finishRun(showLibrary = false) {
       if (isClassMode) {
         document.getElementById('results-standard-mode')?.classList.add('hidden');
         document.getElementById('results-class-mode')?.classList.remove('hidden');
-        document.getElementById('results-class-mode').innerHTML = classSongProgress.map(p => 
-          `<div class="class-pass-fail-item">
-            <span>${p.name}</span>
-            <span class="${p.status === 'Pass' ? 'class-pass' : 'class-fail'}">${p.status}</span>
-          </div>`
-        ).join('');
+        
+        // Determine overall status
+        const overallStatus = classCourseCleared ? 'Cleared' : 'Failed';
+        const overallStatusClass = classCourseCleared ? 'class-pass' : 'class-fail';
+        
+        // Build the results HTML with overall status and song list
+        let resultsHtml = `
+          <div class="class-overall-status mb-4 text-center">
+            <span class="text-lg font-bold ${overallStatusClass}">${overallStatus}</span>
+          </div>
+        `;
+        
+        resultsHtml += classSongProgress.map(p => {
+          const statusClass = p.status === 'Pass' ? 'class-pass' : (p.status === 'Fail' ? 'class-fail' : '');
+          const opacityClass = p.reached ? '' : 'opacity-50';
+          const statusText = p.reached ? p.status : '';
+          
+          return `
+            <div class="class-pass-fail-item ${opacityClass}">
+              <span>${p.name}</span>
+              ${statusText ? `<span class="${statusClass}">${statusText}</span>` : ''}
+            </div>
+          `;
+        }).join('');
+        
+        document.getElementById('results-class-mode').innerHTML = resultsHtml;
         if (titleEl) titleEl.textContent = classCurrentData?.name || '';
         // Now that the results panel is fully rendered, tear down the class-mode state.
         isClassMode = false;
@@ -5053,7 +5380,7 @@ function updateEngineFrame(now) {
         classHighestCleared = danNum;
         localStorage.setItem('classHighestCleared', classHighestCleared);
       }
-      classSongProgress = classCurrentData.songs.map(s => ({ name: s.customName, status: 'Pass' }));
+      classSongProgress = classCurrentData.songs.map(s => ({ name: s.customName, status: 'Pass', reached: true }));
       finishRun(false);
       return;
     }
@@ -5795,6 +6122,8 @@ function renderHomeScreen() {
   renderFavouriteSongs();
   // Render selection songs
   render700PlusSongs();
+  // Render Song of the Day
+  renderSongOfTheDay();
   // Render latest updates
   renderLatestUpdates();
   
@@ -5901,6 +6230,204 @@ function render700PlusSongs() {
   });
 }
 
+// Song of the Day functions
+function getDailySong() {
+  // Get today's date as a string (YYYY-MM-DD) for consistent daily selection
+  const today = new Date();
+  const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  // Use a simple hash of the date string to select a song
+  let hash = 0;
+  for (let i = 0; i < dateString.length; i++) {
+    hash = ((hash << 5) - hash) + dateString.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Filter out challenge songs and get regular songs
+  const regularSongs = musicCsvData.filter(song => !isChallengeSong(song));
+  
+  // Use the hash to select a song (ensure positive index)
+  const songIndex = Math.abs(hash) % regularSongs.length;
+  return regularSongs[songIndex];
+}
+
+function getSongOfTheDayStreak() {
+  const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
+  if (!streakData) return 0;
+  
+  try {
+    const data = JSON.parse(streakData);
+    const today = new Date();
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    // If the last completion was today, return the current streak
+    if (data.lastCompletionDate === todayString) {
+      return data.streak;
+    }
+    
+    // Check if the last completion was yesterday
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayString = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    
+    // If the last completion was yesterday, keep the streak
+    // Otherwise, reset the streak
+    if (data.lastCompletionDate === yesterdayString) {
+      return data.streak;
+    } else {
+      // Reset streak if more than a day has passed
+      localStorage.setItem('opentile_song_of_the_day_streak', JSON.stringify({ streak: 0, lastCompletionDate: null }));
+      return 0;
+    }
+  } catch (e) {
+    console.error('Error parsing streak data:', e);
+    return 0;
+  }
+}
+
+function updateSongOfTheDayStreak() {
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
+  let currentStreak = 0;
+  
+  if (streakData) {
+    try {
+      const data = JSON.parse(streakData);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayString = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+      
+      // If already completed today, don't update
+      if (data.lastCompletionDate === todayString) {
+        return data.streak;
+      }
+      
+      // If last completion was yesterday, increment streak
+      if (data.lastCompletionDate === yesterdayString) {
+        currentStreak = data.streak + 1;
+      } else {
+        // Otherwise, start new streak
+        currentStreak = 1;
+      }
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+      currentStreak = 1;
+    }
+  } else {
+    currentStreak = 1;
+  }
+  
+  localStorage.setItem('opentile_song_of_the_day_streak', JSON.stringify({ 
+    streak: currentStreak, 
+    lastCompletionDate: todayString 
+  }));
+  
+  return currentStreak;
+}
+
+function getSongOfTheDayReward(streak) {
+  // P-Points reward based on streak: 10 base + 5 * streak
+  return 10 + (streak * 5);
+}
+
+function isSongOfTheDayCompleted() {
+  const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
+  if (!streakData) return false;
+  
+  try {
+    const data = JSON.parse(streakData);
+    const today = new Date();
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return data.lastCompletionDate === todayString;
+  } catch (e) {
+    return false;
+  }
+}
+
+function createSongOfTheDayCard(song) {
+  const firstSection = song.sections[1] || Object.values(song.sections)[0];
+  const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
+  const stage = getStarAndCrownState(bestLevel - 1);
+  const isCompleted = isSongOfTheDayCompleted();
+  const localizedSongName = i18n ? i18n.getSongName(song.musicJson) : song.musicJson;
+  const localizedArtistName = i18n ? i18n.getArtistName(song.musician) : song.musician;
+  const currentStreak = getSongOfTheDayStreak();
+
+  let progressHTML = '';
+  if (stage.crowns > 0) {
+    for (let i = 0; i < 3; i++) {
+      progressHTML += `<img src="gameImage/crown.png" class="w-5 h-auto mr-1 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
+    }
+  } else {
+    for (let i = 0; i < 3; i++) {
+      progressHTML += `<img src="gameImage/star.png" class="w-5 h-auto mr-1 ${i < stage.stars ? 'earned' : 'unearned'}">`;
+    }
+  }
+
+  const card = document.createElement('div');
+  card.className = 'song-card';
+  const isPurple = song.id >= 700;
+  
+  const statusBadge = isCompleted 
+    ? `<span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">${i18n ? i18n.t('label_completed') : 'Completed'}</span>`
+    : `<span class="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full">+${getSongOfTheDayReward(currentStreak)} P-Points</span>`;
+
+  const playButtonText = i18n ? i18n.t('btn_play') : 'Play';
+
+  card.innerHTML = `
+    <div class="song-card-icon ${stage.stars >= 3 || stage.crowns > 0 ? `ranked ${isPurple ? 'purple' : ''}` : 'numbered'}">
+      ${stage.stars >= 3 || stage.crowns > 0
+        ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
+        : `${song.id}`
+      }
+    </div>
+    <div class="song-card-content">
+      <div class="song-card-title">${localizedSongName}</div>
+      <div class="song-card-artist">${localizedArtistName}</div>
+      <div class="song-card-progress">
+        ${progressHTML}
+      </div>
+    </div>
+    <div class="song-card-action flex flex-col items-end gap-2">
+      <div class="song-card-reward">
+        ${statusBadge}
+      </div>
+      <button class="btn-play">${playButtonText}</button>
+    </div>
+  `;
+
+  const playBtn = card.querySelector('.btn-play');
+  playBtn.addEventListener('click', () => {
+    if (isPlayInProgress) {
+      return;
+    }
+    startSongTransition(song, true); // true = isSongOfTheDay
+  });
+
+  return card;
+}
+
+function renderSongOfTheDay() {
+  const container = document.getElementById('song-of-the-day-container');
+  const streakDisplay = document.getElementById('song-of-the-day-streak');
+  if (!container || !streakDisplay) return;
+
+  const dailySong = getDailySong();
+  if (!dailySong) {
+    container.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${i18n ? i18n.t('msg_no_song_of_the_day') : 'No Song of the Day available.'}</p>`;
+    return;
+  }
+
+  const currentStreak = getSongOfTheDayStreak();
+  streakDisplay.textContent = currentStreak;
+
+  container.innerHTML = '';
+  const songCard = createSongOfTheDayCard(dailySong);
+  container.appendChild(songCard);
+}
+
 async function renderLatestUpdates() {
   const updatesContainer = document.getElementById('latest-updates-container');
   if (!updatesContainer) return;
@@ -5963,7 +6490,6 @@ function updateDockSelection(nextTab) {
 
 function setDockView(tab) {
   if (tab !== 'settings' && !settingsScreen.classList.contains('hidden')) {
-    saveSettingsToStorage();
     settingsScreen.classList.add('hidden');
   }
 
@@ -6063,6 +6589,17 @@ function syncTopDockData() {
   if (playerNameTextHome) playerNameTextHome.textContent = playerName;
   if (playerNameTextChallenges) playerNameTextChallenges.textContent = playerName;
 
+  // Update classification display
+  const classHighestClearedEl = document.getElementById('class-highest-cleared');
+  if (classHighestClearedEl) {
+    let clearedText = "None";
+    if (classHighestCleared > 0) {
+      if (classHighestCleared === 11) clearedText = "Kaidan";
+      else clearedText = classHighestCleared + (classHighestCleared === 1 ? "st" : classHighestCleared === 2 ? "nd" : classHighestCleared === 3 ? "rd" : "th") + " Dan";
+    }
+    classHighestClearedEl.textContent = "Class: " + clearedText;
+  }
+
   updateLifeUi();
 }
 
@@ -6107,6 +6644,9 @@ async function initializeGame() {
     // 2. Now run the unified asset preloader which loads and caches everything else
     await preloadAssets();
     
+    // Set up Firebase authentication
+    setupFirebaseAuth();
+    
     // Finalize loading
     updateLoadingProgress('complete', 1, 1);
     
@@ -6148,13 +6688,304 @@ document.getElementById('settings-btn')?.addEventListener('click', () => {
   playMenuLoopCue();
 });
 
-document.getElementById('save-settings-btn')?.addEventListener('click', () => {
-  saveSettingsToStorage();
-  settingsScreen.classList.add('hidden');
-  setDockView(previousDockTabBeforeSettings || 'home');
-  setSongStatus(`Settings saved. Autoplay is ${autoplayEnabled ? 'on' : 'off'}.`);
-  playMenuLoopCue();
+// Settings pill click handlers
+document.getElementById('profile-pill')?.addEventListener('click', async () => {
+  // Check if user is signed in
+  if (typeof auth !== 'undefined' && auth.currentUser) {
+    // User is signed in, show profile modal
+    document.getElementById('profile-modal').classList.remove('hidden');
+    // Update profile email if user is signed in
+    const profileEmail = document.getElementById('profile-email');
+    if (profileEmail) {
+      profileEmail.textContent = auth.currentUser.email || 'user@example.com';
+    }
+  } else {
+    // User is signed out, trigger Google sign-in
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      console.log('Google sign in successful');
+    } catch (error) {
+      console.error('Google sign in error:', error);
+    }
+  }
 });
+
+document.getElementById('sound-pill')?.addEventListener('click', () => {
+  const soundStatus = document.getElementById('sound-status');
+  const isMuted = soundStatus.textContent === (i18n?.t('status_off') || 'Off');
+  soundStatus.textContent = isMuted ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  // Toggle audio context if needed
+  if (audioContext) {
+    if (isMuted) {
+      audioContext.resume();
+    } else {
+      audioContext.suspend();
+    }
+  }
+});
+
+document.getElementById('autoplay-pill')?.addEventListener('click', () => {
+  autoplayEnabled = !autoplayEnabled;
+  localStorage.setItem('opentile_autoplay', String(autoplayEnabled));
+  const autoplayStatus = document.getElementById('autoplay-status');
+  autoplayStatus.textContent = autoplayEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  // Update checkbox if it exists
+  if (autoplayToggle) {
+    autoplayToggle.checked = autoplayEnabled;
+  }
+});
+
+document.getElementById('revive-slowdown-pill')?.addEventListener('click', () => {
+  reviveSlowdownEnabled = !reviveSlowdownEnabled;
+  localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
+  const reviveSlowdownStatus = document.getElementById('revive-slowdown-status');
+  reviveSlowdownStatus.textContent = reviveSlowdownEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  // Update checkbox if it exists
+  if (reviveSlowdownToggle) {
+    reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  }
+});
+
+document.getElementById('keybinds-pill')?.addEventListener('click', () => {
+  document.getElementById('keybinds-modal').classList.remove('hidden');
+});
+
+document.getElementById('speed-pill')?.addEventListener('click', () => {
+  document.getElementById('speed-modal').classList.remove('hidden');
+});
+
+// Auto-save speed input on change
+document.getElementById('settings-custom-speed')?.addEventListener('input', (e) => {
+  const value = parseFloat(e.target.value);
+  if (isNaN(value) || value < 0) {
+    customStartingSpeed = 0;
+  } else {
+    customStartingSpeed = value;
+  }
+  localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
+  
+  // Update display
+  if (customStartingSpeed === 0) {
+    customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
+    customSpeedDisplay.classList.remove('text-indigo-600');
+  } else {
+    customSpeedDisplay.textContent = `${customStartingSpeed} t/s`;
+    customSpeedDisplay.classList.add('text-indigo-600');
+  }
+  
+  // Update pill status
+  const speedStatus = document.getElementById('speed-status');
+  if (speedStatus) {
+    if (customStartingSpeed === 0) {
+      speedStatus.textContent = i18n?.t('label_disabled') || 'Disabled';
+    } else {
+      speedStatus.textContent = `${customStartingSpeed} t/s`;
+    }
+  }
+});
+
+document.getElementById('language-pill')?.addEventListener('click', () => {
+  document.getElementById('language-modal').classList.remove('hidden');
+  updateLanguageSelection();
+});
+
+// Modal close handlers
+document.getElementById('close-keybinds-modal')?.addEventListener('click', () => {
+  document.getElementById('keybinds-modal').classList.add('hidden');
+});
+
+document.getElementById('keybinds-modal-backdrop')?.addEventListener('click', () => {
+  document.getElementById('keybinds-modal').classList.add('hidden');
+});
+
+document.getElementById('close-speed-modal')?.addEventListener('click', () => {
+  document.getElementById('speed-modal').classList.add('hidden');
+});
+
+document.getElementById('speed-modal-backdrop')?.addEventListener('click', () => {
+  document.getElementById('speed-modal').classList.add('hidden');
+});
+
+document.getElementById('close-language-modal')?.addEventListener('click', () => {
+  // Discard any unsaved language selection
+  selectedLanguage = null;
+  document.getElementById('language-modal').classList.add('hidden');
+});
+
+document.getElementById('done-language-modal')?.addEventListener('click', () => {
+  // Apply the selected language when Done is pressed
+  if (selectedLanguage) {
+    // Update language selector if it exists
+    const languageSelector = document.getElementById('language-selector');
+    if (languageSelector) {
+      languageSelector.value = selectedLanguage;
+    }
+    
+    // Update pill status
+    const langStatus = document.getElementById('language-status');
+    if (langStatus) {
+      const selectedLangObj = languages.find(l => l.code === selectedLanguage);
+      langStatus.textContent = selectedLangObj ? selectedLangObj.name : 'English';
+    }
+    
+    // Trigger language change using i18n system
+    if (typeof i18n !== 'undefined' && i18n.setLanguage) {
+      i18n.setLanguage(selectedLanguage);
+    } else {
+      localStorage.setItem('opentile_language', selectedLanguage);
+    }
+    
+    selectedLanguage = null;
+  }
+  
+  document.getElementById('language-modal').classList.add('hidden');
+});
+
+document.getElementById('language-modal-backdrop')?.addEventListener('click', () => {
+  // Discard any unsaved language selection
+  selectedLanguage = null;
+  document.getElementById('language-modal').classList.add('hidden');
+});
+
+// Profile modal handlers
+document.getElementById('close-profile-modal')?.addEventListener('click', () => {
+  document.getElementById('profile-modal').classList.add('hidden');
+});
+
+document.getElementById('profile-modal-backdrop')?.addEventListener('click', () => {
+  document.getElementById('profile-modal').classList.add('hidden');
+});
+
+document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
+  if (typeof auth !== 'undefined') {
+    try {
+      await signOut(auth);
+      document.getElementById('profile-modal').classList.add('hidden');
+      setSongStatus('Signed out successfully.');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      setSongStatus('Error signing out.');
+    }
+  }
+});
+
+document.getElementById('delete-account-btn')?.addEventListener('click', async () => {
+  if (typeof auth !== 'undefined' && auth.currentUser) {
+    // Show confirmation prompt
+    const confirmed = confirm('Are you sure you want to delete your account? This action cannot be undone and will permanently delete all your data.');
+    
+    if (!confirmed) {
+      return; // User cancelled
+    }
+    
+    try {
+      await deleteUser(auth.currentUser);
+      document.getElementById('profile-modal').classList.add('hidden');
+      setSongStatus('Account deleted successfully.');
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      if (error.code === 'auth/requires-recent-login') {
+        setSongStatus('Please re-authenticate before deleting account. Sign out and sign in again.');
+      } else {
+        setSongStatus('Error deleting account. Please try again.');
+      }
+    }
+  }
+});
+
+// Credits pill handler
+document.getElementById('credits-pill')?.addEventListener('click', () => {
+  document.getElementById('credits-modal').classList.remove('hidden');
+});
+
+// Privacy Policy pill handler
+document.getElementById('privacy-pill')?.addEventListener('click', () => {
+  document.getElementById('privacy-modal').classList.remove('hidden');
+});
+
+// Credits modal handlers
+document.getElementById('close-credits-modal')?.addEventListener('click', () => {
+  document.getElementById('credits-modal').classList.add('hidden');
+});
+
+document.getElementById('credits-modal-backdrop')?.addEventListener('click', () => {
+  document.getElementById('credits-modal').classList.add('hidden');
+});
+
+// Privacy modal handlers
+document.getElementById('close-privacy-modal')?.addEventListener('click', () => {
+  document.getElementById('privacy-modal').classList.add('hidden');
+});
+
+document.getElementById('privacy-modal-backdrop')?.addEventListener('click', () => {
+  document.getElementById('privacy-modal').classList.add('hidden');
+});
+
+// Language selection handler
+const languages = [
+  { code: 'en', name: 'English' },
+  { code: 'zh', name: '中文' },
+  { code: 'ja', name: '日本語' }
+];
+
+let selectedLanguage = null;
+
+function renderLanguageOptions() {
+  const container = document.getElementById('language-options');
+  if (!container) return;
+  
+  const currentLang = localStorage.getItem('opentile_language') || 'en';
+  const displayLang = selectedLanguage || currentLang;
+  
+  container.innerHTML = languages.map(lang => `
+    <button class="language-option flex items-center justify-between bg-white rounded-full px-5 py-4 shadow-sm transition-all active:scale-[0.98]" data-lang="${lang.code}">
+      <span class="text-base font-semibold text-gray-800">${lang.name}</span>
+      <svg class="language-check w-6 h-6 text-green-500 ${lang.code === displayLang ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+      </svg>
+    </button>
+  `).join('');
+  
+  // Add click handlers
+  container.querySelectorAll('.language-option').forEach((option) => {
+    option.addEventListener('click', () => {
+      const lang = option.dataset.lang;
+      
+      // Store selected language but don't apply yet
+      selectedLanguage = lang;
+      
+      // Update all options visually
+      container.querySelectorAll('.language-option').forEach(opt => {
+        const check = opt.querySelector('.language-check');
+        if (opt.dataset.lang === lang) {
+          check.classList.remove('hidden');
+          opt.classList.add('selected');
+        } else {
+          check.classList.add('hidden');
+          opt.classList.remove('selected');
+        }
+      });
+    });
+  });
+}
+
+function updateLanguageSelection() {
+  const currentLang = localStorage.getItem('opentile_language') || 'en';
+  
+  // Reset selected language when modal opens
+  selectedLanguage = null;
+  
+  // Update pill status
+  const langStatus = document.getElementById('language-status');
+  if (langStatus) {
+    const selectedLang = languages.find(l => l.code === currentLang);
+    langStatus.textContent = selectedLang ? selectedLang.name : 'English';
+  }
+  
+  // Re-render language options if modal is open
+  renderLanguageOptions();
+}
 
 document.getElementById('restart-btn')?.addEventListener('click', () => {
   if (isPlayInProgress) {
@@ -6482,7 +7313,6 @@ window.addEventListener('keydown', (event) => {
       return;
     }
     if (!settingsScreen.classList.contains('hidden')) {
-      saveSettingsToStorage();
       settingsScreen.classList.add('hidden');
       setDockView(previousDockTabBeforeSettings || 'home');
       return;
@@ -6619,6 +7449,7 @@ document.addEventListener('languageChanged', () => {
   if (typeof renderHomeScreen === 'function') renderHomeScreen();
   if (typeof renderFavouriteSongs === 'function') renderFavouriteSongs();
   if (typeof render700PlusSongs === 'function') render700PlusSongs();
+  if (typeof renderSongOfTheDay === 'function') renderSongOfTheDay();
   if (typeof populateMusicSelect === 'function') populateMusicSelect();
 });
 rafId = requestAnimationFrame(frame);

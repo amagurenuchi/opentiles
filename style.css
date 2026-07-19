@@ -1433,6 +1433,43 @@ body {
   animation: column-flash-red 0.5s ease-in-out 3;
 }
 
+/* Settings pill styling */
+.settings-pill {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal backdrop */
+#keybinds-modal-backdrop,
+#speed-modal-backdrop,
+#language-modal-backdrop {
+  cursor: pointer;
+}
+
+/* Language option styling */
+.language-option {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.language-option:hover {
+  border-color: #6366f1;
+}
+
+.language-option.selected {
+  border-color: #6366f1;
+  background-color: #eef2ff;
+}
+
+.language-option.selected .language-check {
+  display: block;
+}
+
 /* Long/Hold note styling */
 .tile-long {
   border-bottom: none !important;
@@ -2466,6 +2503,7 @@ body {
 
   #welcome-disc {
     width: clamp(7rem, 60vw, 12rem) !important;
+    height: clamp(7rem, 60vw, 12rem) !important;
   }
 }
 

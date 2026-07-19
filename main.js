@@ -81,9 +81,10 @@ function createWindow(port) {
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, 'special', 'icon.png'),
+    icon: path.join(__dirname, 'special', 'logo.png'),
     title: 'OpenTile - Piano Tiles'
   });
 
@@ -110,6 +111,20 @@ function createAppDataDir() {
 
 app.whenReady().then(async () => {
   createAppDataDir();
+  
+  // Set up session for Firebase
+  const ses = session.defaultSession;
+  
+  // Allow Firebase domains
+  ses.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com https://*.cloudfunctions.net; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebase.com https://*.cloudfunctions.net wss://*.firebaseio.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com; style-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com; img-src 'self' data: blob: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com; font-src 'self' data: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com;"]
+      }
+    });
+  });
+  
   const { server: localServer, port } = await createLocalServer();
   server = localServer;
   createWindow(port);

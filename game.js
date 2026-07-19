@@ -11,7 +11,9 @@ import {
   syncLivesToFirestore,
   saveSongLevelToFirestore,
   syncAllUserDataToFirestore,
-  loadAllUserDataFromFirestore
+  loadAllUserDataFromFirestore,
+  getUserEmail,
+  compareLocalVsCloudData
 } from './firebase-integration.js';
 
 let firebaseReady = false;
@@ -99,6 +101,9 @@ const googleLoginBtn = document.getElementById('google-login-btn');
 const loginPillPPoints = document.getElementById('login-pill-ppoints');
 const loginPillCrowns = document.getElementById('login-pill-crowns');
 const loginPillStars = document.getElementById('login-pill-stars');
+const dataSyncModal = document.getElementById('data-sync-modal');
+const syncUseLocalBtn = document.getElementById('sync-use-local-btn');
+const syncUseCloudBtn = document.getElementById('sync-use-cloud-btn');
 let currentDockTab = 'home';
 let previousDockTabBeforeSettings = 'home';
 
@@ -115,7 +120,8 @@ const firebaseConfig = window.firebaseConfig || {
 // Firebase Authentication functions
 function updateLoginPillStats() {
   const { earnedPPoints, totalStars, totalCrowns } = calculateEarnedPPoints();
-  if (loginPillPPoints) loginPillPPoints.textContent = String(earnedPPoints);
+  const availablePPoints = Math.max(0, earnedPPoints - spentPPoints);
+  if (loginPillPPoints) loginPillPPoints.textContent = String(availablePPoints);
   if (loginPillCrowns) loginPillCrowns.textContent = String(totalCrowns);
   if (loginPillStars) loginPillStars.textContent = String(totalStars);
 }
@@ -173,6 +179,62 @@ function handleAuthStateChange(user) {
         </div>
       `;
     }
+  }
+}
+
+/**
+ * Show data sync modal with comparison between local and cloud data
+ */
+async function showDataSyncModal() {
+  if (!dataSyncModal || !musicCsvData) return;
+  
+  try {
+    // Get comparison data
+    const comparison = await compareLocalVsCloudData(musicCsvData);
+    
+    if (!comparison) {
+      // If comparison failed, just sync local data silently
+      await syncAllUserDataToFirestore(musicCsvData);
+      return;
+    }
+    
+    // Populate modal with comparison data
+    const syncLocalPPoints = document.getElementById('sync-local-ppoints');
+    const syncCloudPPoints = document.getElementById('sync-cloud-ppoints');
+    const syncLocalStars = document.getElementById('sync-local-stars');
+    const syncCloudStars = document.getElementById('sync-cloud-stars');
+    const syncLocalCrowns = document.getElementById('sync-local-crowns');
+    const syncCloudCrowns = document.getElementById('sync-cloud-crowns');
+    const syncUserEmail = document.getElementById('sync-user-email');
+    
+    if (syncLocalPPoints) syncLocalPPoints.textContent = String(comparison.local.pPoints);
+    if (syncCloudPPoints) syncCloudPPoints.textContent = String(comparison.cloud.pPoints);
+    if (syncLocalStars) syncLocalStars.textContent = String(comparison.local.stars);
+    if (syncCloudStars) syncCloudStars.textContent = String(comparison.cloud.stars);
+    if (syncLocalCrowns) syncLocalCrowns.textContent = String(comparison.local.crowns);
+    if (syncCloudCrowns) syncCloudCrowns.textContent = String(comparison.cloud.crowns);
+    
+    // Show user email
+    const email = getUserEmail();
+    if (syncUserEmail && email) {
+      syncUserEmail.textContent = email;
+    }
+    
+    // Show modal
+    dataSyncModal.classList.remove('hidden');
+  } catch (error) {
+    console.error('Failed to show data sync modal:', error);
+    // On error, just sync local data silently
+    await syncAllUserDataToFirestore(musicCsvData);
+  }
+}
+
+/**
+ * Hide data sync modal
+ */
+function hideDataSyncModal() {
+  if (dataSyncModal) {
+    dataSyncModal.classList.add('hidden');
   }
 }
 
@@ -246,14 +308,61 @@ async function setupFirebaseAuth() {
         await signInWithPopup(auth, provider);
         console.log('Google sign in successful');
         
-        // Sync local data to Firestore after sign in
+        // Show data sync modal to let user choose between local and cloud data
         if (firebaseReady && musicCsvData) {
-          syncAllUserDataToFirestore(musicCsvData).catch(err => {
-            console.warn('Failed to sync data to Firestore after sign in:', err);
+          showDataSyncModal().catch(err => {
+            console.warn('Failed to show data sync modal:', err);
           });
         }
       } catch (error) {
         console.error('Google sign in error:', error);
+      }
+    });
+  }
+
+  // Wire up sync modal buttons
+  if (syncUseLocalBtn) {
+    syncUseLocalBtn.addEventListener('click', async () => {
+      try {
+        // Sync local data to Firestore (overwrite cloud)
+        if (firebaseReady && musicCsvData) {
+          await syncAllUserDataToFirestore(musicCsvData);
+          console.log('Local data synced to Firestore');
+        }
+        hideDataSyncModal();
+      } catch (error) {
+        console.error('Failed to sync local data:', error);
+      }
+    });
+  }
+
+  if (syncUseCloudBtn) {
+    syncUseCloudBtn.addEventListener('click', async () => {
+      try {
+        // Load cloud data to localStorage (overwrite local)
+        const loaded = await loadAllUserDataFromFirestore();
+        if (loaded) {
+          console.log('Cloud data loaded to localStorage');
+          // Update global variables from localStorage
+          spentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
+          lifeCount = parseInt(localStorage.getItem('opentile_life_count') || '21', 10);
+          lifeLastUpdatedAt = parseInt(localStorage.getItem('opentile_life_last_updated_at') || String(Date.now()), 10);
+          // Refresh UI with loaded data
+          invalidateEarnedPPointsCache();
+          syncTopDockData();
+          updateLifeUi();
+          // Refresh song list to show updated star/crown states
+          if (typeof renderSongList === 'function') {
+            renderSongList();
+          }
+          // Reinitialize settings UI with loaded settings
+          if (typeof updateSettingsUI === 'function') {
+            updateSettingsUI();
+          }
+        }
+        hideDataSyncModal();
+      } catch (error) {
+        console.error('Failed to load cloud data:', error);
       }
     });
   }

@@ -13,6 +13,7 @@ import {
   getUserId,
   isAuthenticated,
   getUserDisplayName,
+  getUserEmail,
   getUserPhotoURL
 } from './firebase-auth.js';
 import {
@@ -416,6 +417,10 @@ async function syncAllUserDataToFirestore(musicData) {
       });
     }
     
+    // Get spent P-Points and classification from localStorage
+    const spentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
+    const classification = JSON.parse(localStorage.getItem('opentile_classification') || '{"rank":"Unranked","totalSongsPlayed":0}');
+    
     // Update Firestore with all data (skip timestamp for frequent syncs)
     await updateUserDocument(userId, {
       displayName: playerName,
@@ -426,7 +431,9 @@ async function syncAllUserDataToFirestore(musicData) {
       songLevels: songLevels,
       highScores: highScores,
       totalStars: totalStars,
-      totalCrowns: totalCrowns
+      totalCrowns: totalCrowns,
+      spentPPoints: spentPPoints,
+      classification: classification
     }, true);
     
     console.debug('All user data synced to Firestore');
@@ -490,6 +497,16 @@ async function loadAllUserDataFromFirestore() {
       console.debug(`Loaded ${userData.totalCrowns} total crowns from Firestore`);
     }
     
+    // Restore spent P-Points
+    if (userData.spentPPoints !== undefined) {
+      localStorage.setItem('opentile_spent_ppoints', String(userData.spentPPoints));
+    }
+    
+    // Restore classification
+    if (userData.classification) {
+      localStorage.setItem('opentile_classification', JSON.stringify(userData.classification));
+    }
+    
     // Restore user settings if available
     if (userData.settings) {
       if (userData.settings.keybinds) {
@@ -519,6 +536,64 @@ async function loadAllUserDataFromFirestore() {
       console.debug('Failed to load user data from Firestore, using localStorage:', error.message);
     }
     return false;
+  }
+}
+
+/**
+ * Compare local vs cloud data statistics
+ * @param {Array} musicData - Music CSV data for calculating local stats
+ * @returns {Promise<Object>} Comparison data { local: {...}, cloud: {...} }
+ */
+async function compareLocalVsCloudData(musicData) {
+  if (!firebaseInitialized || !isAuthenticated()) {
+    return null;
+  }
+  
+  try {
+    // Calculate local stats
+    let localTotalStars = 0;
+    let localTotalCrowns = 0;
+    
+    if (musicData && Array.isArray(musicData)) {
+      musicData.forEach((song) => {
+        const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
+        if (bestLevel > 0) {
+          const stage = getStarAndCrownStateFromLevel(bestLevel);
+          localTotalStars += stage.stars;
+          localTotalCrowns += stage.crowns;
+        }
+      });
+    }
+    
+    const localSpentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
+    const localEarnedPPoints = localTotalStars + (localTotalCrowns * 5);
+    const localAvailablePPoints = Math.max(0, localEarnedPPoints - localSpentPPoints);
+    
+    // Fetch cloud stats
+    const userId = getUserId();
+    const userData = await getOrCreateUserDocument(userId, {});
+    
+    const cloudTotalStars = userData.totalStars || 0;
+    const cloudTotalCrowns = userData.totalCrowns || 0;
+    const cloudEarnedPPoints = cloudTotalStars + (cloudTotalCrowns * 5);
+    const cloudSpentPPoints = userData.spentPPoints || 0;
+    const cloudAvailablePPoints = Math.max(0, cloudEarnedPPoints - cloudSpentPPoints);
+    
+    return {
+      local: {
+        stars: localTotalStars,
+        crowns: localTotalCrowns,
+        pPoints: localAvailablePPoints
+      },
+      cloud: {
+        stars: cloudTotalStars,
+        crowns: cloudTotalCrowns,
+        pPoints: cloudAvailablePPoints
+      }
+    };
+  } catch (error) {
+    console.error('Failed to compare local vs cloud data:', error);
+    return null;
   }
 }
 
@@ -552,5 +627,7 @@ export {
   syncClassificationToFirestore,
   loadClassificationFromFirestore,
   syncAllUserDataToFirestore,
-  loadAllUserDataFromFirestore
+  loadAllUserDataFromFirestore,
+  getUserEmail,
+  compareLocalVsCloudData
 };

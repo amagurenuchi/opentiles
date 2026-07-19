@@ -1,5 +1,5 @@
 {
-  "name": "opentile",
+  "name": "pianotileszero",
   "version": "1.0.0",
   "description": "Piano Tiles 2 clone",
   "main": "main.js",
@@ -28,8 +28,8 @@
     "tailwindcss": "^4.3.3"
   },
   "build": {
-    "appId": "com.opentile.game",
-    "productName": "OpenTile",
+    "appId": "com.irohazaka.pianotileszero",
+    "productName": "PianoTilesZero",
     "directories": {
       "output": "dist"
     },

@@ -1,4 +1,4 @@
-# OpenTile
+# PianoTilesZero
 
 The Piano Tiles game you know and love, rebuilt with vanilla JavaScript.
 
@@ -37,6 +37,6 @@ The game uses local audio samples instead of soundfont libraries, pulled from th
 ## Credits
 
 - CheetahMobile / Kooapps for the original Piano Tiles 2 game
-- Various non-existent contributors for the OpenTile project
+- Various non-existent contributors for the PianoTilesZero project
 - United Tiles and UMOD community
 - lchzh3473

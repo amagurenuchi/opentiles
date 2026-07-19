@@ -85,7 +85,7 @@ function createWindow(port) {
       preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'special', 'logo.png'),
-    title: 'OpenTile - Piano Tiles'
+    title: 'PianoTilesZero - Piano Tiles'
   });
 
   // Load from local server
@@ -152,7 +152,7 @@ app.on('before-quit', () => {
 });
 
 // Handle protocol for custom songs
-app.setAsDefaultProtocolClient('opentile');
+app.setAsDefaultProtocolClient('pianotileszero');
 
 app.on('open-url', (event, url) => {
   event.preventDefault();

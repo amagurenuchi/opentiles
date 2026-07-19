@@ -59,7 +59,7 @@ confirm_reset_score,Reset all score data? This cannot be undone.,重置所有分
 confirm_reset_ppoints,Reset P-Points? This cannot be undone.,重置P点数？此操作无法撤销。,ポイントをリセットしますか？元に戻せません。
 confirm_reset_class,Reset classification? This cannot be undone.,重置段位？此操作无法撤销。,段位をリセットしますか？元に戻せません。
 confirm_reset_all,Reset ALL local data? This cannot be undone.,重置所有本地数据？此操作无法撤销。,すべてのローカルデータをリセットしますか？元に戻せません。
-msg_goodbye,Goodbye,再见,さようなら
+msg_goodbye,goodbye,再见,さようなら
 label_sound,Sound,声音,サウンド
 status_on,On,开启,オン
 status_off,Off,关闭,オフ

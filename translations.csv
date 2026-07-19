@@ -1,5 +1,5 @@
 key,english,chinese,japanese
-game_title,RAINING TILES,雨落方块,レイニングタイル
+game_title,Piano Tiles Zero,钢琴块零,ピアノタイル・ゼロ
 artist_English Folk Music,English Folk Music,英式民谣音乐,イングリッシュフォークミュージック
 artist_James Lord Pierpont,James Lord Pierpont,詹姆斯·洛德·皮尔庞特,ジェームズ・ロード・ピアポント
 artist_Johann Pachelbel,Johann Pachelbel,约翰·帕赫贝尔,ヨハン・パッヘルベル
@@ -104,8 +104,11 @@ nav_music,Music,音乐,音楽
 nav_challenges,Challenges,挑战,チャレンジ
 nav_settings,Settings,设置,設定
 label_custom_song,Custom Song,自定义歌曲,カスタムソング
-status_no_custom_song,No custom song loaded.,未加载自定义歌曲,カスタムソングが読み込まれていません
 label_custom_start_speed,Custom Start Speed,自定义起始速度,カスタム開始速度
+status_no_custom_song,No custom song loaded.,未加载自定义歌曲,カスタムソングが読み込まれていません
+label_player_stats,Player Stats,玩家统计,プレイヤーステータス
+label_best_play,Best Play,最佳表现,ベストプレイ
+label_challenge_best,Challenge Best,挑战最佳,チャレンジベスト
 label_disabled,Disabled,禁用,無効
 label_tiles_per_sec,t/s,次/秒,回/秒
 header_login_google,Log in with Google to save data,登录Google以保存数据,Googleでログインしてデータを保存

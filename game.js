@@ -2012,7 +2012,8 @@ function createChallengeCard(challengeData) {
     '200006': 'combo.png',
     '200007': 'slider.png',
     '200008': 'accompaniment.png',
-    '200009': 'classic.png'
+    '200009': 'classic.png',
+    '200010': 'pro.png'
   };
   const badgeImage = badgeMap[midPrefix] || 'star.png';
 
@@ -6756,6 +6757,25 @@ document.getElementById('privacy-modal-backdrop')?.addEventListener('click', () 
   document.getElementById('privacy-modal').classList.add('hidden');
 });
 
+// Player stats modal handlers
+document.getElementById('close-player-stats-modal')?.addEventListener('click', () => {
+  closePlayerStatsModal();
+});
+
+document.getElementById('player-stats-modal-backdrop')?.addEventListener('click', () => {
+  closePlayerStatsModal();
+});
+
+document.getElementById('stats-player-name')?.addEventListener('click', () => {
+  const newName = prompt('Enter your player name:', playerName);
+  if (newName && newName.trim()) {
+    playerName = newName.trim();
+    localStorage.setItem('opentile_playername', playerName);
+    syncTopDockData();
+    openPlayerStatsModal();
+  }
+});
+
 // Language selection handler
 const languages = [
   { code: 'en', name: 'English' },
@@ -6916,6 +6936,149 @@ dockSettingsBtn?.addEventListener('click', () => {
   playMenuLoopCue();
 });
 
+function computeSongFinalTps(song, level) {
+  if (!level || level < 1) return 0;
+
+  const sectionIds = Object.keys(song.sections || {}).map(Number).sort((a, b) => a - b);
+  if (!sectionIds.length) return 0;
+
+  const info = sectionIds.map((id) => ({
+    bpm: song.sections[id].bpm || 120,
+    beats: song.sections[id].baseBeats || 0.5
+  }));
+
+  let currentBpm = info[0].bpm;
+  let currentBeats = info[0].beats;
+
+  for (let i = 1; i <= level; i++) {
+    const sourceEntry = info[i % info.length];
+    const currentBeatsValue = sourceEntry ? sourceEntry.beats : 0.5;
+    const loopTimes = Math.floor(i / info.length);
+    const tpm = currentBpm / currentBeats;
+    const effectiveLoopTimes = loopTimes;
+    const constant = effectiveLoopTimes < 3 ? 100 : 130;
+    const factor = Math.max(1.3 - (tpm - constant) * 0.001, 1.04);
+    currentBpm = Math.trunc(factor * tpm * currentBeatsValue);
+    currentBeats = currentBeatsValue;
+  }
+
+  return currentBpm / currentBeats / 60;
+}
+
+let playerStatsChallengeInterval = null;
+
+function openPlayerStatsModal() {
+  const modal = document.getElementById('player-stats-modal');
+  if (!modal) return;
+
+  const earned = calculateEarnedPPoints();
+  const available = getAvailablePPoints();
+  const classification = getClassificationText();
+  const stage = getStarAndCrownState((classHighestCleared || 0));
+
+  document.getElementById('stats-player-name').textContent = playerName;
+  document.getElementById('stats-classification').textContent = classification;
+  document.getElementById('stats-p-points').textContent = String(available);
+  document.getElementById('stats-total-stars').textContent = String(earned.totalStars);
+  document.getElementById('stats-total-crowns').textContent = String(earned.totalCrowns);
+
+  const bestPlayList = document.getElementById('stats-best-play-list');
+  if (bestPlayList) {
+    const regularSongs = musicCsvData.filter((song) => !isChallengeSong(song));
+    const plays = regularSongs
+      .map((song) => {
+        const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
+        if (!bestLevel) return null;
+        const tps = computeSongFinalTps(song, bestLevel);
+        const songStage = getStarAndCrownState(bestLevel - 1);
+        return { song, bestLevel, tps, stage: songStage };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.tps - a.tps);
+
+    if (plays.length === 0) {
+      bestPlayList.innerHTML = `<div class="text-xs text-gray-400 text-center py-2" data-i18n="msg_no_song_played">No song played yet</div>`;
+    } else {
+      bestPlayList.innerHTML = plays
+        .slice(0, 50)
+        .map(
+          (p) => `
+          <div class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-gray-50">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-xs font-bold text-gray-500 w-6 text-right">${p.song.id}</span>
+              <span class="text-sm text-gray-800 truncate">${i18n ? i18n.getSongName(p.song.musicJson) : p.song.musicJson}</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              ${renderRewardIcons(p.stage, 'w-4 h-auto')}
+              <span class="text-xs font-bold text-gray-600 w-16 text-right">${p.tps.toFixed(2)} t/s</span>
+            </div>
+          </div>
+        `
+        )
+        .join('');
+    }
+  }
+
+  const challengeCycle = document.getElementById('stats-challenge-cycle');
+  if (challengeCycle) {
+    const challenges = musicCsvData.filter((song) => isChallengeSong(song));
+    const challengeScores = challenges
+      .map((song) => {
+        const isClassic = isClassicSong(song);
+        const key = isClassic
+          ? `opentile_classic_challenge_best_tiles_${song.mid}`
+          : `opentile_challenge_best_tps_${song.mid}`;
+        const best = parseFloat(localStorage.getItem(key) || '0', 10);
+        if (best <= 0) return null;
+        const display = isClassic ? `${Math.round(best)} tiles` : `${best.toFixed(3)} TPS`;
+        const rewardState = isClassic
+          ? getClassicChallengeRewardStateFromTiles(best)
+          : getChallengeRewardStateFromTps(best);
+        return { song, display, rewardState };
+      })
+      .filter(Boolean);
+
+    if (challengeScores.length === 0) {
+      challengeCycle.innerHTML = `<div class="text-xs text-gray-400">No challenge scores yet</div>`;
+    } else {
+      let currentIndex = 0;
+      const showChallenge = () => {
+        const c = challengeScores[currentIndex];
+        challengeCycle.innerHTML = `
+          <div class="flex items-center justify-center gap-3">
+            <span class="text-sm text-gray-700 truncate max-w-[120px]">${i18n ? i18n.getSongName(c.song.musicJson) : c.song.musicJson}</span>
+            ${c.rewardState ? renderRewardIcons(c.rewardState, 'w-5 h-auto') : ''}
+            <span class="text-sm font-bold text-gray-900">${c.display}</span>
+          </div>
+        `;
+        currentIndex = (currentIndex + 1) % challengeScores.length;
+      };
+      showChallenge();
+      if (playerStatsChallengeInterval) clearInterval(playerStatsChallengeInterval);
+      playerStatsChallengeInterval = setInterval(showChallenge, 2500);
+    }
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closePlayerStatsModal() {
+  const modal = document.getElementById('player-stats-modal');
+  if (modal) modal.classList.add('hidden');
+  if (playerStatsChallengeInterval) {
+    clearInterval(playerStatsChallengeInterval);
+    playerStatsChallengeInterval = null;
+  }
+}
+
+function getClassificationText() {
+  const level = classHighestCleared || 0;
+  if (level <= 0) return 'Class: None';
+  if (level === 11) return 'Class: Kaidan';
+  const suffix = level === 1 ? 'st' : level === 2 ? 'nd' : level === 3 ? 'rd' : 'th';
+  return `Class: ${level}${suffix} Dan`;
+}
+
 document.getElementById('player-name-text-home')?.addEventListener('click', () => {
   const newName = prompt('Enter your player name:', playerName);
   if (newName && newName.trim()) {
@@ -6926,12 +7089,7 @@ document.getElementById('player-name-text-home')?.addEventListener('click', () =
 });
 
 document.getElementById('player-name-text')?.addEventListener('click', () => {
-  const newName = prompt('Enter your player name:', playerName);
-  if (newName && newName.trim()) {
-    playerName = newName.trim();
-    localStorage.setItem('opentile_playername', playerName);
-    syncTopDockData();
-  }
+  openPlayerStatsModal();
 });
 
 document.getElementById('player-name-text-challenges')?.addEventListener('click', () => {

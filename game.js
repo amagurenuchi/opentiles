@@ -228,6 +228,20 @@ async function setupFirebaseAuth() {
   if (googleLoginBtn) {
     googleLoginBtn.addEventListener('click', async () => {
       try {
+        // Ensure auth is initialized
+        if (!auth) {
+          console.warn('Auth not initialized, attempting to reinitialize');
+          firebaseReady = await initializeGameFirebase();
+          if (firebaseReady) {
+            auth = getAuthInstance();
+          }
+        }
+        
+        if (!auth) {
+          console.error('Firebase auth not available for sign in');
+          return;
+        }
+        
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
         console.log('Google sign in successful');

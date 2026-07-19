@@ -6,7 +6,7 @@
  */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, initializeAuth, indexedDBLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js';
 
@@ -33,10 +33,8 @@ function initializeFirebaseServices(config) {
     // Initialize Firebase app
     app = initializeApp(config);
     
-    // Initialize Auth with IndexedDB persistence (more secure than localStorage)
-    auth = initializeAuth(app, {
-      persistence: indexedDBLocalPersistence
-    });
+    // Initialize Auth with standard getAuth
+    auth = getAuth(app);
     
     // Initialize Firestore
     db = getFirestore(app);

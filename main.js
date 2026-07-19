@@ -112,15 +112,14 @@ function createAppDataDir() {
 app.whenReady().then(async () => {
   createAppDataDir();
   
-  // Set up session for Firebase
   const ses = session.defaultSession;
   
-  // Allow Firebase domains
+  // Lock down the renderer with a local-only content security policy
   ses.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com https://*.cloudfunctions.net; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebase.com https://*.cloudfunctions.net wss://*.firebaseio.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com; style-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com; img-src 'self' data: blob: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.firebase.com; font-src 'self' data: https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com;"]
+        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;"]
       }
     });
   });

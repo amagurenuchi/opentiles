@@ -1,24 +1,5 @@
 'use strict';
 
-// Firebase imports from CDN (for direct auth usage in game.js)
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-
-// Firebase integration functions
-import {
-  initializeGameFirebase,
-  getAuthInstance,
-  isFirebaseAvailable,
-  syncLivesToFirestore,
-  saveSongLevelToFirestore,
-  syncAllUserDataToFirestore,
-  loadAllUserDataFromFirestore,
-  getUserEmail,
-  compareLocalVsCloudData
-} from './firebase-integration.js';
-
-let firebaseReady = false;
-let auth = null;
-
 const restMap = { Q: 8, R: 4, S: 2, T: 1, U: 0.5, V: 0.25, W: 0.125, X: 0.0625, Y: 0.03125 };
 const beatsMap = { H: 8, I: 4, J: 2, K: 1, L: 0.5, M: 0.25, N: 0.125, O: 0.0625, P: 0.03125 };
 const playTypes = {
@@ -96,332 +77,10 @@ const lifeCountEls = [
 const lifeTimerEls = [
   document.getElementById('life-timer')
 ].filter(Boolean);
-const googleLoginCard = document.getElementById('google-login-card');
-const googleLoginBtn = document.getElementById('google-login-btn');
-const loginPillPPoints = document.getElementById('login-pill-ppoints');
-const loginPillCrowns = document.getElementById('login-pill-crowns');
-const loginPillStars = document.getElementById('login-pill-stars');
-const dataSyncModal = document.getElementById('data-sync-modal');
-const syncUseLocalBtn = document.getElementById('sync-use-local-btn');
-const syncUseCloudBtn = document.getElementById('sync-use-cloud-btn');
 let currentDockTab = 'home';
 let previousDockTabBeforeSettings = 'home';
 
-// Firebase configuration - loaded from firebase-config-browser.js
-const firebaseConfig = window.firebaseConfig || {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
-};
-
-// Firebase Authentication functions
-function updateLoginPillStats() {
-  const { earnedPPoints, totalStars, totalCrowns } = calculateEarnedPPoints();
-  const availablePPoints = Math.max(0, earnedPPoints - spentPPoints);
-  if (loginPillPPoints) loginPillPPoints.textContent = String(availablePPoints);
-  if (loginPillCrowns) loginPillCrowns.textContent = String(totalCrowns);
-  if (loginPillStars) loginPillStars.textContent = String(totalStars);
-}
-
-function handleAuthStateChange(user) {
-  const profilePill = document.getElementById('profile-pill');
-  
-  if (user) {
-    // User is signed in, hide the login pill
-    if (googleLoginCard) googleLoginCard.classList.add('hidden');
-    
-    // Set player name from Google account display name (override local name)
-    if (user.displayName) {
-      playerName = user.displayName;
-      localStorage.setItem('opentile_playername', playerName);
-      syncTopDockData();
-    }
-    
-    // Update profile pill to show "Profile"
-    if (profilePill) {
-      profilePill.innerHTML = `
-        <div class="flex items-center gap-4">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 text-gray-600">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0zM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-          </svg>
-          <span class="text-base font-semibold text-gray-800" data-i18n="label_profile">Profile</span>
-        </div>
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 text-gray-400">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-        </svg>
-      `;
-    }
-  } else {
-    // User is signed out, show the login pill
-    if (googleLoginCard) {
-      googleLoginCard.classList.remove('hidden');
-      updateLoginPillStats();
-    }
-    
-    // Reset player name to local storage
-    playerName = localStorage.getItem('opentile_playername') || 'Player';
-    syncTopDockData();
-    
-    // Update profile pill to show Google sign in button
-    if (profilePill) {
-      profilePill.innerHTML = `
-        <div class="flex items-center gap-4">
-          <svg class="w-6 h-6" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C.78 9.08 0 11.43 0 14s.78 4.92 2.18 6.93l2.85-2.84z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-          </svg>
-          <span class="text-base font-semibold text-gray-800">Sign in with Google</span>
-        </div>
-      `;
-    }
-  }
-}
-
-/**
- * Show data sync modal with comparison between local and cloud data
- */
-async function showDataSyncModal() {
-  if (!dataSyncModal || !musicCsvData) return;
-  
-  try {
-    // Get comparison data
-    const comparison = await compareLocalVsCloudData(musicCsvData);
-    
-    if (!comparison) {
-      // If comparison failed, just sync local data silently
-      await syncAllUserDataToFirestore(musicCsvData);
-      return;
-    }
-    
-    // Populate modal with comparison data
-    const syncLocalPPoints = document.getElementById('sync-local-ppoints');
-    const syncCloudPPoints = document.getElementById('sync-cloud-ppoints');
-    const syncLocalStars = document.getElementById('sync-local-stars');
-    const syncCloudStars = document.getElementById('sync-cloud-stars');
-    const syncLocalCrowns = document.getElementById('sync-local-crowns');
-    const syncCloudCrowns = document.getElementById('sync-cloud-crowns');
-    const syncUserEmail = document.getElementById('sync-user-email');
-    
-    if (syncLocalPPoints) syncLocalPPoints.textContent = String(comparison.local.pPoints);
-    if (syncCloudPPoints) syncCloudPPoints.textContent = String(comparison.cloud.pPoints);
-    if (syncLocalStars) syncLocalStars.textContent = String(comparison.local.stars);
-    if (syncCloudStars) syncCloudStars.textContent = String(comparison.cloud.stars);
-    if (syncLocalCrowns) syncLocalCrowns.textContent = String(comparison.local.crowns);
-    if (syncCloudCrowns) syncCloudCrowns.textContent = String(comparison.cloud.crowns);
-    
-    // Show user email
-    const email = getUserEmail();
-    if (syncUserEmail && email) {
-      syncUserEmail.textContent = email;
-    }
-    
-    // Show modal
-    dataSyncModal.classList.remove('hidden');
-  } catch (error) {
-    console.error('Failed to show data sync modal:', error);
-    // On error, just sync local data silently
-    await syncAllUserDataToFirestore(musicCsvData);
-  }
-}
-
-/**
- * Hide data sync modal
- */
-function hideDataSyncModal() {
-  if (dataSyncModal) {
-    dataSyncModal.classList.add('hidden');
-  }
-}
-
-async function setupFirebaseAuth() {
-  // Initialize Firestore integration (this will also initialize auth)
-  try {
-    firebaseReady = await initializeGameFirebase();
-    if (firebaseReady) {
-      // Get the auth instance from the initialized Firebase services
-      auth = getAuthInstance();
-      console.log('Firestore integration initialized');
-    }
-  } catch (error) {
-    console.warn('Firestore initialization failed:', error);
-    firebaseReady = false;
-  }
-
-  if (!auth) {
-    console.warn('Firebase auth not initialized');
-    return;
-  }
-
-  // Listen for auth state changes
-  onAuthStateChanged(auth, async (user) => {
-    await handleAuthStateChange(user);
-    
-    // Load user data from Firestore when signed in
-    if (user && firebaseReady) {
-      try {
-        const loaded = await loadAllUserDataFromFirestore();
-        if (loaded) {
-          console.log('User data loaded from Firestore');
-          // Refresh UI with loaded data
-          invalidateEarnedPPointsCache();
-          syncTopDockData();
-          updateLifeUi();
-          // Refresh song list to show updated star/crown states
-          if (typeof renderSongList === 'function') {
-            renderSongList();
-          }
-          // Reinitialize settings UI with loaded settings
-          if (typeof updateSettingsUI === 'function') {
-            updateSettingsUI();
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to load user data from Firestore:', error);
-      }
-    }
-  });
-
-  // Wire up login button
-  if (googleLoginBtn) {
-    googleLoginBtn.addEventListener('click', async () => {
-      try {
-        // Ensure auth is initialized
-        if (!auth) {
-          console.warn('Auth not initialized, attempting to reinitialize');
-          firebaseReady = await initializeGameFirebase();
-          if (firebaseReady) {
-            auth = getAuthInstance();
-          }
-        }
-        
-        if (!auth) {
-          console.error('Firebase auth not available for sign in');
-          return;
-        }
-        
-        const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
-        console.log('Google sign in successful');
-        
-        // Show data sync modal to let user choose between local and cloud data
-        if (firebaseReady && musicCsvData) {
-          showDataSyncModal().catch(err => {
-            console.warn('Failed to show data sync modal:', err);
-          });
-        }
-      } catch (error) {
-        console.error('Google sign in error:', error);
-      }
-    });
-  }
-
-  // Wire up sync modal buttons
-  if (syncUseLocalBtn) {
-    syncUseLocalBtn.addEventListener('click', async () => {
-      try {
-        // Sync local data to Firestore (overwrite cloud)
-        if (firebaseReady && musicCsvData) {
-          await syncAllUserDataToFirestore(musicCsvData);
-          console.log('Local data synced to Firestore');
-        }
-        hideDataSyncModal();
-      } catch (error) {
-        console.error('Failed to sync local data:', error);
-      }
-    });
-  }
-
-  if (syncUseCloudBtn) {
-    syncUseCloudBtn.addEventListener('click', async () => {
-      try {
-        // Load cloud data to localStorage (overwrite local)
-        const loaded = await loadAllUserDataFromFirestore();
-        if (loaded) {
-          console.log('Cloud data loaded to localStorage');
-          // Update global variables from localStorage
-          spentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
-          lifeCount = parseInt(localStorage.getItem('opentile_life_count') || '21', 10);
-          lifeLastUpdatedAt = parseInt(localStorage.getItem('opentile_life_last_updated_at') || String(Date.now()), 10);
-          // Refresh UI with loaded data
-          invalidateEarnedPPointsCache();
-          syncTopDockData();
-          updateLifeUi();
-          // Refresh song list to show updated star/crown states
-          if (typeof renderSongList === 'function') {
-            renderSongList();
-          }
-          // Reinitialize settings UI with loaded settings
-          if (typeof updateSettingsUI === 'function') {
-            updateSettingsUI();
-          }
-        }
-        hideDataSyncModal();
-      } catch (error) {
-        console.error('Failed to load cloud data:', error);
-      }
-    });
-  }
-
-  // Set up periodic sync for when user comes back online
-  setupPeriodicSync();
-}
-
-// Periodic sync to handle offline-to-online transitions
-let syncIntervalId = null;
-
-function setupPeriodicSync() {
-  // Clear any existing interval
-  if (syncIntervalId) {
-    clearInterval(syncIntervalId);
-  }
-
-  // Sync every 30 seconds when online and authenticated
-  syncIntervalId = setInterval(async () => {
-    if (!firebaseReady || !isFirebaseAvailable() || !musicCsvData) {
-      return;
-    }
-
-    // Only sync if document is visible (user is actively using the app)
-    if (document.visibilityState === 'visible') {
-      try {
-        await syncAllUserDataToFirestore(musicCsvData);
-        console.debug('Periodic sync to Firestore completed');
-      } catch (error) {
-        console.debug('Periodic sync failed (likely offline):', error.message);
-      }
-    }
-  }, 30000); // 30 seconds
-
-  // Also sync when page becomes visible
-  document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible' && firebaseReady && isFirebaseAvailable() && musicCsvData) {
-      try {
-        await syncAllUserDataToFirestore(musicCsvData);
-        console.debug('Sync on page visibility change completed');
-      } catch (error) {
-        console.debug('Sync on visibility change failed (likely offline):', error.message);
-      }
-    }
-  });
-
-  // Sync when network comes back online
-  window.addEventListener('online', async () => {
-    if (firebaseReady && isFirebaseAvailable() && musicCsvData) {
-      try {
-        await syncAllUserDataToFirestore(musicCsvData);
-        console.log('Sync on network reconnection completed');
-      } catch (error) {
-        console.warn('Sync on network reconnection failed:', error);
-      }
-    }
-  });
-}
-
+// Player name is stored locally
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
 pitches.forEach((pitch) => {
@@ -638,8 +297,9 @@ let _cachedBoardRect = null;
 const LIFE_MAX = 9999;
 const LIFE_REGEN_STOP_THRESHOLD = 30;
 const LIFE_REGEN_INTERVAL_MS = 5 * 60 * 1000;
+const LIFE_INITIAL_COUNT = 25;
 let spentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
-let lifeCount = parseInt(localStorage.getItem('opentile_life_count') || '21', 10);
+let lifeCount = parseInt(localStorage.getItem('opentile_life_count') || String(LIFE_INITIAL_COUNT), 10);
 let lifeLastUpdatedAt = parseInt(localStorage.getItem('opentile_life_last_updated_at') || String(Date.now()), 10);
 let lifeUiIntervalId = 0;
 const MAX_REVIVES_PER_RUN = 3;
@@ -664,14 +324,6 @@ function clampNumber(value, min, max) {
 function saveLifeState() {
   localStorage.setItem('opentile_life_count', String(lifeCount));
   localStorage.setItem('opentile_life_last_updated_at', String(lifeLastUpdatedAt));
-  
-  // Sync to Firestore when online (non-blocking, won't affect offline gameplay)
-  if (firebaseReady && isFirebaseAvailable()) {
-    syncLivesToFirestore(lifeCount, lifeLastUpdatedAt).catch(err => {
-      // Silently fail - offline gameplay continues normally
-      console.debug('Firestore sync failed (likely offline):', err.message);
-    });
-  }
 }
 
 let _earnedPPointsCache = null;
@@ -714,7 +366,7 @@ function formatCountdown(msRemaining) {
 }
 
 function normalizeLifeState(now = Date.now()) {
-  if (!Number.isFinite(lifeCount)) lifeCount = 21;
+  if (!Number.isFinite(lifeCount)) lifeCount = LIFE_INITIAL_COUNT;
   if (!Number.isFinite(lifeLastUpdatedAt)) lifeLastUpdatedAt = now;
 
   lifeCount = clampNumber(lifeCount, 0, LIFE_MAX);
@@ -3534,14 +3186,7 @@ async function finishRun(showLibrary = false) {
         if (normalSongAwardLevel > bestLevel) {
           localStorage.setItem(key, String(normalSongAwardLevel));
           invalidateEarnedPPointsCache();
-          
-          // Sync to Firestore when online (non-blocking, won't affect offline gameplay)
-          if (firebaseReady && isFirebaseAvailable() && selectedSongData.mid) {
-            saveSongLevelToFirestore(String(selectedSongData.mid), normalSongAwardLevel).catch(err => {
-              console.debug('Firestore sync failed (likely offline):', err.message);
-            });
-          }
-          
+           
           // Song of the Day reward: award P-Points if completed with 3 stars
           if (currentSongIsSongOfTheDay && normalSongAwardLevel >= 4 && !isSongOfTheDayCompleted()) {
             const currentStreak = updateSongOfTheDayStreak();
@@ -6767,9 +6412,6 @@ async function initializeGame() {
     // 2. Now run the unified asset preloader which loads and caches everything else
     await preloadAssets();
     
-    // Set up Firebase authentication
-    setupFirebaseAuth();
-    
     // Finalize loading
     updateLoadingProgress('complete', 1, 1);
     
@@ -6812,26 +6454,9 @@ document.getElementById('settings-btn')?.addEventListener('click', () => {
 });
 
 // Settings pill click handlers
-document.getElementById('profile-pill')?.addEventListener('click', async () => {
-  // Check if user is signed in
-  if (typeof auth !== 'undefined' && auth.currentUser) {
-    // User is signed in, show profile modal
-    document.getElementById('profile-modal').classList.remove('hidden');
-    // Update profile email if user is signed in
-    const profileEmail = document.getElementById('profile-email');
-    if (profileEmail) {
-      profileEmail.textContent = auth.currentUser.email || 'user@example.com';
-    }
-  } else {
-    // User is signed out, trigger Google sign-in
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      console.log('Google sign in successful');
-    } catch (error) {
-      console.error('Google sign in error:', error);
-    }
-  }
+document.getElementById('profile-pill')?.addEventListener('click', () => {
+  // Open the profile modal (local profile, no account required)
+  document.getElementById('profile-modal').classList.remove('hidden');
 });
 
 document.getElementById('sound-pill')?.addEventListener('click', () => {
@@ -6980,40 +6605,126 @@ document.getElementById('profile-modal-backdrop')?.addEventListener('click', () 
   document.getElementById('profile-modal').classList.add('hidden');
 });
 
-document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
-  if (typeof auth !== 'undefined') {
-    try {
-      await signOut(auth);
-      document.getElementById('profile-modal').classList.add('hidden');
-      setSongStatus('Signed out successfully.');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      setSongStatus('Error signing out.');
-    }
+// Manage Local Profile - reset helpers (all data is stored in localStorage)
+function removeKeysByPrefix(prefix) {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) keys.push(k);
+  }
+  keys.forEach((k) => localStorage.removeItem(k));
+}
+
+function recomputeClassificationFromScores() {
+  // classHighestCleared is derived from the highest Dan course cleared,
+  // which is not stored as a per-song score. It is reset independently.
+  classHighestCleared = parseInt(localStorage.getItem('classHighestCleared') || '0', 10);
+}
+
+function showResetStatus(message) {
+  const statusEl = document.getElementById('profile-reset-status');
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.classList.remove('hidden');
+  clearTimeout(showResetStatus._timer);
+  showResetStatus._timer = setTimeout(() => {
+    statusEl.classList.add('hidden');
+  }, 3000);
+}
+
+function refreshAfterReset() {
+  // Re-read progress state from localStorage into memory
+  highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
+  spentPPoints = parseInt(localStorage.getItem('opentile_spent_ppoints') || '0', 10);
+  lifeCount = parseInt(localStorage.getItem('opentile_life_count') || String(LIFE_INITIAL_COUNT), 10);
+  lifeLastUpdatedAt = parseInt(localStorage.getItem('opentile_life_last_updated_at') || String(Date.now()), 10);
+  recomputeClassificationFromScores();
+  invalidateEarnedPPointsCache();
+  syncTopDockData();
+  updateLifeUi();
+  if (typeof renderSongList === 'function') renderSongList();
+  if (typeof renderHomeScreen === 'function') renderHomeScreen();
+  if (typeof renderFavouriteSongs === 'function') renderFavouriteSongs();
+  if (typeof render700PlusSongs === 'function') render700PlusSongs();
+  if (typeof renderClassScreen === 'function') renderClassScreen();
+  if (typeof updateSettingsUI === 'function') updateSettingsUI();
+}
+
+function resetScoreData() {
+  removeKeysByPrefix('opentile_highscore_level_');
+  removeKeysByPrefix('opentile_best_score_');
+  localStorage.removeItem('opentile_highscore');
+  localStorage.removeItem('opentile_song_of_the_day_streak');
+  refreshAfterReset();
+  showResetStatus(i18n?.t('msg_reset_done_score', 'Score data reset.') || 'Score data reset.');
+}
+
+function resetPPoints() {
+  spentPPoints = 0;
+  localStorage.setItem('opentile_spent_ppoints', '0');
+  refreshAfterReset();
+  showResetStatus(i18n?.t('msg_reset_done_ppoints', 'P-Points reset.') || 'P-Points reset.');
+}
+
+function resetClassification() {
+  classHighestCleared = 0;
+  localStorage.setItem('classHighestCleared', '0');
+  refreshAfterReset();
+  showResetStatus(i18n?.t('msg_reset_done_class', 'Classification reset.') || 'Classification reset.');
+}
+
+function resetAllData() {
+  // Clear ALL local data, including control settings.
+  removeKeysByPrefix('opentile_');
+  localStorage.removeItem('classHighestCleared');
+  // Reset in-memory profile/preferences and settings
+  playerName = 'Player';
+  localStorage.setItem('opentile_playername', playerName);
+  lifeCount = LIFE_INITIAL_COUNT;
+  lifeLastUpdatedAt = Date.now();
+  localStorage.setItem('opentile_life_count', String(LIFE_INITIAL_COUNT));
+  localStorage.setItem('opentile_life_last_updated_at', String(lifeLastUpdatedAt));
+  // Reset control settings to their defaults
+  keybinds = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
+  autoplayEnabled = false;
+  reviveSlowdownEnabled = true;
+  customStartingSpeed = 0;
+  localStorage.setItem('opentile_keybinds', JSON.stringify(keybinds));
+  localStorage.setItem('opentile_autoplay', String(autoplayEnabled));
+  localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
+  localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
+  if (typeof i18n !== 'undefined' && i18n.setLanguage) i18n.setLanguage('en');
+  refreshAfterReset();
+  showResetStatus(i18n?.t('msg_reset_done_all', 'All data reset.') || 'All data reset.');
+  // Show farewell screen, then force a full refresh
+  const farewell = document.getElementById('farewell-screen');
+  if (farewell) farewell.classList.remove('hidden');
+  setTimeout(() => {
+    window.location.reload(true);
+  }, 1800);
+}
+
+document.getElementById('reset-score-btn')?.addEventListener('click', () => {
+  if (confirm(i18n?.t('confirm_reset_score', 'Reset all score data? This cannot be undone.') || 'Reset all score data? This cannot be undone.')) {
+    resetScoreData();
   }
 });
 
-document.getElementById('delete-account-btn')?.addEventListener('click', async () => {
-  if (typeof auth !== 'undefined' && auth.currentUser) {
-    // Show confirmation prompt
-    const confirmed = confirm('Are you sure you want to delete your account? This action cannot be undone and will permanently delete all your data.');
-    
-    if (!confirmed) {
-      return; // User cancelled
-    }
-    
-    try {
-      await deleteUser(auth.currentUser);
-      document.getElementById('profile-modal').classList.add('hidden');
-      setSongStatus('Account deleted successfully.');
-    } catch (error) {
-      console.error('Account deletion error:', error);
-      if (error.code === 'auth/requires-recent-login') {
-        setSongStatus('Please re-authenticate before deleting account. Sign out and sign in again.');
-      } else {
-        setSongStatus('Error deleting account. Please try again.');
-      }
-    }
+document.getElementById('reset-ppoints-btn')?.addEventListener('click', () => {
+  if (confirm(i18n?.t('confirm_reset_ppoints', 'Reset P-Points? This cannot be undone.') || 'Reset P-Points? This cannot be undone.')) {
+    resetPPoints();
+  }
+});
+
+document.getElementById('reset-classification-btn')?.addEventListener('click', () => {
+  if (confirm(i18n?.t('confirm_reset_class', 'Reset classification? This cannot be undone.') || 'Reset classification? This cannot be undone.')) {
+    resetClassification();
+  }
+});
+
+document.getElementById('reset-all-btn')?.addEventListener('click', () => {
+  if (confirm(i18n?.t('confirm_reset_all', 'Reset ALL local data? This cannot be undone.') || 'Reset ALL local data? This cannot be undone.')) {
+    resetAllData();
   }
 });
 

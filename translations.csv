@@ -40,6 +40,26 @@ label_col_4,Col 4,第4列,列4
 section_customize_speed,Customize Speed,自定义速度,速度カスタマイズ
 section_language,Language,语言,言語
 label_profile,Profile,个人资料,プロフィール
+label_manage_profile,Manage Local Profile,管理本地档案,ローカルプロフィール管理
+label_local_profile,Local profile,本地档案,ローカルプロフィール
+msg_manage_profile_desc,All progress is stored locally on this device. Choose what to reset.,所有进度都保存在本设备上。选择要重置的内容。,すべての進捗はこの端末に保存されます。リセットする項目を選択してください。
+btn_reset_score,Reset Score Data,重置分数数据,スコアデータをリセット
+btn_reset_score_desc,Stars, crowns, high scores,星星、皇冠、高分,星・王冠・ハイスコア
+btn_reset_ppoints,Reset P-Points,重置P点数,ポイントをリセット
+btn_reset_ppoints_desc,Spent P-Points balance,已使用P点数余额,使用済みPポイント残高
+btn_reset_classification,Reset Classification,重置段位,段位をリセット
+btn_reset_classification_desc,Dan classification,段位排名,段位ランキング
+btn_reset_all,Reset All Data,重置所有数据,すべてのデータをリセット
+btn_reset_all_desc,Everything except your settings,除设置外的所有数据,設定以外のすべて
+msg_reset_done_score,Score data reset.,分数数据已重置。,スコアデータをリセットしました。
+msg_reset_done_ppoints,P-Points reset.,P点数已重置。,ポイントをリセットしました。
+msg_reset_done_class,Classification reset.,段位已重置。,段位をリセットしました。
+msg_reset_done_all,All data reset.,所有数据已重置。,すべてのデータをリセットしました。
+confirm_reset_score,Reset all score data? This cannot be undone.,重置所有分数数据？此操作无法撤销。,すべてのスコアデータをリセットしますか？元に戻せません。
+confirm_reset_ppoints,Reset P-Points? This cannot be undone.,重置P点数？此操作无法撤销。,ポイントをリセットしますか？元に戻せません。
+confirm_reset_class,Reset classification? This cannot be undone.,重置段位？此操作无法撤销。,段位をリセットしますか？元に戻せません。
+confirm_reset_all,Reset ALL local data? This cannot be undone.,重置所有本地数据？此操作无法撤销。,すべてのローカルデータをリセットしますか？元に戻せません。
+msg_goodbye,Goodbye,再见,さようなら
 label_sound,Sound,声音,サウンド
 status_on,On,开启,オン
 status_off,Off,关闭,オフ

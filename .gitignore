@@ -27,5 +27,4 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-firebase-config-browser.js
 generate_speed_chart.py

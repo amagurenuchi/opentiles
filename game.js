@@ -6925,7 +6925,8 @@ document.getElementById('stats-player-name')?.addEventListener('click', () => {
 const languages = [
   { code: 'en', name: 'English' },
   { code: 'zh', name: '中文' },
-  { code: 'ja', name: '日本語' }
+  { code: 'ja', name: '日本語' },
+  { code: 'ar', name: 'العربية' }
 ];
 
 let selectedLanguage = null;

@@ -13,6 +13,83 @@
   --dock-offset: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
+/* Use Arabic-capable fonts when the document direction is RTL (Arabic) */
+html[dir="rtl"] {
+  --font-ui: 'Futura Condensed', 'Outfit', 'Noto Sans Arabic', 'Segoe UI', 'Tahoma', sans-serif;
+  --font-game: 'Futura Condensed', 'Fira Sans Condensed', 'Noto Sans Arabic', 'Segoe UI', 'Tahoma', sans-serif;
+
+  /* Right-align text by default so Arabic reads naturally */
+  body {
+    text-align: right;
+  }
+
+  /* Flip board column separators to the logical (left) side under RTL */
+  .col-element {
+    border-right: none;
+    border-left: 1px solid #e5e7eb;
+  }
+
+  .col-element:last-child {
+    border-left: none;
+  }
+
+  /* Reverse decorative icon offsets that were tuned for LTR */
+  .life-fly-heart {
+    margin-left: 0;
+    margin-right: -0.85rem;
+  }
+
+  .life-fly-heart-buy {
+    margin-left: 0;
+    margin-right: -0.725rem;
+  }
+
+  /* Keep numeric score / TPS readouts left-to-right even in Arabic (RTL) so
+     the digits and decimal point are never mirrored or reordered. */
+  #score-display,
+  #tps-display-normal,
+  #tps-display-challenge,
+  #best-display,
+  #life-count,
+  #life-timer,
+  #p-points-display,
+  #revive-countdown-ring-text,
+  .score-digit-wrapper {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: left;
+  }
+
+  /* Challenges screen: pin the Play button and the Best TPS readout into the
+     left corner under RTL so they mirror the LTR right-hand placement.
+     Force the order explicitly because automatic flex mirroring is unreliable
+     here: badge on the right, content in the middle, action (Play + Best TPS)
+     on the left. */
+  .challenge-card.song-card {
+    flex-direction: row;
+  }
+
+  .challenge-card .song-card-badge {
+    order: 3;
+  }
+
+  .challenge-card .song-card-content {
+    order: 2;
+  }
+
+  .challenge-card .song-card-action {
+    order: 1;
+    align-items: flex-start;
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  .challenge-card .best-score-display {
+    text-align: left;
+  }
+}
+
+
 body {
   font-family: var(--font-ui);
   background-color: #f3f4f6;

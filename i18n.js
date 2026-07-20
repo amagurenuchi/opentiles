@@ -6,13 +6,15 @@ class TranslationSystem {
     this.translations = {};
     this.songTranslations = {};
     this.currentLanguage = 'en';
-    this.supportedLanguages = ['en', 'zh', 'ja'];
+    this.supportedLanguages = ['en', 'zh', 'ja', 'ar'];
     this.translationLoadPromise = null;
     this.languageNames = {
       'en': 'English',
       'zh': '中文',
-      'ja': '日本語'
+      'ja': '日本語',
+      'ar': 'العربية'
     };
+    this.rtlLanguages = ['ar'];
   }
 
   // Load translations from CSV file
@@ -49,27 +51,28 @@ class TranslationSystem {
     return this.translationLoadPromise;
   }
 
-  // Parse CSV format: key,english,chinese,japanese
+  // Parse CSV format: key,english,chinese,japanese,arabic
   parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
     const headers = this.parseCSVLine(lines[0]);
-    
+
     // Create translation object
     this.translations = {};
-    
+
     for (let i = 1; i < lines.length; i++) {
       const values = this.parseCSVLine(lines[i]);
       const key = values[0];
-      
+
       this.translations[key] = {
         en: values[1] || key,
         zh: values[2] || values[1] || key,
-        ja: values[3] || values[1] || key
+        ja: values[3] || values[1] || key,
+        ar: values[4] || values[1] || key
       };
     }
   }
 
-  // Parse song CSV format: tid,chinese,english,japanese
+  // Parse song CSV format: tid,chinese,english,japanese,arabic
   parseSongCSV(csvText) {
     const lines = csvText.trim().split('\n');
     const headers = this.parseCSVLine(lines[0]);
@@ -84,7 +87,8 @@ class TranslationSystem {
       this.songTranslations[tid] = {
         en: values[2] || tid, // English column
         zh: values[1] || values[2] || tid, // Chinese column
-        ja: values[3] || values[2] || tid  // Japanese column
+        ja: values[3] || values[2] || tid, // Japanese column
+        ar: values[4] || values[2] || tid  // Arabic column
       };
     }
   }
@@ -153,12 +157,25 @@ class TranslationSystem {
       this.currentLanguage = language;
       localStorage.setItem('opentile_language', language);
       this.updateUITranslations();
+      this.applyDocumentDirection();
       // Trigger custom event for song translations update
       const event = new CustomEvent('languageChanged', { detail: { language: this.currentLanguage } });
       document.dispatchEvent(event);
       return true;
     }
     return false;
+  }
+
+  // Apply text direction (RTL for Arabic, LTR otherwise) and lang attribute
+  applyDocumentDirection() {
+    const docEl = document.documentElement;
+    if (!docEl) return;
+    if (this.rtlLanguages.includes(this.currentLanguage)) {
+      docEl.setAttribute('dir', 'rtl');
+    } else {
+      docEl.setAttribute('dir', 'ltr');
+    }
+    docEl.setAttribute('lang', this.currentLanguage);
   }
 
   // Get current language
@@ -249,6 +266,7 @@ const i18n = new TranslationSystem();
 document.addEventListener('DOMContentLoaded', async () => {
   await i18n.loadTranslations();
   i18n.updateUITranslations();
+  i18n.applyDocumentDirection();
 
   if (typeof syncTopDockData === 'function') {
     syncTopDockData();

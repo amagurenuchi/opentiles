@@ -1,123 +1,124 @@
-key,english,chinese,japanese
-game_title,Piano Tiles Zero,钢琴块零,ピアノタイル・ゼロ
-artist_English Folk Music,English Folk Music,英式民谣音乐,イングリッシュフォークミュージック
-artist_James Lord Pierpont,James Lord Pierpont,詹姆斯·洛德·皮尔庞特,ジェームズ・ロード・ピアポント
-artist_Johann Pachelbel,Johann Pachelbel,约翰·帕赫贝尔,ヨハン・パッヘルベル
-artist_French Folk Music,French Folk Music,法国民谣音乐,フレンチフォークミュージック
-artist_Polish Folk Music,Polish Folk Music,波兰民谣音乐,ポーランドフォークミュージック
-artist_American Folk Music,American Folk Music,美国民谣音乐,アメリカンフォークミュージック
-artist_Schubert,Schubert,舒伯特,シューベルト
-artist_Beethoven,Beethoven,贝多芬,ベートーヴェン
-artist_Chopin,Chopin,肖邦,ショパン
-artist_Francois Joseph Gossec,Francois Joseph Gossec,弗朗索瓦·约瑟夫·戈塞克,フランソワ・ジョゼフ・ゴセック
-artist_Carlos Gardel,Carlos Gardel,卡洛斯·加尔德尔,カルロス・ガルデル
-artist_Russian Folk Music,Russian Folk Music,俄罗斯民谣音乐,ロシア民謡
-artist_Tchaikovsky,Tchaikovsky,柴可夫斯基,チャイコフスキー
-artist_Saint-Seans,Saint-Seans,圣桑,サン＝サーンス
-artist_Bach,Bach,巴赫,バッハ
-artist_Johann Strauss II,Johann Strauss II,约翰·施特劳斯二世,ヨハン・シュトラウス2世
-artist_Jacques Offenbach,Jacques Offenbach,雅克·奥芬巴赫,ジャック・オッフェンバック
-artist_Mozart,Mozart,莫扎特,モーツァルト
-artist_Congfei Wei,Congfei Wei,魏聪菲,魏聰菲
-game_instructions,"Tap the black tiles in order. Don't touch any white space!",按顺序点击黑色方块。不要触碰任何白色区域！,黒いタイルを順番にタップしてください。白い部分には触れないでください！
-label_pt2_json,Piano Tiles 2 JSON,钢琴瓷砖2 JSON,ピアノタイル2 JSON
-label_music_entry,Music Entry,音乐条目,音楽エントリー
-placeholder_load_pt2,Load a PT2 JSON first,请先加载PT2 JSON文件,まずPT2 JSONファイルを読み込んでください
-btn_load_horseman,Load Horseman.json,加载Horseman.json,Horseman.jsonを読み込む
-btn_clear_song,Clear Song,清除歌曲,曲をクリア
-status_no_pt2,No PT2 file loaded.,未加载PT2文件,PT2ファイルが読み込まれていません
-label_best,Best:,最佳:,ベスト:
-label_tps_unit,t/s,次/秒,回/秒
-btn_song_library,Song Library,歌曲库,曲ライブラリ
-title_settings,Settings,设置,設定
-subtitle_preferences,Preferences,偏好设置,設定
-btn_save,Save,保存,保存
-section_keybinds,Keybinds,按键绑定,キーバインド
-label_col_1,Col 1,第1列,列1
-label_col_2,Col 2,第2列,列2
-label_col_3,Col 3,第3列,列3
-label_col_4,Col 4,第4列,列4
-section_customize_speed,Customize Speed,自定义速度,速度カスタマイズ
-section_language,Language,语言,言語
-label_profile,Profile,个人资料,プロフィール
-label_manage_profile,Manage Local Profile,管理本地档案,ローカルプロフィール管理
-label_local_profile,Local profile,本地档案,ローカルプロフィール
-msg_manage_profile_desc,All progress is stored locally on this device. Choose what to reset.,所有进度都保存在本设备上。选择要重置的内容。,すべての進捗はこの端末に保存されます。リセットする項目を選択してください。
-btn_reset_score,Reset Score Data,重置分数数据,スコアデータをリセット
-btn_reset_score_desc,Stars, crowns, high scores,星星、皇冠、高分,星・王冠・ハイスコア
-btn_reset_ppoints,Reset P-Points,重置P点数,ポイントをリセット
-btn_reset_ppoints_desc,Spent P-Points balance,已使用P点数余额,使用済みPポイント残高
-btn_reset_classification,Reset Classification,重置段位,段位をリセット
-btn_reset_classification_desc,Dan classification,段位排名,段位ランキング
-btn_reset_all,Reset All Data,重置所有数据,すべてのデータをリセット
-btn_reset_all_desc,Everything except your settings,除设置外的所有数据,設定以外のすべて
-msg_reset_done_score,Score data reset.,分数数据已重置。,スコアデータをリセットしました。
-msg_reset_done_ppoints,P-Points reset.,P点数已重置。,ポイントをリセットしました。
-msg_reset_done_class,Classification reset.,段位已重置。,段位をリセットしました。
-msg_reset_done_all,All data reset.,所有数据已重置。,すべてのデータをリセットしました。
-confirm_reset_score,Reset all score data? This cannot be undone.,重置所有分数数据？此操作无法撤销。,すべてのスコアデータをリセットしますか？元に戻せません。
-confirm_reset_ppoints,Reset P-Points? This cannot be undone.,重置P点数？此操作无法撤销。,ポイントをリセットしますか？元に戻せません。
-confirm_reset_class,Reset classification? This cannot be undone.,重置段位？此操作无法撤销。,段位をリセットしますか？元に戻せません。
-confirm_reset_all,Reset ALL local data? This cannot be undone.,重置所有本地数据？此操作无法撤销。,すべてのローカルデータをリセットしますか？元に戻せません。
-msg_goodbye,goodbye,再见,さようなら
-label_sound,Sound,声音,サウンド
-status_on,On,开启,オン
-status_off,Off,关闭,オフ
-label_autoplay,Autoplay,自动播放,自動再生
-label_change_backgrounds,Change Backgrounds,切换背景,背景切り替え
-label_credits,Credits,制作人员,クレジット
-label_privacy_policy,Privacy Policy,隐私政策,プライバシーポリシー
-label_donate,Donate,捐赠,寄付
-label_revive_slowdown,Revive Slowdown,复活减速,復活時スローダウン
-default_player_name,Player,玩家,プレイヤー
-label_p_points,P-Points,P点数,Pポイント
-aria_open_energy,Open energy supply,打开能量供应,エネルギー供給を開く
-alt_crown,Crown,皇冠,王冠
-alt_star,Star,星星,星
-title_game_over,GAME OVER,游戏结束,ゲームオーバー
-msg_better_luck,Better luck next time!,下次好运！,次は頑張ってください！
-label_final_score,Final Score,最终得分,最終スコア
-btn_play_again,Play Again,再玩一次,もう一度プレイ
-example_song_title,3. Nocturne Op. 55 No. 1,3. 夜曲Op.55 No.1,3. 夜想曲Op.55 No.1
-msg_new_best,New Best!,新纪录！,新記録！
-label_laps,Laps,圈数,周回数
-btn_retry,Retry,重试,リトライ
-title_game_paused,Game Paused,游戏暂停,ゲーム一時停止
-btn_quit,Quit,退出,終了
-btn_resume,Resume,继续,再開
-placeholder_search,Type to search...,输入搜索...,検索...
-msg_no_song_played,No song played yet,尚未播放歌曲,まだ曲を再生していません
-btn_play,Play,播放,再生
-header_latest_changes,Latest changes:,最新更改:,最新の変更:
-header_favourite_songs,Your favourite songs,您喜欢的歌曲,お気に入りの曲
-msg_no_favourites,"No favourite songs yet. Tap the heart on any song to add it here!",还没有喜欢的歌曲。点击任何歌曲上的心形图标将其添加到这里！,お気に入りの曲がまだありません。曲のハートマークをタップしてここに追加してください！
-header_700_plus_songs,Selection songs,精选歌曲,セレクション曲
-msg_no_700_plus_songs,No selection songs found.,未找到700+歌曲。,700+曲が見つかりません。
-msg_more_songs_expected,More songs to be expected...,更多歌曲敬请期待...,さらに曲が予定されています...
-aria_close_energy,Close energy supply,关闭能量供应,エネルギー供給を閉じる
-title_energy_supply,Energy Supply,能量供应,エネルギー供給
-label_time_to_next_life,Time to next life: 03:18,下一生命时间: 03:18,次のライフまでの時間: 03:18
-label_free,Free,免费,無料
-label_free_upper,FREE,免费,無料
-btn_end_run,End Run,结束运行,ランンを終了
-btn_revive,Revive,复活,復活
-nav_home,Home,主页,ホーム
-nav_music,Music,音乐,音楽
-nav_challenges,Challenges,挑战,チャレンジ
-nav_settings,Settings,设置,設定
-label_custom_song,Custom Song,自定义歌曲,カスタムソング
-label_custom_start_speed,Custom Start Speed,自定义起始速度,カスタム開始速度
-status_no_custom_song,No custom song loaded.,未加载自定义歌曲,カスタムソングが読み込まれていません
-label_player_stats,Player Stats,玩家统计,プレイヤーステータス
-label_best_play,Best Play,最佳表现,ベストプレイ
-label_challenge_best,Challenge Best,挑战最佳,チャレンジベスト
-label_disabled,Disabled,禁用,無効
-label_tiles_per_sec,t/s,次/秒,回/秒
-header_login_google,Log in with Google to save data,登录Google以保存数据,Googleでログインしてデータを保存
-btn_sign_in_google,Sign in with Google,使用Google登录,Googleでサインイン
-header_song_of_the_day,Song of the Day,每日歌曲,今日の一曲
-msg_loading_song_of_the_day,Loading Song of the Day...,加载每日歌曲中...,今日の一曲を読み込み中...
-msg_no_song_of_the_day,No Song of the Day available.,没有可用的每日歌曲。,今日の一曲が利用可能ではありません。
-label_completed,Completed,已完成,完了
-label_reward,Reward,奖励,報酬
-btn_complete,Complete,完成,完了
+key,English,Chinese,Japanese,Arabic
+game_title,Piano Tiles Zero,钢琴块零,ピアノタイル・ゼロ,بلاط البيانو 0
+artist_English Folk Music,English Folk Music,英式民谣音乐,イングリッシュフォークミュージック,الموسيقى الشعبية الإنجليزية
+artist_James Lord Pierpont,James Lord Pierpont,詹姆斯·洛德·皮尔庞特,ジェームズ・ロード・ピアポント,جيمس لورد بيربونت
+artist_Johann Pachelbel,Johann Pachelbel,约翰·帕赫贝尔,ヨハン・パッヘルベル,يوهان باخبل
+artist_French Folk Music,French Folk Music,法国民谣音乐,フレンチフォークミュージック,الموسيقى الشعبية الفرنسية
+artist_Polish Folk Music,Polish Folk Music,波兰民谣音乐,ポーランドフォークミュージック,الموسيقى الشعبية البولندية
+artist_American Folk Music,American Folk Music,美国民谣音乐,アメリカンフォークミュージック,الموسيقذ الشعبية الأمريكية
+artist_Schubert,Schubert,舒伯特,シューベルト,شوبرت
+artist_Beethoven,Beethoven,贝多芬,ベートーヴェン,بيتهوفن
+artist_Chopin,Chopin,肖邦,ショパン,تشوبين
+artist_Francois Joseph Gossec,Francois Joseph Gossec,弗朗索瓦·约瑟夫·戈塞克,フランソワ・ジョゼフ・ゴセック,فرانسوا جوزيف غوسيك
+artist_Carlos Gardel,Carlos Gardel,卡洛斯·加尔德尔,カルロス・ガルデル,كارلوس غارديل
+artist_Russian Folk Music,Russian Folk Music,俄罗斯民谣音乐,ロシア民謡,الموسيقى الشعبية الروسية
+artist_Tchaikovsky,Tchaikovsky,柴可夫斯基,チャイコフスキー,تشايكوفسكي
+artist_Saint-Seans,Saint-Seans,圣桑,サン＝サーンス,سان سانس
+artist_Bach,Bach,巴赫,バッハ,باخ
+artist_Johann Strauss II,Johann Strauss II,约翰·施特劳斯二世,ヨハン・シュトラウス2世,يوهان شتراوس الابن
+artist_Jacques Offenbach,Jacques Offenbach,雅克·奥芬巴赫,ジャック・オッフェンバック,جاك أوفنباخ
+artist_Mozart,Mozart,莫扎特,モーツァルト,موزارت
+artist_Congfei Wei,Congfei Wei,魏聪菲,魏聰菲,كونجفيل وي
+game_instructions,Tap the black tiles in order. Don't touch any white space!,按顺序点击黑色方块。不要触碰任何白色区域！,黒いタイルを順番にタップしてください。白い部分には触れないでください！,إضغط على البلاطات السوداء باللتتالي . لا تضغط على أي مسافات بيضاء! 
+label_pt2_json,Piano Tiles 2 JSON,钢琴瓷砖2 JSON,ピアノタイル2 JSON,JSON خاص ببلاط البيانو 2
+label_music_entry,Music Entry,音乐条目,音楽エントリー,مشاركة موسيقية
+placeholder_load_pt2,Load a PT2 JSON file first,请先加载PT2 JSON文件,まずPT2 JSONファイルを読み込んでください,قم بتحميل ملف JSON خاص بـPT2
+btn_load_horseman,Load Horseman.json,加载Horseman.json,Horseman.jsonを読み込む,تحميل Horseman.json
+btn_clear_song,Remove Song,清除歌曲,曲をクリア,أزل الأغنية
+status_no_pt2,No PT2 JSON file loaded.,未加载PT2文件,PT2ファイルが読み込まれていません,لم يتم تحميل اي ملف JSON خاص بـPT2
+label_best,Best:,最佳:,ベスト:,الأفضل:
+label_tps_unit,TPS,TPS,TPS,TPS
+btn_song_library,Song Library,歌曲库,曲ライブラリ,مكتبة الأغاني
+title_settings,Settings,设置,設定,الإعدادات
+subtitle_preferences,Preferences,偏好设置,設定,التفضيلات
+btn_save,Save,保存,保存,حفظ
+section_keybinds,Keybinds,按键绑定,キーバインド,إختصارات لوحة المفاتيح
+label_col_1,Column Left,第1列,列1,العامود الأيسر
+label_col_2,Column Middle Left,第2列,列2,العامود الأيسر في المنتصف
+label_col_3,Column Middle Right,第3列,列3,العامود الأيمن في المنتصف
+label_col_4,Column Right,第4列,列4,العامود الأيمن
+section_customize_speed,Customize Speed,自定义速度,速度カスタマイズ,تخصيص السرعة
+section_language,Languages,语言,言語,اللغات
+label_profile,Profile,个人资料,プロフィール,ملف التعريف
+label_manage_profile,Manage Local Profile,管理本地档案,ローカルプロフィール管理,إدارة ملف التعريف المحلي
+label_local_profile,Local profile,本地档案,ローカルプロフィール,ملف تعريف محلي
+msg_manage_profile_desc,All progress is stored locally on this device. Choose what to reset.,所有进度都保存在本设备上。选择要重置的内容。,すべての進捗はこの端末に保存されます。リセットする項目を選択してください。,كل التقدم مخزن محلياّ على جهازك. إختر ما الذي تريد إعادة ضبطه
+btn_reset_score,Reset Score Data,重置分数数据,スコアデータをリセット,إعادة ضبط بيانات النقاط
+btn_reset_score_desc,Stars, crowns, high scores,نجوم
+btn_reset_ppoints,Reset P-Points,重置P点数,ポイントをリセット,أعد ضبط نقاط P
+btn_reset_ppoints_desc,Spent P-Points balance,已使用P点数余额,使用済みPポイント残高,رصيد نقاط P المُستخدَمة
+btn_reset_classification,Reset Classification,重置段位,段位をリセット,إعادة ضبط التصنيف
+btn_reset_classification_desc,classification,段位排名,段位ランキング,التصنيف
+btn_reset_all,Reset All Data,重置所有数据,すべてのデータをリセット,إعادة ضبط جميع البيانات
+btn_reset_all_desc,Everything except your settings,除设置外的所有数据,設定以外のすべて,كل شيء ما عدا إعداداتك
+msg_reset_done_score,Score data reset.,分数数据已重置。,スコアデータをリセットしました。,إعادة ضبط بيانات النقاط.
+msg_reset_done_ppoints,P-Points reset.,P点数已重置。,ポイントをリセットしました。,إعادة ضبط نقاط P
+msg_reset_done_class,Classification reset.,段位已重置。,段位をリセットしました。,إعادة ضبط التصنيف
+msg_reset_done_all,All data reset.,所有数据已重置。,すべてのデータをリセットしました。,إعادة ضبط كل البيانات
+confirm_reset_score,Reset all score data? This cannot be undone.,重置所有分数数据？此操作无法撤销。,すべてのスコアデータをリセットしますか？元に戻せません。,إعادة ضبط بيانات المقاط؟ لا يمكن التراجع
+confirm_reset_ppoints,Reset P-Points? This cannot be undone.,重置P点数？此操作无法撤销。,ポイントをリセットしますか？元に戻せません。,إعادة ضبط نقاط P؟ لا يمكن التراجع
+confirm_reset_class,Reset classification? This cannot be undone.,重置段位？此操作无法撤销。,段位をリセットしますか？元に戻せません。,إعادة ضبط التصنيف؟ لا يمكن التراجع
+confirm_reset_all,Reset ALL local data? This cannot be undone.,重置所有本地数据？此操作无法撤销。,すべてのローカルデータをリセットしますか？元に戻せません。,إعادة ضبط جميع البيانات المحلية؟ لا يمكن التراجع
+msg_goodbye,goodbye,再见,さようなら,مع السلامة
+label_sound,Sound,声音,サウンド,الصوت
+status_on,On,开启,オン,مفعّل
+status_off,Off,关闭,オフ,معطّل
+label_autoplay,Autoplay,自动播放,自動再生,اللعب التلقائي
+label_change_backgrounds,Change Backgrounds,切换背景,背景切り替え,تغيير الخلفيات
+label_credits,Credits,制作人员,クレジット,الشكر والتقدير
+label_privacy_policy,Privacy Policy,隐私政策,プライバシーポリシー,سياسة الخصوصية
+label_donate,Donate,捐赠,寄付,تبرع
+label_revive_slowdown,slow revive,复活减速,復活時スローダウン,الإنعاش البطيء
+default_player_name,Player,玩家,プレイヤー,لاعب
+label_p_points,P-Points,P点数,Pポイント,نقاط P
+aria_open_energy,Open energy supply,打开能量供应,エネルギー供給を開く,فتح الإمداد بالطاقة
+alt_crown,Crown,皇冠,王冠,تاج 
+alt_star,Star,星星,星,نجمة
+title_game_over,GAME OVER,游戏结束,ゲームオーバー,إنتهت اللعبة
+msg_better_luck,Better luck next time!,下次好运！,次は頑張ってください！,حظاّ أوفر في المرة القادمة!
+label_final_score,Final Score,最终得分,最終スコア,النتيجة النهائية
+btn_play_again,Play Again,再玩一次,もう一度プレイ,إلعب مرة أخرى
+example_song_title,3. Nocturne Op. 55 No. 1,3. 夜曲Op.55 No.1,3. 夜想曲Op.55 No.1,3. نوكتورن، المصنف 55، رقم 1
+msg_new_best,New Best!,新纪录！,新記録！,رقم قياسي جديد!
+label_laps,Laps,圈数,周回数,تكرارات
+btn_retry,Retry,重试,リトライ,إعادة المحاولة
+title_game_paused,Game Paused,游戏暂停,ゲーム一時停止,توقفت اللعبة مؤقتاّ
+btn_quit,Quit,退出,終了,أخرج
+btn_resume,Continue,继续,再開,أكمل
+placeholder_search,Type to search...,输入搜索...,検索...,أكتب للبحث...
+msg_no_song_played,No song played yet,尚未播放歌曲,まだ曲を再生していません,لم يتم لعب أي أغنية بعد
+btn_play,Play,播放,再生,إلعب
+header_latest_changes,Latest changes:,最新更改:,最新の変更:,آخر التغييرات:
+header_favourite_songs,Your favourite songs,您喜欢的歌曲,お気に入りの曲,أغانيك المفضلة
+msg_no_favourites,No favourite songs yet. Tap the heart on any song to add it here!,还没有喜欢的歌曲。点击任何歌曲上的心形图标将其添加到这里！,お気に入りの曲がまだありません。曲のハートマークをタップしてここに追加してください！,لا توجد أغانٍ مفضلة بعد. اضغط على أيقونة القلب بجانب أي أغنية لإضافتها هنا!
+header_700_plus_songs,Selection songs,精选歌曲,セレクション曲,أغاني مختارة
+msg_no_700_plus_songs,No selection songs found.,未找到700+歌曲。,700+曲が見つかりません。,لا توجد أي أغاني مختارة.
+msg_more_songs_expected,More songs to be expected...,更多歌曲敬请期待...,さらに曲が予定されています...,من المتوقع صدور المزيد من الأغاني...
+aria_close_energy,Close energy supply,关闭能量供应,エネルギー供給を閉じる,أغلق إمداد الطاقة
+title_energy_supply,Energy Supply,能量供应,エネルギー供給,الإمداد بالطاقة
+label_time_to_next_life,Time to next life: 03:18,下一生命时间: 03:18,次のライフまでの時間: 03:18,الوقت المتبقي للحياة التالية: 03:18
+label_free,Free,免费,無料,مجاناّ
+label_free_upper,FREE,免费,無料,مجاناّ
+btn_end_run,Give Up,结束运行,ランンを終了,إستسلم
+btn_revive,Revive,复活,復活,إنعاش
+nav_home,Home,主页,ホーム,الرئيسية
+nav_music,Music,音乐,音楽,الأغاني
+nav_challenges,Challenges,挑战,チャレンジ,التحديات
+nav_class,Class,段位,クラス,الفئات
+nav_settings,Settings,设置,設定,الإعدادات
+label_custom_song,Custom Song,自定义歌曲,カスタムソング,أغنية مخصصة
+label_custom_start_speed,Custom Start Speed,自定义起始速度,カスタム開始速度,سرعة بداية مخصصة
+status_no_custom_song,No custom song loaded.,未加载自定义歌曲,カスタムソングが読み込まれていません,لم يتم تحميل أغنية مخصصة
+label_player_stats,Player Stats,玩家统计,プレイヤーステータス,إخصاءات اللاعب
+label_best_play,Best Result,最佳表现,ベストプレイ,أفضل نتيجة
+label_challenge_best,Best Challenge Result,挑战最佳,チャレンジベスト,أفضل نتيجة للتحدي
+label_disabled,Disabled,禁用,無効,معطّل
+label_tiles_per_sec,TPS,TPS,TPS,TPS
+header_login_google,Log in with Google to save your data,登录Google以保存数据,Googleでログインしてデータを保存,سجل الدخول بأستخدام Google لحفظ بياناتك
+btn_sign_in_google,Sign in with Google,使用Google登录,Googleでサインイン,سجل الدخول باستخدام Google
+header_song_of_the_day,Song of the Day,每日歌曲,今日の一曲,أغنية اليوم
+msg_loading_song_of_the_day,Loading Song of the Day...,加载每日歌曲中...,今日の一曲を読み込み中...,جارٍ تحميل أغنية اليوم...
+msg_no_song_of_the_day,The Song of the Day is not available.,没有可用的每日歌曲。,今日の一曲が利用可能ではありません。,أغنية اليوم غير متاحة.
+label_completed,Completed,已完成,完了,مكتمل 
+label_reward,Reward,奖励,報酬,جائزة
+btn_complete,Complete,完成,完了,مكتمل

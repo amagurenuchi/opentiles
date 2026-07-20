@@ -5221,8 +5221,12 @@ function updateEngineFrame(now) {
       }
     }
 
-    // Complete Dan course when all tiles are cleared and sheet is exhausted
-    if (tiles.length === 0 && currentSectionIndex >= sheet.length) {
+    // Complete Dan course when all tiles are cleared and sheet is exhausted.
+    // Guard with isStarted && !isPaused so finishRun (async) is invoked exactly
+    // once; otherwise the un-awaited completion re-fires every frame during the
+    // result audio await, spawning ~60 concurrent finishRun calls that overwrite
+    // the class results panel with the standard results screen.
+    if (isStarted && !isPaused && tiles.length === 0 && currentSectionIndex >= sheet.length) {
       // Signal a successful clear BEFORE calling finishRun so that isClassMode
       // remains true inside finishRun and the class results panel is shown.
       classCourseCleared = true;

@@ -1363,6 +1363,13 @@ body {
   direction: ltr;
 }
 
+/* Song and challenge cards keep their internal content laid out left-to-right
+   (title, artist, progress, action) regardless of the Arabic RTL setting. */
+.song-card,
+.challenge-card {
+  direction: ltr;
+}
+
 /* Pre-game info bar: white one-tile-height area at the bottom, shown only before
    the game starts. It overlays the bottom of the board and is hidden on start. */
 #pregame-info-bar {

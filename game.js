@@ -48,6 +48,9 @@ const closeBpmModalBtn = document.getElementById('close-bpm-modal-btn');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
+const pregameInfoBar = document.getElementById('pregame-info-bar');
+const pregameSongName = document.getElementById('pregame-song-value');
+const pregameBestScore = document.getElementById('pregame-best-value');
 const playerNameDisplay = document.getElementById('player-name-display');
 const playerNameText = document.getElementById('player-name-text');
 const pPointsDisplay = document.getElementById('p-points-display');
@@ -288,6 +291,26 @@ let pendingHitEffects = [];
 let currentGameplayBackgroundIndex = 1;
 let gameplayBackgroundTransitionTimeout = null;
 let gameplayBackgroundTransitionTargetIndex = null;
+// Tracks which crossfade layer currently shows the active background image.
+// 'a' => ::before is visible, 'b' => ::after is visible.
+let activeBgLayer = 'a';
+// Preloaded HTMLImageElements for the level backgrounds so a crossfade never
+// has to decode a large PNG on the fly (the original lag spike source).
+const GAMEPLAY_BG_IMAGES = {
+  1: 'gameImage/bgani_01.png',
+  2: 'gameImage/bgani_02.png',
+  3: 'gameImage/bgani_03.png',
+  0: 'gameImage/bgani_fallback.png'
+};
+let _gameplayBgPreloaded = false;
+function preloadGameplayBackgrounds() {
+  if (_gameplayBgPreloaded) return;
+  _gameplayBgPreloaded = true;
+  for (const key of Object.keys(GAMEPLAY_BG_IMAGES)) {
+    const img = new Image();
+    img.src = GAMEPLAY_BG_IMAGES[key];
+  }
+}
 let pendingBackgroundUpdate = false;
 let pendingBgLevelIncrement = false;
 let pendingSpeedLevelIncrement = false;
@@ -608,7 +631,7 @@ function updateReviveModalProgress() {
         // If computed threshold is not available, calculate it on the fly from sheet data
         if (computedThreshold === 0 && sheet.length > 0) {
           let runningScore = 0;
-          
+
           // Calculate through all available sections first
           for (let s = 0; s < sheet.length; s++) {
             const section = sheet[s];
@@ -621,7 +644,7 @@ function updateReviveModalProgress() {
               }
             }
           }
-          
+
           // If we need to reach a level beyond the available sections, extrapolate
           // by assuming the average score per section continues
           if (threshIdx >= sheet.length && sheet.length > 0) {
@@ -629,7 +652,7 @@ function updateReviveModalProgress() {
             const additionalSections = threshIdx - sheet.length + 1;
             runningScore += Math.round(avgScorePerSection * additionalSections);
           }
-          
+
           computedThreshold = runningScore;
         }
 
@@ -837,27 +860,47 @@ function getGameplayBackgroundIndex() {
   return 1;
 }
 
+function initGameplayBackground() {
+  if (!gameBoardWrapper) return;
+
+  preloadGameplayBackgrounds();
+
+  // Reset crossfade state so the initial background appears instantly (no fade
+  // from a transparent layer) and the active layer is layer A.
+  activeBgLayer = 'a';
+  const initialIndex = !bgChangeEnabled ? 0 : getGameplayBackgroundIndex();
+  const initialImage = GAMEPLAY_BG_IMAGES[initialIndex] || GAMEPLAY_BG_IMAGES[1];
+  gameBoardWrapper.style.setProperty('--game-bg-layer-a', `url("${initialImage}")`);
+  gameBoardWrapper.style.setProperty('--game-bg-layer-a-opacity', '1');
+  gameBoardWrapper.style.setProperty('--game-bg-layer-b', `url("${initialImage}")`);
+  gameBoardWrapper.style.setProperty('--game-bg-layer-b-opacity', '0');
+  currentGameplayBackgroundIndex = initialIndex;
+}
+
 function applyGameplayBackground() {
   if (!gameBoardWrapper) return;
 
-  // When background changes are disabled, force the fallback background (bgani_fallback)
-  if (!bgChangeEnabled) {
-    gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
-    gameBoardWrapper.classList.add('bg-level-fallback');
-    currentGameplayBackgroundIndex = 0;
-    return;
-  }
+  const targetBackgroundIndex = !bgChangeEnabled
+    ? 0
+    : getGameplayBackgroundIndex();
 
-  const targetBackgroundIndex = getGameplayBackgroundIndex();
+  // Bail out early if the target image is already the one being shown — avoids
+  // an unnecessary crossfade (and the layout/style recalc that comes with it).
+  if (targetBackgroundIndex === currentGameplayBackgroundIndex) return;
 
-  // Use CSS classes for background switching (more performant than inline styles)
-  gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3', 'bg-level-fallback');
+  const targetImage = GAMEPLAY_BG_IMAGES[targetBackgroundIndex] || GAMEPLAY_BG_IMAGES[1];
 
-  if (targetBackgroundIndex === 2) {
-    gameBoardWrapper.classList.add('bg-level-2');
-  } else if (targetBackgroundIndex === 3) {
-    gameBoardWrapper.classList.add('bg-level-3');
-  }
+  // Crossfade: paint the new image onto the currently-hidden layer, then flip
+  // the opacities so it fades in over the previous one. Because both images are
+  // preloaded, the new layer is already decoded and the swap is a cheap
+  // compositor opacity transition instead of a full-screen repaint hitch.
+  const incomingLayer = activeBgLayer === 'a' ? 'b' : 'a';
+  gameBoardWrapper.style.setProperty(`--game-bg-layer-${incomingLayer}`, `url("${targetImage}")`);
+  gameBoardWrapper.style.setProperty(`--game-bg-layer-${incomingLayer}-opacity`, '1');
+  gameBoardWrapper.style.setProperty(`--game-bg-layer-${activeBgLayer}-opacity`, '0');
+  activeBgLayer = incomingLayer;
+
+  gameBoardWrapper.classList.add('game-bg-transition-active');
 
   currentGameplayBackgroundIndex = targetBackgroundIndex;
 }
@@ -913,7 +956,7 @@ function speedGen(sourceInfo, customStartBpm = null, customSectionSpeedMultiplie
     }
   }
 
-  return function(index = 0) {
+  return function (index = 0) {
     while (index >= infoBak.length) {
       const currentIndex = infoBak.length;
       const previousEntry = infoBak[currentIndex - 1];
@@ -944,7 +987,7 @@ function getRuntimeSpeed(index) {
   if (customStartingSpeed > 0 && !isClassMode) {
     const baseSpeed = getSpeed(index);
     const customStartTps = customStartingSpeed;
-    
+
     // Calculate speed incrementally with dynamic acceleration
     // The index represents the section index (0-based)
     let currentSpeed = customStartTps;
@@ -953,7 +996,7 @@ function getRuntimeSpeed(index) {
       currentSpeed += acceleration;
     }
     const forcedTps = currentSpeed;
-    
+
     const result = {
       bpm: Math.trunc(calculateBpmFromTps(forcedTps, baseSpeed.beats)),
       beats: baseSpeed.beats
@@ -974,7 +1017,7 @@ function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
   if (customStartingSpeed > 0 && !isClassMode) {
     const customStartTps = customStartingSpeed;
     const sectionIndex = loopTimes * 0 + 1;
-    
+
     // Calculate speed incrementally with dynamic acceleration
     let currentSpeed = customStartTps;
     for (let i = 1; i < sectionIndex; i++) {
@@ -982,7 +1025,7 @@ function getNewBpm(lastBpm, lastBeats, currentBeatsValue, loopTimes) {
       currentSpeed += acceleration;
     }
     const forcedTps = currentSpeed;
-    
+
     return Math.trunc(calculateBpmFromTps(forcedTps, currentBeatsValue));
   }
 
@@ -1009,7 +1052,7 @@ function ensureAudioEngine() {
     audioGainNode.connect(audioContext.destination);
   }
   if (audioContext.state === 'suspended') {
-    audioContext.resume().catch(() => {});
+    audioContext.resume().catch(() => { });
   }
   return audioContext;
 }
@@ -1072,46 +1115,46 @@ function noteNameToMp3Path(noteName) {
 function spawnHoldEffectForTile(tile) {
   const containerRect = hitEffectsEl.getBoundingClientRect();
   const boardRect = boardEl.getBoundingClientRect();
-  
+
   // Get the active column for this tile
   const activeCols = getActiveColumns(tile);
   const colIdx = tile.activeHoldColumn !== undefined ? tile.activeHoldColumn : activeCols[0];
-  
+
   if (colIdx === undefined) return;
-  
+
   // Calculate horizontal center of the column
   const colElement = colElements[colIdx];
   if (!colElement) return;
   const colRect = colElement.getBoundingClientRect();
   const centerX = colRect.left + colRect.width / 2;
-  
+
   // Use the tap screen Y position where the user tapped the long tile
   // This matches the position of the long_light.png curve
   const effectY = (tile.tapScreenY || (boardRect.top + ((key - 1) / key) * boardRect.height)) - 120;
-  
+
   const effectContainer = document.createElement('div');
   effectContainer.className = 'hold-effect-container';
   effectContainer.style.left = `${centerX - containerRect.left}px`;
   effectContainer.style.top = `${effectY - containerRect.top}px`;
-  
+
   const circle = document.createElement('div');
   circle.className = 'hold-circle';
   circle.style.left = '50%';
   circle.style.top = '50%';
-  
+
   const dot = document.createElement('div');
   dot.className = 'hold-dot';
   dot.style.left = '50%';
   dot.style.top = '50%';
-  
+
   effectContainer.appendChild(circle);
   effectContainer.appendChild(dot);
   hitEffectsEl.appendChild(effectContainer);
-  
+
   effectContainer.addEventListener('animationend', () => {
     effectContainer.remove();
   });
-  
+
   // Also remove after animation completes (0.25s)
   setTimeout(() => {
     if (effectContainer.parentNode) {
@@ -1136,18 +1179,18 @@ async function playMp3Note(noteName, durationMs) {
   source.connect(gainNode);
   gainNode.connect(audioGainNode);
   source.start(startAt);
-  
+
   // Spawn hold visual effect if there's an active long tile being held
   // Use cooldown to treat chords as single notes (chords play notes very close together)
   const now = performance.now();
   if (isStarted && !autoplayEnabled && now - lastHoldEffectTime > 50) {
-    const activeLongTile = tiles.find((tile) => 
-      isLongTile(tile) && 
-      tile.holdStarted && 
-      !tile.holdCompleted && 
+    const activeLongTile = tiles.find((tile) =>
+      isLongTile(tile) &&
+      tile.holdStarted &&
+      !tile.holdCompleted &&
       !tile.holdReleased
     );
-    
+
     if (activeLongTile) {
       spawnHoldEffectForTile(activeLongTile);
       lastHoldEffectTime = now;
@@ -1233,7 +1276,7 @@ function startSongTransition(songData, isSongOfTheDay = false) {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
-  
+
   if (!spendLifeCost(getPlayLifeCost(songData))) {
     return;
   }
@@ -1251,7 +1294,7 @@ function startSongTextTransition(text, label) {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
-  
+
   if (!spendLifeCost(1)) {
     return;
   }
@@ -1384,22 +1427,22 @@ function updateLoadingProgress(stage, current, total) {
   const loadingStatus = document.getElementById('loading-status');
   const loadingPercentage = document.getElementById('loading-percentage');
   const loadingSubstatus = document.getElementById('loading-substatus');
-  
+
   if (!loadingProgress || !loadingStatus) return;
-  
+
   const percentage = Math.round((current / total) * 100);
   loadingProgress.style.width = `${percentage}%`;
   if (loadingPercentage) {
     loadingPercentage.textContent = `${percentage}%`;
   }
-  
+
   const stageNames = {
     'sprites': 'Loading sprites...',
     'csv': 'Loading song data...',
     'audio': 'Preparing audio...',
     'complete': 'Ready!'
   };
-  
+
   loadingStatus.textContent = stageNames[stage] || `Loading ${stage}...`;
   if (stage === 'complete' && loadingSubstatus) {
     loadingSubstatus.textContent = 'Initialization complete!';
@@ -1413,7 +1456,7 @@ async function preloadAssets() {
   const loadingSubstatus = document.getElementById('loading-substatus');
 
   const tasks = [];
-  
+
   // A. Sprites (Images in gameImage)
   const spriteNames = [
     '1', '2', '3', '4',
@@ -1549,7 +1592,7 @@ async function preloadAssets() {
     const percentage = Math.round((completed / total) * 100);
     if (loadingProgress) loadingProgress.style.width = `${percentage}%`;
     if (loadingPercentage) loadingPercentage.textContent = `${percentage}%`;
-    
+
     let typeLabel = 'Loading assets...';
     if (type === 'sprite' || type === 'special_image') typeLabel = 'Loading graphics...';
     else if (type === 'audio_effect') typeLabel = 'Loading audio effects...';
@@ -1632,28 +1675,28 @@ function updateSettingsUI() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
   if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
-  
+
   // Update language pill status
   updateLanguageSelection();
-  
+
   // Update sound status based on audio context state
   const soundStatus = document.getElementById('sound-status');
   if (soundStatus && audioContext) {
     soundStatus.textContent = audioContext.state === 'suspended' ? (i18n?.t('status_off') || 'Off') : (i18n?.t('status_on') || 'On');
   }
-  
+
   // Update autoplay pill status
   const autoplayStatus = document.getElementById('autoplay-status');
   if (autoplayStatus) {
     autoplayStatus.textContent = autoplayEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   }
-  
+
   // Update revive slowdown pill status
   const reviveSlowdownStatus = document.getElementById('revive-slowdown-status');
   if (reviveSlowdownStatus) {
     reviveSlowdownStatus.textContent = reviveSlowdownEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   }
-  
+
   // Update speed pill status
   const speedStatus = document.getElementById('speed-status');
   if (speedStatus) {
@@ -1663,7 +1706,7 @@ function updateSettingsUI() {
       speedStatus.textContent = `${customStartingSpeed} t/s`;
     }
   }
-  
+
   updateTpsDisplayColor();
 }
 
@@ -1767,7 +1810,7 @@ function populateMusicSelect() {
 function createCustomSongCard() {
   const card = document.createElement('div');
   card.className = 'song-card custom-song-card';
-  
+
   if (customSongData && customSongLabel) {
     // Display loaded custom song
     card.innerHTML = `
@@ -1792,27 +1835,27 @@ function createCustomSongCard() {
       if (isPlayInProgress) {
         return; // Prevent multiple play button presses
       }
-      
+
       if (customSongData) {
         // Get original BPM values from custom song data for defaults
         const originalBpm = customSongData.baseBpm || 120;
         const section1 = customSongData.musics?.[0] || customSongData.sections?.[1] || {};
         const section2 = customSongData.musics?.[1] || customSongData.sections?.[2] || {};
         const section3 = customSongData.musics?.[2] || customSongData.sections?.[3] || {};
-        
+
         const defaultBpm1 = section1.bpm || originalBpm;
         const defaultBpm2 = section2.bpm || defaultBpm1;
         const defaultBpm3 = section3.bpm || defaultBpm2;
-        
+
         const defaultBeats1 = section1.baseBeats || 0.5;
         const defaultBeats2 = section2.baseBeats || defaultBeats1;
         const defaultBeats3 = section3.baseBeats || defaultBeats2;
-        
+
         // Get BPM values from input fields, defaulting to original values if empty
         const bpm1 = parseInt(document.getElementById('custom-bpm-1')?.value || String(defaultBpm1), 10);
         const bpm2 = parseInt(document.getElementById('custom-bpm-2')?.value || String(defaultBpm2), 10);
         const bpm3 = parseInt(document.getElementById('custom-bpm-3')?.value || String(defaultBpm3), 10);
-        
+
         // Create mock songData structure to treat custom song like a normal song entry
         const mockSongData = {
           mid: 999999, // Unique ID for custom songs
@@ -1825,10 +1868,10 @@ function createCustomSongCard() {
             3: { bpm: bpm3, baseBeats: defaultBeats3, musicJson: 'custom' }
           }
         };
-        
+
         // Store the actual custom song data globally so loadSongFromData can access it
         window.customSongJsonData = customSongData;
-        
+
         loadSongFromData(mockSongData);
       }
     });
@@ -1852,19 +1895,19 @@ function createCustomSongCard() {
         // Extract original BPM and beats from custom song data
         const originalBpm1 = customSongData.baseBpm || 120;
         const originalBeats1 = customSongData.baseBeats || 0.5;
-        
+
         // Try to get section-specific values if available
         const section1 = customSongData.musics?.[0] || customSongData.sections?.[1] || {};
         const section2 = customSongData.musics?.[1] || customSongData.sections?.[2] || {};
         const section3 = customSongData.musics?.[2] || customSongData.sections?.[3] || {};
-        
+
         const bpm1 = section1.bpm || originalBpm1;
         const beats1 = section1.baseBeats || originalBeats1;
         const bpm2 = section2.bpm || bpm1;
         const beats2 = section2.baseBeats || beats1;
         const bpm3 = section3.bpm || bpm2;
         const beats3 = section3.baseBeats || beats2;
-        
+
         // Update original values display
         document.getElementById('original-bpm-1').textContent = bpm1;
         document.getElementById('original-beats-1').textContent = beats1;
@@ -1872,17 +1915,17 @@ function createCustomSongCard() {
         document.getElementById('original-beats-2').textContent = beats2;
         document.getElementById('original-bpm-3').textContent = bpm3;
         document.getElementById('original-beats-3').textContent = beats3;
-        
+
         // Clear input fields (leave them empty)
         document.getElementById('custom-bpm-1').value = '';
         document.getElementById('custom-bpm-2').value = '';
         document.getElementById('custom-bpm-3').value = '';
-        
+
         // Calculate and display initial speeds based on original values
         updateSpeedDisplay(1, bpm1, beats1);
         updateSpeedDisplay(2, bpm2, beats2);
         updateSpeedDisplay(3, bpm3, beats3);
-        
+
         bpmModal.classList.remove('hidden');
       }
     });
@@ -1956,9 +1999,9 @@ function createSongCard(song, isFavouriteView = false) {
   card.innerHTML = `
     <div class="song-card-icon ${isRanked ? `ranked ${isPurple ? 'purple' : ''}` : 'numbered'}">
       ${isRanked
-        ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
-        : `${song.id}`
-      }
+      ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
+      : `${song.id}`
+    }
     </div>
     <div class="song-card-content">
       <div class="song-card-title">${localizedSongName}</div>
@@ -2094,11 +2137,11 @@ function renderSongList(searchQuery = '') {
       const localizedSongName = i18n ? i18n.getSongName(song.musicJson).toLowerCase() : originalName;
       const musicianName = song.musician.toLowerCase();
       const localizedArtistName = i18n ? i18n.getArtistName(song.musician).toLowerCase() : musicianName;
-      
+
       return originalName.includes(query) ||
-             localizedSongName.includes(query) ||
-             musicianName.includes(query) ||
-             localizedArtistName.includes(query);
+        localizedSongName.includes(query) ||
+        musicianName.includes(query) ||
+        localizedArtistName.includes(query);
     });
   }
 
@@ -2139,7 +2182,7 @@ function renderChallenges() {
 async function loadMusicCsv() {
   try {
     updateLoadingProgress('csv', 0, 1);
-    
+
     if (typeof i18n !== 'undefined' && i18n.loadTranslations) {
       await i18n.loadTranslations();
     }
@@ -2148,7 +2191,7 @@ async function loadMusicCsv() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     musicCsvData = parseMusicCsv(text);
-    
+
     try {
       const danResp = await fetch('dan.json');
       if (danResp.ok) {
@@ -2160,7 +2203,7 @@ async function loadMusicCsv() {
     renderSongList();
     renderHomeScreen();
     setSongStatus(`Loaded ${musicCsvData.length} songs from music_json.csv`);
-    
+
     updateLoadingProgress('csv', 1, 1);
   } catch (err) {
     console.warn(err);
@@ -2191,6 +2234,7 @@ function resetEngineState() {
   songLoopCount = 0;
   currentGameplayBackgroundIndex = 1;
   gameplayBackgroundTransitionTargetIndex = null;
+  activeBgLayer = 'a';
   if (gameplayBackgroundTransitionTimeout) {
     clearTimeout(gameplayBackgroundTransitionTimeout);
     gameplayBackgroundTransitionTimeout = null;
@@ -2201,6 +2245,10 @@ function resetEngineState() {
     gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
     gameBoardWrapper.style.removeProperty('--game-bg-image-1');
     gameBoardWrapper.style.removeProperty('--game-bg-image-2');
+    gameBoardWrapper.style.removeProperty('--game-bg-layer-a');
+    gameBoardWrapper.style.removeProperty('--game-bg-layer-a-opacity');
+    gameBoardWrapper.style.removeProperty('--game-bg-layer-b');
+    gameBoardWrapper.style.removeProperty('--game-bg-layer-b-opacity');
   }
   info = [];
   currentScore = 0;
@@ -2314,11 +2362,11 @@ function loadSongObject(data, label) {
     const sectionBaseBeats = music.baseBeats || baseBeats || 0.5;
     const sectionBpm = isChallengeMode ? challengeTimingBaseBpm : (music.bpm != null ? music.bpm : baseBpm);
     const tileLengthBaseBeats = sectionBaseBeats;
-    
+
     // Use section's baseBeats as minimum tile length for scaling
     const minTileLen = sectionBaseBeats;
     const scalingFactor = tileLengthBaseBeats / minTileLen;
-    
+
     const realscore = [];
     for (const tile of base) {
       if (tile.type) {
@@ -2347,9 +2395,9 @@ function loadSongObject(data, label) {
       baseBpm = music.bpm;
       baseBeats = music.baseBeats;
     }
-    info.push({ 
-      bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats), 
-      beats: sectionBaseBeats, 
+    info.push({
+      bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats),
+      beats: sectionBaseBeats,
       id: music.id,
       isExplicitBreak: music.isExplicitBreak || false,
       breakDurationSeconds: music.breakDurationSeconds || 3
@@ -2410,23 +2458,23 @@ function computeSectionScoreThresholds() {
     for (const tile of section) {
       let isPlayable = false;
       switch (tile.type) {
-        case 5: 
-          runningScore += 4; 
+        case 5:
+          runningScore += 4;
           isPlayable = true;
           break; // combo start tile
-        case 3: 
-          runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); 
+        case 3:
+          runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2);
           isPlayable = true;
           break; // multi-tap combo
-        case 6: 
-          runningScore += Math.round(tile.hlen) + 1; 
+        case 6:
+          runningScore += Math.round(tile.hlen) + 1;
           isPlayable = true;
           break; // long hold
         case 9:
         case 1:
           break; // accompaniment and blank tiles give no score
-        default: 
-          runningScore += 1; 
+        default:
+          runningScore += 1;
           isPlayable = true;
           break; // regular tap (type 2) and others
       }
@@ -2483,7 +2531,7 @@ async function loadSongFromData(songData) {
     const firstSection = songData.sections[sectionIds[0]];
     const challengeFirstSectionBpm = isChallengeMode ? (firstSection?.bpm || 120) : null;
     const challengeFirstSectionBeats = isChallengeMode ? (firstSection?.baseBeats || 0.5) : null;
-    
+
     // Check if this is a custom song (mid === 999999 or musicJson is not a real file)
     let sourceJson;
     if (songData.mid === 999999 && window.customSongJsonData) {
@@ -2495,7 +2543,7 @@ async function loadSongFromData(songData) {
       }
       sourceJson = JSON.parse(await response.text());
     }
-    
+
     const musics = Array.isArray(sourceJson.musics) ? sourceJson.musics : [];
     const mergedMusics = [];
 
@@ -2519,7 +2567,7 @@ async function loadSongFromData(songData) {
     loadSongObject({
       baseBpm: mergedMusics[0].bpm,
       musics: mergedMusics
-    }, `${songData.musicJson} (${localizedArtistName})`);
+    }, songData.musicJson);
 
     // Show game interface but don't start game (wait for START tile)
     songListScreen.classList.add('hidden');
@@ -2544,8 +2592,10 @@ async function loadSongFromData(songData) {
     // Show background immediately when song is loaded
     if (gameBoardWrapper) {
       gameBoardWrapper.classList.add('game-playing');
-      applyGameplayBackground();
+      initGameplayBackground();
     }
+
+    showPregameInfoBar();
   } catch (err) {
     console.error(err);
     const localizedSongName = i18n ? i18n.getSongName(songData.musicJson) : songData.musicJson;
@@ -2557,20 +2607,20 @@ function loadSongFromText(text, label) {
   isPlayInProgress = true; // Set play progress flag when loading from text
   const parsed = JSON.parse(text);
   loadSongObject(parsed, label);
-  
+
   // Show game interface but don't start game (wait for START tile)
   songListScreen.classList.add('hidden');
   startScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
-  
+
   // Hide dock during gameplay
   const sharedDock = document.getElementById('shared-dock');
   if (sharedDock) {
     sharedDock.classList.add('hidden');
   }
-  
+
   // Hide shared top bar during gameplay
   const sharedTopBar = document.getElementById('shared-top-bar');
   if (sharedTopBar) {
@@ -2579,8 +2629,9 @@ function loadSongFromText(text, label) {
   // Show background immediately when song is loaded
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
-    applyGameplayBackground();
+    initGameplayBackground();
   }
+  showPregameInfoBar();
 }
 
 function getDoubleTilePos(arr0) {
@@ -2613,7 +2664,7 @@ function getAccompanimentTilePos() {
   const nextLongColumn = accompanimentLongColumn === null
     ? (Math.random() < 0.5 ? 0 : 3)
     : (accompanimentLongColumn === 0 ? 3 : 0);
-  
+
   if (accompanimentLongColumn !== nextLongColumn) {
     accompanimentSingleToggle = 0;
   }
@@ -2830,10 +2881,10 @@ function isTileNearTap(tile, pointerEvent) {
   const boardRect = _cachedBoardRect || boardEl.getBoundingClientRect();
   const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
   const clickRow = Math.floor(clickYRel * key);
-  
+
   const tileTopRow = Math.floor(getTileTop(tile));
   const tileBottomRow = Math.max(tileTopRow, Math.floor(getTileBottom(tile) - 0.01));
-  
+
   // Check if tap is within the tile's vertical range
   // Use a ±1 row buffer so fast-scrolling tiles are still registerable when
   // event delivery slightly lags the visual position.
@@ -2843,16 +2894,16 @@ function isTileNearTap(tile, pointerEvent) {
 function isTileNearAccompaniment(tile, pointerEvent) {
   // Check if this tile is an accompaniment tile
   if (tile.isAccompanimentTile) return true;
-  
+
   // Check if there are accompaniment tiles nearby (within 2 rows)
   const tileCenter = (getTileTop(tile) + getTileBottom(tile)) / 2;
-  const nearbyAccompaniment = tiles.find((t) => 
-    t.isAccompanimentTile && 
-    !t.clicked && 
+  const nearbyAccompaniment = tiles.find((t) =>
+    t.isAccompanimentTile &&
+    !t.clicked &&
     !t.holdCompleted &&
     Math.abs((getTileTop(t) + getTileBottom(t)) / 2 - tileCenter) < 2
   );
-  
+
   return !!nearbyAccompaniment;
 }
 
@@ -2980,7 +3031,7 @@ function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
     // Alternate between left (col 0) and right (col 3) for each hit
     const tapIndex = (tile.taps || 2) - (tile.remainingTaps || 0);
     const useLeft = tapIndex % 2 === 0;
-    
+
     anchorX = useLeft ? leftColRect.left + leftColRect.width / 2 : rightColRect.left + rightColRect.width / 2;
     anchorY = rect.top + rect.height * 0.25;
   }
@@ -3014,25 +3065,25 @@ function spawnHoldEffect(x, y) {
   effectContainer.className = 'hold-effect-container';
   effectContainer.style.left = `${x - containerRect.left}px`;
   effectContainer.style.top = `${y - containerRect.top}px`;
-  
+
   const circle = document.createElement('div');
   circle.className = 'hold-circle';
   circle.style.left = '50%';
   circle.style.top = '50%';
-  
+
   const dot = document.createElement('div');
   dot.className = 'hold-dot';
   dot.style.left = '50%';
   dot.style.top = '50%';
-  
+
   effectContainer.appendChild(circle);
   effectContainer.appendChild(dot);
   hitEffectsEl.appendChild(effectContainer);
-  
+
   effectContainer.addEventListener('animationend', () => {
     effectContainer.remove();
   });
-  
+
   // Also remove after animation completes (0.25s)
   setTimeout(() => {
     if (effectContainer.parentNode) {
@@ -3068,9 +3119,9 @@ function flashColumnRed(colIdx, tile) {
   overlay.style.pointerEvents = 'none';
   overlay.style.zIndex = '20';
   overlay.classList.add('column-flash-red');
-  
+
   colEl.appendChild(overlay);
-  
+
   setTimeout(() => {
     overlay.remove();
   }, 1500);
@@ -3083,7 +3134,7 @@ async function finishRun(showLibrary = false) {
   isPaused = true;
   isPlayInProgress = false; // Reset play progress flag when run finishes
   isPostReviveState = false; // Reset revive flag when run finishes
-  
+
   // Clean up classic mode timer
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -3114,7 +3165,7 @@ async function finishRun(showLibrary = false) {
         }
       });
     }
-    
+
     // Play appropriate audio based on class mode result
     const ctx = ensureAudioEngine();
     if (ctx) {
@@ -3134,7 +3185,7 @@ async function finishRun(showLibrary = false) {
           setTimeout(resolve, (buffer.duration || 0) * 1000 + 100);
         });
       }
-      
+
       if (classCourseCleared) {
         await playClassAudio('Audio/NewBest');
       } else {
@@ -3211,7 +3262,7 @@ async function finishRun(showLibrary = false) {
         if (normalSongAwardLevel > bestLevel) {
           localStorage.setItem(key, String(normalSongAwardLevel));
           invalidateEarnedPPointsCache();
-           
+
           // Song of the Day reward: award P-Points if completed with 3 stars
           if (currentSongIsSongOfTheDay && normalSongAwardLevel >= 4 && !isSongOfTheDayCompleted()) {
             const currentStreak = updateSongOfTheDayStreak();
@@ -3227,7 +3278,7 @@ async function finishRun(showLibrary = false) {
         saveLastPlayed(String(selectedSongData.mid));
       }
     }
-    
+
     // Reset Song of the Day flag
     currentSongIsSongOfTheDay = false;
 
@@ -3301,23 +3352,23 @@ async function finishRun(showLibrary = false) {
       if (isClassMode) {
         document.getElementById('results-standard-mode')?.classList.add('hidden');
         document.getElementById('results-class-mode')?.classList.remove('hidden');
-        
+
         // Determine overall status
         const overallStatus = classCourseCleared ? 'Cleared' : 'Failed';
         const overallStatusClass = classCourseCleared ? 'class-pass' : 'class-fail';
-        
+
         // Build the results HTML with overall status and song list
         let resultsHtml = `
           <div class="class-overall-status mb-4 text-center">
             <span class="text-lg font-bold ${overallStatusClass}">${overallStatus}</span>
           </div>
         `;
-        
+
         resultsHtml += classSongProgress.map(p => {
           const statusClass = p.status === 'Pass' ? 'class-pass' : (p.status === 'Fail' ? 'class-fail' : '');
           const opacityClass = p.reached ? '' : 'opacity-50';
           const statusText = p.reached ? p.status : '';
-          
+
           return `
             <div class="class-pass-fail-item ${opacityClass}">
               <span>${p.name}</span>
@@ -3325,7 +3376,7 @@ async function finishRun(showLibrary = false) {
             </div>
           `;
         }).join('');
-        
+
         document.getElementById('results-class-mode').innerHTML = resultsHtml;
         if (titleEl) titleEl.textContent = classCurrentData?.name || '';
         // Now that the results panel is fully rendered, tear down the class-mode state.
@@ -3334,172 +3385,172 @@ async function finishRun(showLibrary = false) {
       } else {
         document.getElementById('results-standard-mode')?.classList.remove('hidden');
         document.getElementById('results-class-mode')?.classList.add('hidden');
-        
-        if (isChallengeMode) {
-        const finalTps = currentBpm / currentBeats / 60;
-        if (tpsEl) {
-          tpsEl.classList.add('hidden');
-          tpsEl.textContent = '';
-        }
-        if (scoreEl) animateNumberTo(scoreEl, finalTps, 300, 3);
-        if (lapsEl) {
-          lapsEl.classList.remove('hidden');
-          const lapCount = Math.max(1, songLoopCount + 1);
-          lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
-        }
-        if (subtextEl) {
-          subtextEl.classList.remove('hidden');
-          subtextEl.textContent = 'TPS';
-        }
-        const medalsEl = document.getElementById('results-medals');
-        if (medalsEl) {
-          const rewardState = shouldShowChallengeRewards(selectedSongData) ? getChallengeRewardStateFromTps(finalTps) : null;
-          renderResultsRewardIcons(medalsEl, rewardState);
-        }
-      } else if (isClassicMode) {
-        const finalTiles = Number(classicTappedTiles || 0);
-        const averageTilesPerSecond = finalTiles / Math.max(1, classicTimerDuration || 30);
-        if (tpsEl) {
-          tpsEl.classList.remove('hidden');
-          tpsEl.textContent = `${averageTilesPerSecond.toFixed(2)} tiles/sec`;
-        }
-        if (scoreEl) animateNumberTo(scoreEl, finalTiles, 300, 0);
-        if (lapsEl) {
-          lapsEl.classList.add('hidden');
-          lapsEl.textContent = '';
-        }
-        if (subtextEl) {
-          subtextEl.classList.add('hidden');
-          subtextEl.textContent = '';
-        }
-        const medalsEl = document.getElementById('results-medals');
-        if (medalsEl) {
-          const rewardState = getClassicChallengeRewardStateFromTiles(finalTiles);
-          renderResultsRewardIcons(medalsEl, rewardState);
-        }
-      } else {
-        if (tpsEl) {
-          tpsEl.classList.remove('hidden');
-          tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} TPS`;
-        }
-        if (scoreEl) animateNumberTo(scoreEl, Number(currentScore || 0), 300, 0);
-        if (lapsEl) {
-          lapsEl.classList.remove('hidden');
-          const lapCount = Math.max(1, songLoopCount + 1);
-          lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
-        }
-        const numericScore = Number(currentScore || 0);
-        const isNewBestScore = (() => {
-          if (!selectedSongData) return false;
-          const mid = String(selectedSongData.mid || selectedSongData.id || '');
-          const scoreKey = `opentile_best_score_${mid}`;
-          const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
-          const isBest = numericScore > prev;
-          if (isBest) {
-            localStorage.setItem(scoreKey, String(numericScore));
-          }
-          return isBest;
-        })();
 
-        if (subtextEl) {
-          if (isNewBestScore) {
+        if (isChallengeMode) {
+          const finalTps = currentBpm / currentBeats / 60;
+          if (tpsEl) {
+            tpsEl.classList.add('hidden');
+            tpsEl.textContent = '';
+          }
+          if (scoreEl) animateNumberTo(scoreEl, finalTps, 300, 3);
+          if (lapsEl) {
+            lapsEl.classList.remove('hidden');
+            const lapCount = Math.max(1, songLoopCount + 1);
+            lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
+          }
+          if (subtextEl) {
             subtextEl.classList.remove('hidden');
-            subtextEl.textContent = 'New Best!';
-          } else {
+            subtextEl.textContent = 'TPS';
+          }
+          const medalsEl = document.getElementById('results-medals');
+          if (medalsEl) {
+            const rewardState = shouldShowChallengeRewards(selectedSongData) ? getChallengeRewardStateFromTps(finalTps) : null;
+            renderResultsRewardIcons(medalsEl, rewardState);
+          }
+        } else if (isClassicMode) {
+          const finalTiles = Number(classicTappedTiles || 0);
+          const averageTilesPerSecond = finalTiles / Math.max(1, classicTimerDuration || 30);
+          if (tpsEl) {
+            tpsEl.classList.remove('hidden');
+            tpsEl.textContent = `${averageTilesPerSecond.toFixed(2)} tiles/sec`;
+          }
+          if (scoreEl) animateNumberTo(scoreEl, finalTiles, 300, 0);
+          if (lapsEl) {
+            lapsEl.classList.add('hidden');
+            lapsEl.textContent = '';
+          }
+          if (subtextEl) {
             subtextEl.classList.add('hidden');
             subtextEl.textContent = '';
           }
-        }
-
-        // compute stars/crowns earned for this play based on the award level
-        const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
-        const medalsEl = document.getElementById('results-medals');
-        // helper to play result audio depending on stage
-        async function playResultAudioSequence() {
-          const ctx = ensureAudioEngine();
-          if (!ctx) return;
-          let audioPath = null;
-          if (stage.crowns && stage.crowns > 0) {
-            if (stage.crowns === 1) audioPath = 'Audio/OneCrown';
-            else if (stage.crowns === 2) audioPath = 'Audio/TwoCrown';
-            else audioPath = 'Audio/ThreeCrown';
-          } else {
-            const s = stage.stars || 0;
-            if (s === 0) audioPath = 'Audio/FailPage';
-            else if (s === 1) audioPath = 'Audio/PassPageOne';
-            else if (s === 2) audioPath = 'Audio/PassPageTwo';
-            else audioPath = 'Audio/PassPageThree';
+          const medalsEl = document.getElementById('results-medals');
+          if (medalsEl) {
+            const rewardState = getClassicChallengeRewardStateFromTiles(finalTiles);
+            renderResultsRewardIcons(medalsEl, rewardState);
           }
-
-          async function playFile(base) {
-            const buffer = await getCachedAudioBuffer(base);
-            if (!buffer) return;
-            const source = ctx.createBufferSource();
-            const gainNode = ctx.createGain();
-            const startAt = ctx.currentTime + 0.01;
-            source.buffer = buffer;
-            gainNode.gain.setValueAtTime(1.0, startAt);
-            source.connect(gainNode);
-            gainNode.connect(audioGainNode);
-            source.start(startAt);
-            return new Promise((resolve) => {
-              source.onended = () => resolve();
-              // fallback timeout
-              setTimeout(resolve, (buffer.duration || 0) * 1000 + 100);
-            });
+        } else {
+          if (tpsEl) {
+            tpsEl.classList.remove('hidden');
+            tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} TPS`;
           }
-
-          if (audioPath) {
-            await playFile(audioPath);
+          if (scoreEl) animateNumberTo(scoreEl, Number(currentScore || 0), 300, 0);
+          if (lapsEl) {
+            lapsEl.classList.remove('hidden');
+            const lapCount = Math.max(1, songLoopCount + 1);
+            lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
           }
-
-          // play NewBest audio when this run beat the stored best for the song
-          if (isNewBestScore) {
-            await playFile('Audio/NewBest');
-          }
-        }
-
-        if (medalsEl) {
-          medalsEl.innerHTML = '';
-          // helper to animate numbers (integer or float)
-          function animateNumberTo(el, finalValue, duration = 300, decimals = 0) {
-            const start = 0;
-            const end = Number(finalValue) || 0;
-            const startTime = performance.now();
-            function step(now) {
-              const t = Math.min((now - startTime) / duration, 1);
-              const eased = t; // linear easing is fine for short increment
-              const current = start + (end - start) * eased;
-              if (decimals > 0) {
-                el.textContent = current.toFixed(decimals);
-              } else {
-                el.textContent = String(Math.round(current));
-              }
-              if (t < 1) requestAnimationFrame(step);
+          const numericScore = Number(currentScore || 0);
+          const isNewBestScore = (() => {
+            if (!selectedSongData) return false;
+            const mid = String(selectedSongData.mid || selectedSongData.id || '');
+            const scoreKey = `opentile_best_score_${mid}`;
+            const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
+            const isBest = numericScore > prev;
+            if (isBest) {
+              localStorage.setItem(scoreKey, String(numericScore));
             }
-            requestAnimationFrame(step);
-          }
+            return isBest;
+          })();
 
-          // always render 3 icons; fill achieved ones normally, unachieved as silhouettes
-          const useCrowns = stage.crowns && stage.crowns > 0;
-          const achieved = useCrowns ? stage.crowns : (stage.stars || 0);
-          for (let i = 1; i <= 3; i++) {
-            const img = document.createElement('img');
-            img.src = useCrowns ? 'gameImage/crown.png' : 'gameImage/star.png';
-            img.alt = useCrowns ? 'crown' : 'star';
-            // show silhouettes immediately for all, but only animate achieved ones
-            if (i > achieved) {
-              img.className = 'inline-block medal-silhouette';
+          if (subtextEl) {
+            if (isNewBestScore) {
+              subtextEl.classList.remove('hidden');
+              subtextEl.textContent = 'New Best!';
             } else {
-              img.className = 'inline-block result-medal';
-              img.style.animationDelay = `${(i - 1) * 0.5}s`;
+              subtextEl.classList.add('hidden');
+              subtextEl.textContent = '';
             }
-            medalsEl.appendChild(img);
           }
-          // play the result audio sequence (do not block UI)
-          playResultAudioSequence().catch(() => {});
+
+          // compute stars/crowns earned for this play based on the award level
+          const stage = getStarAndCrownState((normalSongAwardLevel || 1) - 1);
+          const medalsEl = document.getElementById('results-medals');
+          // helper to play result audio depending on stage
+          async function playResultAudioSequence() {
+            const ctx = ensureAudioEngine();
+            if (!ctx) return;
+            let audioPath = null;
+            if (stage.crowns && stage.crowns > 0) {
+              if (stage.crowns === 1) audioPath = 'Audio/OneCrown';
+              else if (stage.crowns === 2) audioPath = 'Audio/TwoCrown';
+              else audioPath = 'Audio/ThreeCrown';
+            } else {
+              const s = stage.stars || 0;
+              if (s === 0) audioPath = 'Audio/FailPage';
+              else if (s === 1) audioPath = 'Audio/PassPageOne';
+              else if (s === 2) audioPath = 'Audio/PassPageTwo';
+              else audioPath = 'Audio/PassPageThree';
+            }
+
+            async function playFile(base) {
+              const buffer = await getCachedAudioBuffer(base);
+              if (!buffer) return;
+              const source = ctx.createBufferSource();
+              const gainNode = ctx.createGain();
+              const startAt = ctx.currentTime + 0.01;
+              source.buffer = buffer;
+              gainNode.gain.setValueAtTime(1.0, startAt);
+              source.connect(gainNode);
+              gainNode.connect(audioGainNode);
+              source.start(startAt);
+              return new Promise((resolve) => {
+                source.onended = () => resolve();
+                // fallback timeout
+                setTimeout(resolve, (buffer.duration || 0) * 1000 + 100);
+              });
+            }
+
+            if (audioPath) {
+              await playFile(audioPath);
+            }
+
+            // play NewBest audio when this run beat the stored best for the song
+            if (isNewBestScore) {
+              await playFile('Audio/NewBest');
+            }
+          }
+
+          if (medalsEl) {
+            medalsEl.innerHTML = '';
+            // helper to animate numbers (integer or float)
+            function animateNumberTo(el, finalValue, duration = 300, decimals = 0) {
+              const start = 0;
+              const end = Number(finalValue) || 0;
+              const startTime = performance.now();
+              function step(now) {
+                const t = Math.min((now - startTime) / duration, 1);
+                const eased = t; // linear easing is fine for short increment
+                const current = start + (end - start) * eased;
+                if (decimals > 0) {
+                  el.textContent = current.toFixed(decimals);
+                } else {
+                  el.textContent = String(Math.round(current));
+                }
+                if (t < 1) requestAnimationFrame(step);
+              }
+              requestAnimationFrame(step);
+            }
+
+            // always render 3 icons; fill achieved ones normally, unachieved as silhouettes
+            const useCrowns = stage.crowns && stage.crowns > 0;
+            const achieved = useCrowns ? stage.crowns : (stage.stars || 0);
+            for (let i = 1; i <= 3; i++) {
+              const img = document.createElement('img');
+              img.src = useCrowns ? 'gameImage/crown.png' : 'gameImage/star.png';
+              img.alt = useCrowns ? 'crown' : 'star';
+              // show silhouettes immediately for all, but only animate achieved ones
+              if (i > achieved) {
+                img.className = 'inline-block medal-silhouette';
+              } else {
+                img.className = 'inline-block result-medal';
+                img.style.animationDelay = `${(i - 1) * 0.5}s`;
+              }
+              medalsEl.appendChild(img);
+            }
+            // play the result audio sequence (do not block UI)
+            playResultAudioSequence().catch(() => { });
+          }
         }
-      }
       }
 
       if (playerNameEl) playerNameEl.textContent = playerName || 'Player';
@@ -3525,7 +3576,7 @@ async function finishRun(showLibrary = false) {
       const backBtn = document.getElementById('results-back-btn');
       const homeBtn = document.getElementById('results-home-btn');
       const favBtn = document.getElementById('results-fav-btn');
-      
+
       if (wasClassMode) {
         if (backBtn) backBtn.classList.add('hidden');
         if (favBtn) favBtn.classList.add('hidden');
@@ -3568,7 +3619,7 @@ async function finishRun(showLibrary = false) {
       if (homeBtn) {
         homeBtn.onclick = () => {
           // play menu loop cue for feedback
-          try { playMenuLoopCue(); } catch (e) {}
+          try { playMenuLoopCue(); } catch (e) { }
           resultsScreen.classList.add('hidden');
           returnToMainMenu();
         };
@@ -3576,10 +3627,10 @@ async function finishRun(showLibrary = false) {
       if (favBtn) {
         const heartIcon = document.getElementById('results-fav-heart-icon');
         const copyIcon = document.getElementById('results-fav-copy-icon');
-        
+
         // Check if playing custom song
         const isCustomSong = customSongData !== null;
-        
+
         // Toggle icons based on song type
         if (isCustomSong) {
           heartIcon.classList.add('hidden');
@@ -3587,7 +3638,7 @@ async function finishRun(showLibrary = false) {
         } else {
           heartIcon.classList.remove('hidden');
           copyIcon.classList.add('hidden');
-          
+
           // set initial favourite state for regular songs
           try {
             if (selectedSongData && favouriteSongs.has(String(selectedSongData.mid))) {
@@ -3595,13 +3646,13 @@ async function finishRun(showLibrary = false) {
             } else {
               favBtn.classList.remove('favourite');
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         favBtn.onclick = () => {
           // play menu loop cue for feedback
-          try { playMenuLoopCue(); } catch (e) {}
-          
+          try { playMenuLoopCue(); } catch (e) { }
+
           if (isCustomSong) {
             // Copy custom JSON content to clipboard
             if (customSongData) {
@@ -3641,7 +3692,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   isPaused = true;
   isStarted = false;
   isPostReviveState = false; // Reset revive flag when run fails
-  
+
   // Clean up classic mode
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -3651,10 +3702,10 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     classicTimerStartedAt = 0;
     classicTimerEnding = false;
   }
-  
+
   // Play lose sound immediately
   playLoseSound();
-  
+
   if (gameBoardWrapper) {
     // Keep the game background visible while the fail animation runs.
     gameBoardWrapper.classList.remove('game-bg-transition-active');
@@ -3663,7 +3714,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
   updatePauseButtonVisibility();
 
   let shouldOfferRevive = reviveRemaining > 0;
-  
+
   if (isChallengeMode || isClassMode) {
     shouldOfferRevive = false;
   } else {
@@ -3705,13 +3756,13 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
     const scrollDuration = 300;
     const startHpos = starthpos;
     const startTime = performance.now();
-    
+
     function scrollAnimation(now) {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / scrollDuration, 1);
       starthpos = startHpos + (targetHpos - startHpos) * progress;
       classicScrollTarget = starthpos;
-      
+
       if (progress < 1) {
         requestAnimationFrame(scrollAnimation);
       } else {
@@ -3789,7 +3840,7 @@ function checkNormalSongAwards(reachedSection) {
 
 function handleManualInputDown(colIdx, pointerEvent = null) {
   if (isPaused) return;
-  
+
   // Handle start tile separately
   if (!isStarted) {
     const startTile = tiles.find((tile) => tile.isStartTile || tile.isResumeStartTile) || tiles.find((tile) => tile.type === -1 && tile.hpos === -1);
@@ -3809,6 +3860,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         delete startTile.isResumeStartTile;
         isStarted = true;
         hasStartedGameplay = true;
+        hidePregameInfoBar();
         startTime = performance.now();
         if (isClassicMode) {
           classicTimerStartedAt = performance.now(); // Start timer when START tile is tapped in Classic mode
@@ -3906,9 +3958,9 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     }
     return;
   }
-  
+
   if (autoplayEnabled) return;
-  
+
   const tile = getLowestManualTile();
   if (!tile) return;
 
@@ -3923,7 +3975,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     const boardRect = _cachedBoardRect || boardEl.getBoundingClientRect();
     const clickYRel = (pointerEvent.clientY - boardRect.top) / boardRect.height;
     const clickUnits = clickYRel * key;
-    
+
     const tileTop = getTileTop(tile);
     const tileBottom = getTileBottom(tile);
 
@@ -3940,20 +3992,20 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   // This prevents routing to distant accompaniment tiles
   let longAccompanimentTile = null;
   let singleAccompanimentTile = null;
-  
+
   if (tile.isAccompanimentTile || (pointerEvent && isTileNearAccompaniment(tile, pointerEvent))) {
     // Set the active sequence ID if we're hitting an accompaniment tile
     if (tile.isAccompanimentTile && tile.accompanimentSequenceId) {
       activeAccompanimentSequenceId = tile.accompanimentSequenceId;
     }
-    
+
     // Check if the pressed column has an accompaniment tile that can be hit
     // Only consider accompaniment tiles that are spatially close AND from the active sequence
-    longAccompanimentTile = tiles.find((t) => 
-      t.isAccompanimentTile && 
-      t.type === 9 && 
+    longAccompanimentTile = tiles.find((t) =>
+      t.isAccompanimentTile &&
+      t.type === 9 &&
       t.isAccompanimentLong &&
-      !t.clicked && 
+      !t.clicked &&
       !t.holdCompleted &&
       tileMatchesColumn(t, colIdx) &&
       isTileNearTap(t, pointerEvent) &&
@@ -3963,7 +4015,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     if (longAccompanimentTile) {
       // Set the active sequence ID when we start holding a long tile
       activeAccompanimentSequenceId = longAccompanimentTile.accompanimentSequenceId;
-      
+
       // Long accompaniment tile - handle as holdable tile (completely silent)
       if (!longAccompanimentTile.holdStarted) {
         longAccompanimentTile.holdStarted = true;
@@ -3993,11 +4045,11 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       // Don't return - allow single accompaniment tile to also be handled on the same tap
     }
 
-    singleAccompanimentTile = tiles.find((t) => 
-      t.isAccompanimentTile && 
-      t.type === 2 && 
+    singleAccompanimentTile = tiles.find((t) =>
+      t.isAccompanimentTile &&
+      t.type === 2 &&
       t.isAccompanimentSingle &&
-      !t.clicked && 
+      !t.clicked &&
       !t.holdCompleted &&
       tileMatchesColumn(t, colIdx) &&
       isTileNearTap(t, pointerEvent) &&
@@ -4007,47 +4059,47 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     if (singleAccompanimentTile) {
       // Set the active sequence ID when we hit a single tile
       activeAccompanimentSequenceId = singleAccompanimentTile.accompanimentSequenceId;
-      
+
       // Use the single accompaniment tile instead of the regular tile
       singleAccompanimentTile.clicked = true;
       singleAccompanimentTile.ended = 1;
       triggerTileHitAnimation(singleAccompanimentTile);
       playTileAudioNow(singleAccompanimentTile);
-      
+
       // Check if this was the last single tile in the sequence
       const sequenceId = singleAccompanimentTile.accompanimentSequenceId;
-      const remainingSingleTiles = tiles.filter((t) => 
-        t.isAccompanimentSingle && 
-        t.accompanimentSequenceId === sequenceId && 
+      const remainingSingleTiles = tiles.filter((t) =>
+        t.isAccompanimentSingle &&
+        t.accompanimentSequenceId === sequenceId &&
         !t.clicked
       );
-      
+
       if (remainingSingleTiles.length === 0) {
         // Sequence completed, reset the active sequence ID
         activeAccompanimentSequenceId = null;
       }
-      
+
       return;
     }
   }
 
   // Check if there's an active long tile in a different column
-  const activeLongInOtherCol = tiles.find((t) => 
-    isLongTile(t) && 
-    t.holdStarted && 
-    !t.holdCompleted && 
-    !t.holdReleased && 
+  const activeLongInOtherCol = tiles.find((t) =>
+    isLongTile(t) &&
+    t.holdStarted &&
+    !t.holdCompleted &&
+    !t.holdReleased &&
     t.activeHoldColumn !== colIdx
   );
-  
+
   if (activeLongInOtherCol) {
     // Don't drop accompaniment long tiles when tapping on their single tiles
     // They're meant to be played together
     // Also check that they belong to the same sequence to prevent cross-sequence interference
-    const isSameSequence = activeLongInOtherCol.accompanimentSequenceId && 
-                          (tile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId ||
-                           (singleAccompanimentTile && singleAccompanimentTile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId));
-    
+    const isSameSequence = activeLongInOtherCol.accompanimentSequenceId &&
+      (tile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId ||
+        (singleAccompanimentTile && singleAccompanimentTile.accompanimentSequenceId === activeLongInOtherCol.accompanimentSequenceId));
+
     if (activeLongInOtherCol.isAccompanimentLong && (tile.isAccompanimentSingle || singleAccompanimentTile) && isSameSequence) {
       // Allow both tiles to be active - don't drop the long tile
     } else {
@@ -4055,10 +4107,10 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       activeLongInOtherCol.holdReleasedAt = activeLongInOtherCol.playing || 0;
       activeLongInOtherCol.holdReleased = true;
       activeLongInOtherCol.played = true;
-      
+
       const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
       currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
-      
+
       if (!tileMatchesColumn(tile, colIdx)) {
         return;
       }
@@ -4084,7 +4136,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     failRun('wrong_hit', tile, colIdx);
     return;
   }
-  
+
   // Don't allow tapping long tiles that have been released
   if (isLongTile(tile) && tile.holdReleased) {
     return;
@@ -4097,7 +4149,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
     playTileAudioNow(tile);
     if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
-    
+
     // Classic mode: increment tapped tiles and advance field
     if (isClassicMode) {
       classicTappedTiles++;
@@ -4116,7 +4168,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
         triggerTileHitAnimation(tile);
         currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
-        
+
         // Classic mode: increment tapped tiles and advance field
         if (isClassicMode) {
           classicTappedTiles++;
@@ -4141,7 +4193,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       tile.ended = 1;
       currentScore += Math.max(2, tile.taps || 2); if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
 
-      
+
       // Classic mode: increment tapped tiles and advance field
       if (isClassicMode) {
         classicTappedTiles++;
@@ -4154,7 +4206,7 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
   if (isLongTile(tile)) {
     // Don't allow re-tapping if already released - just ignore
     if (tile.holdReleased) return;
-    
+
     if (!tile.holdStarted) {
       playTileAudioNow(tile);
       tile.holdStarted = true;
@@ -4195,7 +4247,7 @@ function handleManualInputUp(colIdx) {
     activeLong.holdReleasedAt = activeLong.playing || 0;
     activeLong.holdReleased = true;
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
-    
+
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
     currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
 
@@ -4338,7 +4390,7 @@ function updateHUD() {
         const danText = `${danProgress.toFixed(1)}%`;
         if (tpsDisplayNormal._lastText !== danText) {
           tpsDisplayNormal._lastText = danText;
-          tpsDisplayNormal.innerHTML = danText.split('').map(char => 
+          tpsDisplayNormal.innerHTML = danText.split('').map(char =>
             `<span class="score-digit-wrapper">${char}</span>`
           ).join('');
         }
@@ -4354,7 +4406,7 @@ function updateHUD() {
         if (tpsDisplayChallenge._lastText !== timerText) {
           tpsDisplayChallenge._lastText = timerText;
           // Wrap each character in an individual span for consistent positioning
-          tpsDisplayChallenge.innerHTML = timerText.split('').map(char => 
+          tpsDisplayChallenge.innerHTML = timerText.split('').map(char =>
             `<span class="score-digit-wrapper">${char}</span>`
           ).join('');
         }
@@ -4367,7 +4419,7 @@ function updateHUD() {
       if (tpsDisplayChallenge && tpsDisplayChallenge._lastText !== tpsText) {
         tpsDisplayChallenge._lastText = tpsText;
         // Wrap each character in an individual span for consistent positioning
-        tpsDisplayChallenge.innerHTML = tpsText.split('').map(char => 
+        tpsDisplayChallenge.innerHTML = tpsText.split('').map(char =>
           `<span class="score-digit-wrapper">${char}</span>`
         ).join('');
       }
@@ -4379,7 +4431,7 @@ function updateHUD() {
     const scoreStr = String(currentScore);
     if (scoreDisplay._lastText !== scoreStr) {
       scoreDisplay._lastText = scoreStr;
-      scoreDisplay.innerHTML = scoreStr.split('').map(digit => 
+      scoreDisplay.innerHTML = scoreStr.split('').map(digit =>
         `<span class="score-digit-wrapper">${digit}</span>`
       ).join('');
     }
@@ -4389,7 +4441,7 @@ function updateHUD() {
       if (tpsDisplayNormal && tpsDisplayNormal._lastText !== tpsText) {
         tpsDisplayNormal._lastText = tpsText;
         // Wrap each character in an individual span for consistent positioning
-        tpsDisplayNormal.innerHTML = tpsText.split('').map(char => 
+        tpsDisplayNormal.innerHTML = tpsText.split('').map(char =>
           `<span class="score-digit-wrapper">${char}</span>`
         ).join('');
       }
@@ -4438,243 +4490,243 @@ function renderTiles() {
       const domKey = `${tile.id}:${cols.join('-')}`;
       visibleKeys.add(domKey);
       let el = tileDomCache.get(domKey);
-    if (!el) {
-      el = document.createElement('div');
-      el.dataset.tileId = String(tile.id);
-      el.dataset.tileKey = domKey;
-      el.style.position = 'absolute';
-      el.style.pointerEvents = 'none';
-      el.style.borderRight = '1px solid rgba(51,65,85,0.45)';
-      el.style.borderBottom = '1px solid rgba(51,65,85,0.45)';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-      el.style.boxSizing = 'border-box';
-      el.style.backgroundRepeat = 'no-repeat';
-      el.style.backgroundSize = '100% 100%';
-      el.style.overflow = 'visible';
-      el.innerHTML = `
+      if (!el) {
+        el = document.createElement('div');
+        el.dataset.tileId = String(tile.id);
+        el.dataset.tileKey = domKey;
+        el.style.position = 'absolute';
+        el.style.pointerEvents = 'none';
+        el.style.borderRight = '1px solid rgba(51,65,85,0.45)';
+        el.style.borderBottom = '1px solid rgba(51,65,85,0.45)';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.style.boxSizing = 'border-box';
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.backgroundSize = '100% 100%';
+        el.style.overflow = 'visible';
+        el.innerHTML = `
         <div class="tile-image-layer tile-head"></div>
         <div class="tile-image-layer tile-light-strip"></div>
         <div class="tile-image-layer tile-light-orb"></div>
         <div class="combo-badge hidden"></div>
         <div class="tile-start-label hidden">START</div>
       `;
-      el._head = el.querySelector('.tile-head');
-      el._lightStrip = el.querySelector('.tile-light-strip');
-      el._lightOrb = el.querySelector('.tile-light-orb');
-      el._comboBadge = el.querySelector('.combo-badge');
-      el._startLabel = el.querySelector('.tile-start-label');
-      tilesContainer.appendChild(el);
-      tileDomCache.set(domKey, el);
-    }
-
-    const leftCol = Math.min(...cols);
-    const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
-    const headEl = el._head;
-    const lightStripEl = el._lightStrip;
-    const lightOrbEl = el._lightOrb;
-    const comboBadgeEl = el._comboBadge;
-    const startLabelEl = el._startLabel;
-
-    el.className = '';
-    const styleLeft = `${(leftCol / key) * 100}%`;
-    const styleWidth = `${(widthCols / key) * 100}%`;
-    const styleTop = `${(topUnits / key) * 100}%`;
-    const styleHeight = `${(tileHeight / key) * 100}%`;
-    const styleFilter = (tile.type === 3 || (tile.type >= 7 && !(tile.type === 9 && tile.isAccompanimentLong))) ? 'hue-rotate(-90deg)' : 'none';
-
-    if (el._lastLeft !== styleLeft) { el.style.left = styleLeft; el._lastLeft = styleLeft; }
-    if (el._lastWidth !== styleWidth) { el.style.width = styleWidth; el._lastWidth = styleWidth; }
-    if (el._lastTop !== styleTop) { el.style.top = styleTop; el._lastTop = styleTop; }
-    if (el._lastHeight !== styleHeight) { el.style.height = styleHeight; el._lastHeight = styleHeight; }
-    if (el._lastFilter !== styleFilter) { el.style.filter = styleFilter; el._lastFilter = styleFilter; }
-
-    if (el._lastBgStyle !== 'batched') {
-      el.style.backgroundColor = 'transparent';
-      el.style.borderTop = 'none';
-      el.style.boxShadow = 'none';
-      el.style.opacity = '1';
-      el._lastBgStyle = 'batched';
-    }
-
-    [headEl, lightStripEl, lightOrbEl].forEach((child) => {
-      child.style.position = 'absolute';
-      child.style.left = '0';
-      child.style.right = '0';
-      child.style.backgroundRepeat = 'no-repeat';
-      child.style.backgroundSize = '100% 100%';
-      child.style.pointerEvents = 'none';
-      child.style.display = 'none';
-    });
-
-    comboBadgeEl.classList.add('hidden');
-    startLabelEl.classList.add('hidden');
-    startLabelEl.classList.remove('tile-start-label-at-head');
-    startLabelEl.style.justifyContent = 'center';
-    startLabelEl.style.fontFamily = 'var(--font-game)';
-    startLabelEl.style.fontWeight = '500';
-    startLabelEl.style.fontSize = '2.8rem';
-    startLabelEl.style.color = '#ffffff';
-    startLabelEl.style.letterSpacing = '0.1em';
-    startLabelEl.style.display = 'none';
-    startLabelEl.style.position = 'absolute';
-    startLabelEl.style.inset = '0';
-    startLabelEl.style.top = '0';
-    startLabelEl.style.right = '0';
-    startLabelEl.style.bottom = '0';
-    startLabelEl.style.left = '0';
-    startLabelEl.style.height = 'auto';
-    startLabelEl.style.alignItems = 'center';
-
-    const showStartLabel = (tile.isStartTile || tile.isResumeStartTile) && !tile.played && !isStarted;
-    const showStartLabelAtHead = showStartLabel && isLongTile(tile);
-    
-    // For double tiles, show START label only on the untapped column and only if it's a resume/revive start tile
-    let showStartLabelForDoubleTile = showStartLabel;
-    if (isDoubleTile(tile) && tile.hitColumns && tile.hitColumns.length > 0) {
-      // Only show START label if this specific column hasn't been hit yet AND it's a resume/revive start tile
-      const thisCol = cols[0];
-      showStartLabelForDoubleTile = !tile.hitColumns.includes(thisCol) && tile.isResumeStartTile;
-    }
-
-    if (tile.type === -1 && tile.hpos === -1) {
-      const animatedHitFrame = getTileHitAnimationFrame(tile);
-      const startTileImageSuffix = animatedHitFrame > 0
-        ? getTileFinishImage(animatedHitFrame)
-        : (tile.played ? getTileFinishImage(tile.ended) : 'tile_start');
-      el.style.backgroundImage = `url("gameImage/${startTileImageSuffix}.png")`;
-      if (!tile.played && !isStarted) {
-        startLabelEl.classList.remove('hidden');
-        startLabelEl.style.display = 'flex';
+        el._head = el.querySelector('.tile-head');
+        el._lightStrip = el.querySelector('.tile-light-strip');
+        el._lightOrb = el.querySelector('.tile-light-orb');
+        el._comboBadge = el.querySelector('.combo-badge');
+        el._startLabel = el.querySelector('.tile-start-label');
+        tilesContainer.appendChild(el);
+        tileDomCache.set(domKey, el);
       }
-    } else if (tile.type === 1) {
-      // Rest/blank tile - make entirely invisible
-      el.style.opacity = '0';
-      el.style.pointerEvents = 'none';
-    } else if (isTapTile(tile) || isDoubleTile(tile)) {
-      let isPlayed = tile.played;
-      let isEnded = tile.ended;
-      if (isDoubleTile(tile) && !autoplayEnabled) {
+
+      const leftCol = Math.min(...cols);
+      const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
+      const headEl = el._head;
+      const lightStripEl = el._lightStrip;
+      const lightOrbEl = el._lightOrb;
+      const comboBadgeEl = el._comboBadge;
+      const startLabelEl = el._startLabel;
+
+      el.className = '';
+      const styleLeft = `${(leftCol / key) * 100}%`;
+      const styleWidth = `${(widthCols / key) * 100}%`;
+      const styleTop = `${(topUnits / key) * 100}%`;
+      const styleHeight = `${(tileHeight / key) * 100}%`;
+      const styleFilter = (tile.type === 3 || (tile.type >= 7 && !(tile.type === 9 && tile.isAccompanimentLong))) ? 'hue-rotate(-90deg)' : 'none';
+
+      if (el._lastLeft !== styleLeft) { el.style.left = styleLeft; el._lastLeft = styleLeft; }
+      if (el._lastWidth !== styleWidth) { el.style.width = styleWidth; el._lastWidth = styleWidth; }
+      if (el._lastTop !== styleTop) { el.style.top = styleTop; el._lastTop = styleTop; }
+      if (el._lastHeight !== styleHeight) { el.style.height = styleHeight; el._lastHeight = styleHeight; }
+      if (el._lastFilter !== styleFilter) { el.style.filter = styleFilter; el._lastFilter = styleFilter; }
+
+      if (el._lastBgStyle !== 'batched') {
+        el.style.backgroundColor = 'transparent';
+        el.style.borderTop = 'none';
+        el.style.boxShadow = 'none';
+        el.style.opacity = '1';
+        el._lastBgStyle = 'batched';
+      }
+
+      [headEl, lightStripEl, lightOrbEl].forEach((child) => {
+        child.style.position = 'absolute';
+        child.style.left = '0';
+        child.style.right = '0';
+        child.style.backgroundRepeat = 'no-repeat';
+        child.style.backgroundSize = '100% 100%';
+        child.style.pointerEvents = 'none';
+        child.style.display = 'none';
+      });
+
+      comboBadgeEl.classList.add('hidden');
+      startLabelEl.classList.add('hidden');
+      startLabelEl.classList.remove('tile-start-label-at-head');
+      startLabelEl.style.justifyContent = 'center';
+      startLabelEl.style.fontFamily = 'var(--font-game)';
+      startLabelEl.style.fontWeight = '500';
+      startLabelEl.style.fontSize = '2.8rem';
+      startLabelEl.style.color = '#ffffff';
+      startLabelEl.style.letterSpacing = '0.1em';
+      startLabelEl.style.display = 'none';
+      startLabelEl.style.position = 'absolute';
+      startLabelEl.style.inset = '0';
+      startLabelEl.style.top = '0';
+      startLabelEl.style.right = '0';
+      startLabelEl.style.bottom = '0';
+      startLabelEl.style.left = '0';
+      startLabelEl.style.height = 'auto';
+      startLabelEl.style.alignItems = 'center';
+
+      const showStartLabel = (tile.isStartTile || tile.isResumeStartTile) && !tile.played && !isStarted;
+      const showStartLabelAtHead = showStartLabel && isLongTile(tile);
+
+      // For double tiles, show START label only on the untapped column and only if it's a resume/revive start tile
+      let showStartLabelForDoubleTile = showStartLabel;
+      if (isDoubleTile(tile) && tile.hitColumns && tile.hitColumns.length > 0) {
+        // Only show START label if this specific column hasn't been hit yet AND it's a resume/revive start tile
         const thisCol = cols[0];
-        isPlayed = tile.hitColumns.includes(thisCol);
-        isEnded = isPlayed ? 1 : 0;
+        showStartLabelForDoubleTile = !tile.hitColumns.includes(thisCol) && tile.isResumeStartTile;
       }
 
-      const animatedHitFrame = getTileHitAnimationFrame(tile);
-      const tileImageSuffix = animatedHitFrame > 0
-        ? getTileFinishImage(animatedHitFrame)
-        : (isPlayed ? getTileFinishImage(isEnded) : 'tile_black');
-      el.style.backgroundImage = `url("gameImage/${tileImageSuffix}.png")`;
-      // Show START label for double tiles only if not partially hit
-      const shouldShowStartLabel = isDoubleTile(tile) ? showStartLabelForDoubleTile : showStartLabel;
-      if (shouldShowStartLabel) {
-        startLabelEl.classList.remove('hidden');
-        startLabelEl.style.display = 'flex';
-      }
-    } else if (isComboTile(tile) && !autoplayEnabled) {
-      if (el.className !== 'tile-combo') el.className = 'tile-combo';
-      el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
-      comboBadgeEl.classList.remove('hidden');
-      // Use nullish coalescing to correctly show 0 when all taps are done
-      const badgeVal = String(tile.remainingTaps ?? 0);
-      if (el.dataset.lastBadgeText !== badgeVal) {
-        comboBadgeEl.textContent = badgeVal;
-        el.dataset.lastBadgeText = badgeVal;
-      }
-      // Show START label for combo tiles when needed (post-revive/resume)
-      if (showStartLabel) {
-        startLabelEl.classList.remove('hidden');
-        startLabelEl.style.display = 'flex';
-      }
-    } else if (isLongTile(tile) || isComboTile(tile)) {
-      const played = tile.played || tile.clicked;
-      const ended = tile.ended || tile.holdCompleted;
-      const isReleased = isLongTile(tile) && tile.holdReleased;
-      
-      // Use release point if the tile was released midway, otherwise use current progress
-      let progress;
-      if (isReleased) {
-        progress = tile.holdReleasedAt || 0;
-      } else {
-        progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
-      }
-
-      el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
-
-      if (!played) {
-        headEl.style.display = 'block';
-        headEl.style.bottom = '0';
-        headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
-        const headImage = (tile.type === 9 && tile.isAccompanimentLong) ? 'a_long_head' : 'long_head';
-        headEl.style.backgroundImage = `url("gameImage/${headImage}.png")`;
-      }
-
-      if (played && !ended) {
-        let orbCenterBottomPercent = 0;
-        
-        // Keep the light orb at the absolute screen position where it was tapped.
-        // Compute from board geometry instead of calling getBoundingClientRect() each
-        // frame — that was causing a layout flush on every RAF tick per held tile.
-        if (tile.tapScreenY && !isReleased) {
-          const br = _cachedBoardRect || boardEl.getBoundingClientRect();
-          const tileTop = getTileTop(tile);
-          const tileEffH = getTileEffectiveHeight(tile);
-          const tileScreenTop = br.top + (tileTop / key) * br.height;
-          const tileScreenHeight = (tileEffH / key) * br.height;
-
-          const orbRelativeY = tile.tapScreenY - tileScreenTop;
-          const orbRelativePercent = (orbRelativeY / tileScreenHeight) * 100;
-
-          orbCenterBottomPercent = 100 - orbRelativePercent;
-        } else {
-          // Fallback to normal behavior for released tiles or when tapScreenY is not available
-          // Progress is measured from the bottom of the tile up to the hitline
-          const fallbackProgress = Math.max(0, Math.min(tile.hlen, progress + 1));
-          orbCenterBottomPercent = (fallbackProgress / tile.hlen) * 100 - (0.5 / tile.hlen) * 100;
+      if (tile.type === -1 && tile.hpos === -1) {
+        const animatedHitFrame = getTileHitAnimationFrame(tile);
+        const startTileImageSuffix = animatedHitFrame > 0
+          ? getTileFinishImage(animatedHitFrame)
+          : (tile.played ? getTileFinishImage(tile.ended) : 'tile_start');
+        el.style.backgroundImage = `url("gameImage/${startTileImageSuffix}.png")`;
+        if (!tile.played && !isStarted) {
+          startLabelEl.classList.remove('hidden');
+          startLabelEl.style.display = 'flex';
         }
-        
-        // Ensure the strip doesn't overflow the tile boundaries
-        orbCenterBottomPercent = Math.max(0, Math.min(100, orbCenterBottomPercent));
-        
-        const orbHeightPercent = (1 / tile.hlen) * 100;
-        const orbBottomPercent = orbCenterBottomPercent - (orbHeightPercent / 2);
-        
-        lightOrbEl.style.display = 'block';
-        lightOrbEl.style.height = `${orbHeightPercent}%`;
-        lightOrbEl.style.bottom = `${orbBottomPercent}%`;
-        lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
-        
-        lightStripEl.style.display = 'block';
-        lightStripEl.style.bottom = '0';
-        lightStripEl.style.height = `${orbCenterBottomPercent}%`;
-        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
-      }
+      } else if (tile.type === 1) {
+        // Rest/blank tile - make entirely invisible
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+      } else if (isTapTile(tile) || isDoubleTile(tile)) {
+        let isPlayed = tile.played;
+        let isEnded = tile.ended;
+        if (isDoubleTile(tile) && !autoplayEnabled) {
+          const thisCol = cols[0];
+          isPlayed = tile.hitColumns.includes(thisCol);
+          isEnded = isPlayed ? 1 : 0;
+        }
 
-      if (ended) {
-        lightStripEl.style.display = 'block';
-        lightStripEl.style.top = '0';
-        lightStripEl.style.height = '100%';
-        lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
-        lightStripEl.style.opacity = `${Math.max(1 - (tile.ended || 0) / 10, 0)}`;
-      } else {
-        lightStripEl.style.opacity = '1';
-      }
+        const animatedHitFrame = getTileHitAnimationFrame(tile);
+        const tileImageSuffix = animatedHitFrame > 0
+          ? getTileFinishImage(animatedHitFrame)
+          : (isPlayed ? getTileFinishImage(isEnded) : 'tile_black');
+        el.style.backgroundImage = `url("gameImage/${tileImageSuffix}.png")`;
+        // Show START label for double tiles only if not partially hit
+        const shouldShowStartLabel = isDoubleTile(tile) ? showStartLabelForDoubleTile : showStartLabel;
+        if (shouldShowStartLabel) {
+          startLabelEl.classList.remove('hidden');
+          startLabelEl.style.display = 'flex';
+        }
+      } else if (isComboTile(tile) && !autoplayEnabled) {
+        if (el.className !== 'tile-combo') el.className = 'tile-combo';
+        el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
+        comboBadgeEl.classList.remove('hidden');
+        // Use nullish coalescing to correctly show 0 when all taps are done
+        const badgeVal = String(tile.remainingTaps ?? 0);
+        if (el.dataset.lastBadgeText !== badgeVal) {
+          comboBadgeEl.textContent = badgeVal;
+          el.dataset.lastBadgeText = badgeVal;
+        }
+        // Show START label for combo tiles when needed (post-revive/resume)
+        if (showStartLabel) {
+          startLabelEl.classList.remove('hidden');
+          startLabelEl.style.display = 'flex';
+        }
+      } else if (isLongTile(tile) || isComboTile(tile)) {
+        const played = tile.played || tile.clicked;
+        const ended = tile.ended || tile.holdCompleted;
+        const isReleased = isLongTile(tile) && tile.holdReleased;
 
-      if (showStartLabelAtHead) {
-        const headHeightPercent = (1.35 / tile.hlen) * 100;
-        startLabelEl.classList.remove('hidden');
-        startLabelEl.classList.add('tile-start-label-at-head');
-        startLabelEl.style.display = 'flex';
-        startLabelEl.style.inset = 'auto';
-        startLabelEl.style.left = '0';
-        startLabelEl.style.right = '0';
-        startLabelEl.style.top = 'auto';
-        startLabelEl.style.bottom = '-110px';
-        startLabelEl.style.height = `${headHeightPercent}%`;
-        startLabelEl.style.fontSize = '2.8rem';
+        // Use release point if the tile was released midway, otherwise use current progress
+        let progress;
+        if (isReleased) {
+          progress = tile.holdReleasedAt || 0;
+        } else {
+          progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
+        }
+
+        el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
+
+        if (!played) {
+          headEl.style.display = 'block';
+          headEl.style.bottom = '0';
+          headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
+          const headImage = (tile.type === 9 && tile.isAccompanimentLong) ? 'a_long_head' : 'long_head';
+          headEl.style.backgroundImage = `url("gameImage/${headImage}.png")`;
+        }
+
+        if (played && !ended) {
+          let orbCenterBottomPercent = 0;
+
+          // Keep the light orb at the absolute screen position where it was tapped.
+          // Compute from board geometry instead of calling getBoundingClientRect() each
+          // frame — that was causing a layout flush on every RAF tick per held tile.
+          if (tile.tapScreenY && !isReleased) {
+            const br = _cachedBoardRect || boardEl.getBoundingClientRect();
+            const tileTop = getTileTop(tile);
+            const tileEffH = getTileEffectiveHeight(tile);
+            const tileScreenTop = br.top + (tileTop / key) * br.height;
+            const tileScreenHeight = (tileEffH / key) * br.height;
+
+            const orbRelativeY = tile.tapScreenY - tileScreenTop;
+            const orbRelativePercent = (orbRelativeY / tileScreenHeight) * 100;
+
+            orbCenterBottomPercent = 100 - orbRelativePercent;
+          } else {
+            // Fallback to normal behavior for released tiles or when tapScreenY is not available
+            // Progress is measured from the bottom of the tile up to the hitline
+            const fallbackProgress = Math.max(0, Math.min(tile.hlen, progress + 1));
+            orbCenterBottomPercent = (fallbackProgress / tile.hlen) * 100 - (0.5 / tile.hlen) * 100;
+          }
+
+          // Ensure the strip doesn't overflow the tile boundaries
+          orbCenterBottomPercent = Math.max(0, Math.min(100, orbCenterBottomPercent));
+
+          const orbHeightPercent = (1 / tile.hlen) * 100;
+          const orbBottomPercent = orbCenterBottomPercent - (orbHeightPercent / 2);
+
+          lightOrbEl.style.display = 'block';
+          lightOrbEl.style.height = `${orbHeightPercent}%`;
+          lightOrbEl.style.bottom = `${orbBottomPercent}%`;
+          lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
+
+          lightStripEl.style.display = 'block';
+          lightStripEl.style.bottom = '0';
+          lightStripEl.style.height = `${orbCenterBottomPercent}%`;
+          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+        }
+
+        if (ended) {
+          lightStripEl.style.display = 'block';
+          lightStripEl.style.top = '0';
+          lightStripEl.style.height = '100%';
+          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+          lightStripEl.style.opacity = `${Math.max(1 - (tile.ended || 0) / 10, 0)}`;
+        } else {
+          lightStripEl.style.opacity = '1';
+        }
+
+        if (showStartLabelAtHead) {
+          const headHeightPercent = (1.35 / tile.hlen) * 100;
+          startLabelEl.classList.remove('hidden');
+          startLabelEl.classList.add('tile-start-label-at-head');
+          startLabelEl.style.display = 'flex';
+          startLabelEl.style.inset = 'auto';
+          startLabelEl.style.left = '0';
+          startLabelEl.style.right = '0';
+          startLabelEl.style.top = 'auto';
+          startLabelEl.style.bottom = '-110px';
+          startLabelEl.style.height = `${headHeightPercent}%`;
+          startLabelEl.style.fontSize = '2.8rem';
+        }
       }
-    }
     });
   });
 
@@ -4786,7 +4838,7 @@ function updateEngineFrame(now) {
           const { longColumn } = getAccompanimentTilePos();
           const longWarr = new Array(key).fill(0);
           longWarr[longColumn] = 1;
-          
+
           // Assign a unique sequence ID to this accompaniment group
           const currentSequenceId = ++accompanimentSequenceId;
 
@@ -4926,7 +4978,7 @@ function updateEngineFrame(now) {
 
   tiles.forEach((tile) => {
     tile.playing = starthpos - tile.hpos - (key - 1);
-    
+
     // Check section progression for normal song awards
     if (tile.playing >= -0.5 || tile.clicked || tile.ended > 0) {
       const effectiveSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
@@ -5134,7 +5186,7 @@ function updateEngineFrame(now) {
   if (isClassicMode && tiles.length === 0) {
     loadNextClassicSong();
   }
-  
+
   if (isClassMode) {
     let newIndex = 0;
     if (classSongSectionStarts && classSongSectionStarts.length > 0) {
@@ -5238,11 +5290,11 @@ function frame(now) {
     updateEngineFrame(now);
     updateHUD();
     renderTiles();
-    
+
     // Handle deferred level increments and background update after critical frame work
     if (pendingBackgroundUpdate) {
       pendingBackgroundUpdate = false;
-      
+
       // Perform the actual level increments using index counters (O(1) instead of O(n) shift)
       if (pendingBgLevelIncrement) {
         pendingBgLevelIncrement = false;
@@ -5254,12 +5306,46 @@ function frame(now) {
         speedLevelPosIndex++;
         speedLevel++;
       }
-      
-      // Update background after level changes
-      requestAnimationFrame(() => updateGameplayBackground());
+
+      // Update background after level changes. The crossfade only writes CSS
+      // custom properties (the images are preloaded), so it is cheap to run
+      // directly here rather than scheduling yet another frame.
+      updateGameplayBackground();
     }
   }
   rafId = requestAnimationFrame(frame);
+}
+
+function showPregameInfoBar() {
+  if (!pregameInfoBar) return;
+  const label = songName || (selectedSongData ? (selectedSongData.musicJson || selectedSongData.name || '') : '');
+  const localizedSongName = i18n ? i18n.getSongName(label) : label;
+  if (pregameSongName) {
+    pregameSongName.textContent = localizedSongName || label;
+    pregameSongName.title = localizedSongName || label;
+  }
+  let bestScore = 0;
+  if (selectedSongData) {
+    const mid = String(selectedSongData.mid || selectedSongData.id || '');
+    if (mid && isChallengeMode) {
+      const isClassicChallenge = String(selectedSongData.mid || '').startsWith('200009');
+      const key = isClassicChallenge
+        ? `opentile_classic_challenge_best_tiles_${selectedSongData.mid}`
+        : `opentile_challenge_best_tps_${selectedSongData.mid}`;
+      bestScore = parseFloat(localStorage.getItem(key) || '0', 10);
+    } else if (mid) {
+      bestScore = parseFloat(localStorage.getItem(`opentile_best_score_${mid}`) || '0', 10);
+    }
+  }
+  if (pregameBestScore) {
+    pregameBestScore.textContent = String(Math.round(bestScore));
+  }
+  pregameInfoBar.classList.remove('hidden');
+}
+
+function hidePregameInfoBar() {
+  if (!pregameInfoBar) return;
+  pregameInfoBar.classList.add('hidden');
 }
 
 function startGame() {
@@ -5281,6 +5367,7 @@ function startGame() {
   updatePauseButtonVisibility();
   isPlayInProgress = false; // Reset play progress flag when game actually starts
   isPostReviveState = false; // Reset revive flag when starting normal game
+  hidePregameInfoBar();
 }
 
 function stopGame(showStart = true) {
@@ -5303,7 +5390,8 @@ function stopGame(showStart = true) {
   }
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  
+
+  hidePregameInfoBar();
   updatePauseButtonVisibility();
 }
 
@@ -5315,7 +5403,7 @@ function returnToMainMenu() {
     classPauseInterval = null;
   }
 
-  
+
   // Clean up classic mode timer
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -5325,7 +5413,7 @@ function returnToMainMenu() {
     classicTimerStartedAt = 0;
     isClassicMode = false;
   }
-  
+
   resetEngineState();
   selectedSongData = null;
   lastLoadedJsonText = '';
@@ -5340,7 +5428,9 @@ function returnToMainMenu() {
   challengesScreen.classList.add('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  
+
+  hidePregameInfoBar();
+
   updatePauseButtonVisibility();
 
   if (currentDockTab === 'music') {
@@ -5389,11 +5479,11 @@ function resetTileForResume(tile) {
   const tileHeight = getTileEffectiveHeight(tile);
   const tileTop = starthpos - adjHpos - tileHeight;
   const tileBottom = starthpos - adjHpos;
-  
+
   // Check if tile (or head of long tile) is fully visible on-screen
   // Using the same visibility check as the rest of the game: screen spans from 0 to key
   const isFullyVisible = tileBottom > 0 && tileTop < key;
-  
+
   if (!isFullyVisible) {
     // Calculate new starthpos to center the tile, shifted down by 1 tile height
     // Tile center in screen coordinates: starthpos - adjHpos - tileHeight/2
@@ -5463,7 +5553,7 @@ document.getElementById('revive-modal')?.addEventListener('click', (event) => {
 
 function exitToSongLibrary() {
   pauseScreen.classList.add('hidden');
-  
+
   // Clean up classic mode timer
   if (isClassicMode) {
     if (classicTimerInterval) {
@@ -5473,7 +5563,7 @@ function exitToSongLibrary() {
     classicTimerStartedAt = 0;
     isClassicMode = false;
   }
-  
+
   playMenuLoopCue();
   returnToMainMenu();
 }
@@ -5498,7 +5588,7 @@ function togglePause() {
       delete tile.isStartTile;
       delete tile.isResumeStartTile;
     });
-    
+
     // Force-drop any currently held long tile
     const heldLongTile = tiles.find((tile) =>
       isLongTile(tile) &&
@@ -5506,7 +5596,7 @@ function togglePause() {
       !tile.holdCompleted &&
       !tile.holdReleased
     );
-    
+
     if (heldLongTile) {
       // Mark the release point for proper tracking
       heldLongTile.holdReleasedAt = heldLongTile.playing || 0;
@@ -5515,27 +5605,27 @@ function togglePause() {
       heldLongTile.holdCompleted = true;
       heldLongTile.clicked = true;
       heldLongTile.ended = 1;
-      
+
       // Calculate score based on completed height, same as normal release
       const completedHeight = Math.max(0, heldLongTile.playing - (heldLongTile.tapPlaying || 0));
       currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; incrementClassHitTiles(heldLongTile); }
     }
-    
+
     const nearestUntapped = getLowestManualTile();
     if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
       resetTileForResume(nearestUntapped);
       nearestUntapped.isStartTile = true;
       nearestUntapped.isResumeStartTile = true;
-      
+
       // Center the START tile on screen if it's not fully visible
       const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
       const tileHeight = getTileEffectiveHeight(nearestUntapped);
       const tileTop = starthpos - adjHpos - tileHeight;
       const tileBottom = starthpos - adjHpos;
-      
+
       // Check if tile (or head of long tile) is fully visible on-screen
       const isFullyVisible = tileBottom > 0 && tileTop < key;
-      
+
       if (!isFullyVisible) {
         // Calculate new starthpos to center the tile, shifted down by 1 tile height
         starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
@@ -5718,7 +5808,7 @@ function initializeClassicMode() {
   classicCurrentSongIndex = 0;
   classicLoadFailCount = 0;
   classicScrollTarget = key - 2;
-  
+
   // Create shuffled queue of Classic1-13
   classicSongQueue = [];
   for (let i = 1; i <= 13; i++) {
@@ -5729,7 +5819,7 @@ function initializeClassicMode() {
     const j = Math.floor(Math.random() * (i + 1));
     [classicSongQueue[i], classicSongQueue[j]] = [classicSongQueue[j], classicSongQueue[i]];
   }
-  
+
   if (classicTimerInterval) {
     clearInterval(classicTimerInterval);
     classicTimerInterval = null;
@@ -5752,10 +5842,10 @@ function loadNextClassicSong() {
       [classicSongQueue[i], classicSongQueue[j]] = [classicSongQueue[j], classicSongQueue[i]];
     }
   }
-  
+
   const songName = classicSongQueue[classicCurrentSongIndex];
   classicCurrentSongIndex++;
-  
+
   // Load the song JSON directly
   fetch(`song/${songName}.json`)
     .then(response => {
@@ -5808,13 +5898,13 @@ function startClassicMode() {
   speedLevelPos = [];
   speedLevelPosIndex = 0;
   warr = new Array(key).fill(0);
-  
+
   // Initialize classic mode
   initializeClassicMode();
-  
+
   // Load first classic song
   loadNextClassicSong();
-  
+
   // Show game interface
   songListScreen.classList.add('hidden');
   challengesScreen.classList.add('hidden');
@@ -5822,24 +5912,26 @@ function startClassicMode() {
   gameoverScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
-  
+
   // Hide dock during gameplay
   const sharedDock = document.getElementById('shared-dock');
   if (sharedDock) {
     sharedDock.classList.add('hidden');
   }
-  
+
   // Hide shared top bar during gameplay
   const sharedTopBar = document.getElementById('shared-top-bar');
   if (sharedTopBar) {
     sharedTopBar.classList.add('hidden');
   }
-  
+
   // Show background immediately
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
-    applyGameplayBackground();
+    initGameplayBackground();
   }
+
+  showPregameInfoBar();
 }
 
 function saveLastPlayed(songId) {
@@ -5888,7 +5980,7 @@ function renderHomeScreen() {
   if (!songToDisplay && musicCsvData.length > 0) {
     songToDisplay = musicCsvData.find(song => !isChallengeSong(song)) || musicCsvData[0];
   }
-  
+
   if (songToDisplay) {
     const localizedSongName = getLocalizedSongDisplayName(songToDisplay);
     welcomeSongTitle.textContent = `${songToDisplay.id}. ${localizedSongName}`;
@@ -5922,15 +6014,15 @@ function renderHomeScreen() {
   renderSongOfTheDay();
   // Render latest updates
   renderLatestUpdates();
-  
+
   // Sync top dock data (includes player name sync)
   syncTopDockData();
-  
+
   // Update translations for dynamic content
   if (typeof i18n !== 'undefined' && i18n.updateUITranslations) {
     i18n.updateUITranslations();
   }
-  
+
   // Setup scroll rotation
   setupDiscRotation();
 }
@@ -5989,9 +6081,9 @@ function setupDiscRotation() {
 
 function renderFavouriteSongs() {
   if (!favouriteSongsContainer) return;
-  
+
   const favouriteSongsList = musicCsvData.filter(song => favouriteSongs.has(String(song.mid)));
-  
+
   if (favouriteSongsList.length === 0) {
     const noFavouritesMsg = i18n ? i18n.t('msg_no_favourites') : 'No favourite songs yet. Tap the heart on any song to add it here!';
     favouriteSongsContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${noFavouritesMsg}</p>`;
@@ -6007,9 +6099,9 @@ function renderFavouriteSongs() {
 
 function render700PlusSongs() {
   if (!songs700PlusContainer) return;
-  
+
   const songs700PlusList = musicCsvData.filter(song => song.id >= 700 && !isChallengeSong(song));
-  
+
   if (songs700PlusList.length === 0) {
     const no700PlusMsg = i18n ? i18n.t('msg_no_700_plus_songs') : 'No songs 700+ found.';
     songs700PlusContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${no700PlusMsg}</p>`;
@@ -6031,17 +6123,17 @@ function getDailySong() {
   // Get today's date as a string (YYYY-MM-DD) for consistent daily selection
   const today = new Date();
   const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  
+
   // Use a simple hash of the date string to select a song
   let hash = 0;
   for (let i = 0; i < dateString.length; i++) {
     hash = ((hash << 5) - hash) + dateString.charCodeAt(i);
     hash = hash & hash; // Convert to 32bit integer
   }
-  
+
   // Filter out challenge songs and get regular songs
   const regularSongs = musicCsvData.filter(song => !isChallengeSong(song));
-  
+
   // Use the hash to select a song (ensure positive index)
   const songIndex = Math.abs(hash) % regularSongs.length;
   return regularSongs[songIndex];
@@ -6050,22 +6142,22 @@ function getDailySong() {
 function getSongOfTheDayStreak() {
   const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
   if (!streakData) return 0;
-  
+
   try {
     const data = JSON.parse(streakData);
     const today = new Date();
     const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
+
     // If the last completion was today, return the current streak
     if (data.lastCompletionDate === todayString) {
       return data.streak;
     }
-    
+
     // Check if the last completion was yesterday
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayString = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    
+
     // If the last completion was yesterday, keep the streak
     // Otherwise, reset the streak
     if (data.lastCompletionDate === yesterdayString) {
@@ -6084,22 +6176,22 @@ function getSongOfTheDayStreak() {
 function updateSongOfTheDayStreak() {
   const today = new Date();
   const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  
+
   const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
   let currentStreak = 0;
-  
+
   if (streakData) {
     try {
       const data = JSON.parse(streakData);
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayString = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-      
+
       // If already completed today, don't update
       if (data.lastCompletionDate === todayString) {
         return data.streak;
       }
-      
+
       // If last completion was yesterday, increment streak
       if (data.lastCompletionDate === yesterdayString) {
         currentStreak = data.streak + 1;
@@ -6114,24 +6206,26 @@ function updateSongOfTheDayStreak() {
   } else {
     currentStreak = 1;
   }
-  
-  localStorage.setItem('opentile_song_of_the_day_streak', JSON.stringify({ 
-    streak: currentStreak, 
-    lastCompletionDate: todayString 
+
+  localStorage.setItem('opentile_song_of_the_day_streak', JSON.stringify({
+    streak: currentStreak,
+    lastCompletionDate: todayString
   }));
-  
+
   return currentStreak;
 }
 
 function getSongOfTheDayReward(streak) {
-  // P-Points reward based on streak: 10 base + 5 * streak
-  return 10 + (streak * 5);
+  // P-Points reward based on streak: 10 base + 5 * (streak - 1) bonus
+  // Day 1 (streak 1) awards the 10 base only; the streak bonus starts from Day 2.
+  const bonus = Math.max(0, (streak - 1) * 5);
+  return 10 + bonus;
 }
 
 function isSongOfTheDayCompleted() {
   const streakData = localStorage.getItem('opentile_song_of_the_day_streak');
   if (!streakData) return false;
-  
+
   try {
     const data = JSON.parse(streakData);
     const today = new Date();
@@ -6165,8 +6259,8 @@ function createSongOfTheDayCard(song) {
   const card = document.createElement('div');
   card.className = 'song-card';
   const isPurple = song.id >= 700;
-  
-  const statusBadge = isCompleted 
+
+  const statusBadge = isCompleted
     ? `<span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">${i18n ? i18n.t('label_completed') : 'Completed'}</span>`
     : `<span class="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full">+${getSongOfTheDayReward(currentStreak)} P-Points</span>`;
 
@@ -6175,9 +6269,9 @@ function createSongOfTheDayCard(song) {
   card.innerHTML = `
     <div class="song-card-icon ${stage.stars >= 3 || stage.crowns > 0 ? `ranked ${isPurple ? 'purple' : ''}` : 'numbered'}">
       ${stage.stars >= 3 || stage.crowns > 0
-        ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
-        : `${song.id}`
-      }
+      ? `<img src="gameImage/${isPurple ? 'awardselection.png' : 'award.png'}" class="rank-icon-image"><div class="rank-number">${song.id}</div>`
+      : `${song.id}`
+    }
     </div>
     <div class="song-card-content">
       <div class="song-card-title">${localizedSongName}</div>
@@ -6234,7 +6328,7 @@ async function renderLatestUpdates() {
       throw new Error('Failed to load updates.json');
     }
     const data = await response.json();
-    
+
     if (!data.updates || data.updates.length === 0) {
       updatesContainer.innerHTML = '<p class="text-gray-500 text-xs">No updates available.</p>';
       return;
@@ -6242,9 +6336,9 @@ async function renderLatestUpdates() {
 
     // Get the latest 3 updates (first 3 in array)
     const latestUpdates = data.updates.slice(0, 3);
-    
+
     let updatesHtml = latestUpdates.map(update => {
-      let changesHtml = update.changes.map(change => 
+      let changesHtml = update.changes.map(change =>
         `<div class="text-gray-600 text-xs">• ${change}</div>`
       ).join('');
 
@@ -6426,11 +6520,11 @@ async function initializeGame() {
   if (loadingScreen) {
     loadingScreen.classList.remove('hidden');
   }
-  
+
   try {
     const loadingStatus = document.getElementById('loading-status');
     const loadingSubstatus = document.getElementById('loading-substatus');
-    
+
     if (loadingStatus) loadingStatus.textContent = 'Loading database...';
     if (loadingSubstatus) loadingSubstatus.textContent = 'Fetching game CSV configurations';
 
@@ -6439,23 +6533,23 @@ async function initializeGame() {
 
     // 2. Now run the unified asset preloader which loads and caches everything else
     await preloadAssets();
-    
+
     // Finalize loading
     updateLoadingProgress('complete', 1, 1);
-    
+
     // Small delay to show the completion state
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     // Hide loading screen and initialize UI
     if (loadingScreen) {
       loadingScreen.classList.add('hidden');
     }
-    
+
     initUi();
-    
+
   } catch (error) {
     console.error('Failed to initialize game:', error);
-    
+
     // Even if there's an error, hide loading screen and show the game
     if (loadingScreen) {
       loadingScreen.classList.add('hidden');
@@ -6554,7 +6648,7 @@ document.getElementById('settings-custom-speed')?.addEventListener('input', (e) 
     customStartingSpeed = value;
   }
   localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
-  
+
   // Update display
   if (customStartingSpeed === 0) {
     customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
@@ -6563,7 +6657,7 @@ document.getElementById('settings-custom-speed')?.addEventListener('input', (e) 
     customSpeedDisplay.textContent = `${customStartingSpeed} t/s`;
     customSpeedDisplay.classList.add('text-indigo-600');
   }
-  
+
   // Update pill status
   const speedStatus = document.getElementById('speed-status');
   if (speedStatus) {
@@ -6611,24 +6705,24 @@ document.getElementById('done-language-modal')?.addEventListener('click', () => 
     if (languageSelector) {
       languageSelector.value = selectedLanguage;
     }
-    
+
     // Update pill status
     const langStatus = document.getElementById('language-status');
     if (langStatus) {
       const selectedLangObj = languages.find(l => l.code === selectedLanguage);
       langStatus.textContent = selectedLangObj ? selectedLangObj.name : 'English';
     }
-    
+
     // Trigger language change using i18n system
     if (typeof i18n !== 'undefined' && i18n.setLanguage) {
       i18n.setLanguage(selectedLanguage);
     } else {
       localStorage.setItem('opentile_language', selectedLanguage);
     }
-    
+
     selectedLanguage = null;
   }
-  
+
   document.getElementById('language-modal').classList.add('hidden');
 });
 
@@ -6780,6 +6874,16 @@ document.getElementById('privacy-pill')?.addEventListener('click', () => {
   document.getElementById('privacy-modal').classList.remove('hidden');
 });
 
+// Donate pill handler
+document.getElementById('donate-pill')?.addEventListener('click', () => {
+  const donateUrl = 'https://ko-fi.com/amagurenuchi';
+  if (window.electronAPI?.openExternal) {
+    window.electronAPI.openExternal(donateUrl);
+  } else {
+    window.open(donateUrl, '_blank');
+  }
+});
+
 // Credits modal handlers
 document.getElementById('close-credits-modal')?.addEventListener('click', () => {
   document.getElementById('credits-modal').classList.add('hidden');
@@ -6829,10 +6933,10 @@ let selectedLanguage = null;
 function renderLanguageOptions() {
   const container = document.getElementById('language-options');
   if (!container) return;
-  
+
   const currentLang = localStorage.getItem('opentile_language') || 'en';
   const displayLang = selectedLanguage || currentLang;
-  
+
   container.innerHTML = languages.map(lang => `
     <button class="language-option flex items-center justify-between bg-white rounded-full px-5 py-4 shadow-sm transition-all active:scale-[0.98]" data-lang="${lang.code}">
       <span class="text-base font-semibold text-gray-800">${lang.name}</span>
@@ -6841,15 +6945,15 @@ function renderLanguageOptions() {
       </svg>
     </button>
   `).join('');
-  
+
   // Add click handlers
   container.querySelectorAll('.language-option').forEach((option) => {
     option.addEventListener('click', () => {
       const lang = option.dataset.lang;
-      
+
       // Store selected language but don't apply yet
       selectedLanguage = lang;
-      
+
       // Update all options visually
       container.querySelectorAll('.language-option').forEach(opt => {
         const check = opt.querySelector('.language-check');
@@ -6867,17 +6971,17 @@ function renderLanguageOptions() {
 
 function updateLanguageSelection() {
   const currentLang = localStorage.getItem('opentile_language') || 'en';
-  
+
   // Reset selected language when modal opens
   selectedLanguage = null;
-  
+
   // Update pill status
   const langStatus = document.getElementById('language-status');
   if (langStatus) {
     const selectedLang = languages.find(l => l.code === currentLang);
     langStatus.textContent = selectedLang ? selectedLang.name : 'English';
   }
-  
+
   // Re-render language options if modal is open
   renderLanguageOptions();
 }
@@ -6886,7 +6990,7 @@ document.getElementById('restart-btn')?.addEventListener('click', () => {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
-  
+
   if (selectedSongData) {
     startSongTransition(selectedSongData);
   } else if (lastLoadedJsonText) {
@@ -7152,7 +7256,7 @@ pt2MusicSelect?.addEventListener('change', () => {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
-  
+
   const mid = parseInt(pt2MusicSelect.value, 10);
   if (!mid) return;
   const songData = musicCsvData.find((song) => song.mid === mid);
@@ -7165,7 +7269,7 @@ pt2JsonInput?.addEventListener('change', async (event) => {
   if (isPlayInProgress) {
     return; // Prevent multiple play button presses
   }
-  
+
   const file = event.target.files && event.target.files[0];
   if (!file) return;
   try {
@@ -7187,7 +7291,7 @@ customSongUpload?.addEventListener('change', async (event) => {
     customSongStatus.textContent = `✓ Loaded: ${customSongLabel}`;
     customSongStatus.classList.add('text-green-600');
     setSongStatus(`Custom song loaded: ${customSongLabel}`);
-    
+
     // Update the custom song card in the DOM
     const existingCard = document.querySelector('.custom-song-card');
     if (existingCard) {
@@ -7219,11 +7323,11 @@ bpmModal?.addEventListener('click', (event) => {
 customSpeedInput?.addEventListener('input', (event) => {
   const input = event.target;
   const inputValue = input.value;
-  
+
   // Save cursor position before any modifications
   const cursorPosition = input.selectionStart;
   const cursorEnd = input.selectionEnd;
-  
+
   // Allow empty input or input ending with dot (while typing decimal)
   if (inputValue === '' || inputValue.endsWith('.')) {
     if (inputValue === '' || inputValue === '.') {
@@ -7244,7 +7348,7 @@ customSpeedInput?.addEventListener('input', (event) => {
     input.setSelectionRange(cursorPosition, cursorEnd);
     return;
   }
-  
+
   let value = parseFloat(inputValue);
   // Clamp to decimal values above 0 (0 = disabled, direct t/s value)
   if (isNaN(value) || value < 0) {
@@ -7252,12 +7356,12 @@ customSpeedInput?.addEventListener('input', (event) => {
   }
   // Update the input value to reflect clamping
   input.value = value;
-  
+
   // Restore cursor position (adjust if the value was shortened)
   const newLength = String(value).length;
   const newCursorPosition = Math.min(cursorPosition, newLength);
   input.setSelectionRange(newCursorPosition, newCursorPosition);
-  
+
   if (value === 0) {
     customSpeedDisplay.textContent = i18n?.t('label_disabled') || 'Disabled';
     customSpeedDisplay.classList.remove('text-indigo-600');
@@ -7492,7 +7596,7 @@ function renderClassScreen() {
   const highestCleared = document.getElementById('class-highest-cleared');
   if (!container) return;
   container.innerHTML = '';
-  
+
   let clearedText = "None";
   if (classHighestCleared > 0) {
     if (classHighestCleared === 11) clearedText = "Kaidan";
@@ -7502,13 +7606,13 @@ function renderClassScreen() {
 
   // Render from highest (Kaidan) down to 1st
   const sortedData = [...classData].reverse();
-  
+
   sortedData.forEach((dan, index) => {
     const item = document.createElement('div');
     item.className = 'class-item';
     if (dan.id === 'kaidan') item.classList.add('bg-kaidan');
     else if (dan.id === '9th_dan' || dan.id === '10th_dan') item.classList.add('bg-grey');
-    
+
     item.innerHTML = `
       <div class="class-item-title">${dan.name}</div>
       <div class="class-song-list">
@@ -7522,13 +7626,13 @@ function renderClassScreen() {
       isPlayInProgress = true;
       animateLifeSpendFromTopBar();
       playLifeIntroSound();
-      
+
       const buttonEl = item;
       buttonEl.style.transform = 'scale(0.9)';
       setTimeout(() => {
         buttonEl.style.transform = 'scale(1)';
       }, 150);
-      
+
       window.setTimeout(() => {
         startClassMode(dan);
       }, 1000);
@@ -7547,9 +7651,9 @@ function startClassMode(dan) {
   classSongProgress = [];
   classSongSectionStarts = [];
   classSongTotalTiles = [];
-  
+
   if (classScreen) classScreen.classList.add('hidden');
-  
+
   loadClassCourse();
 }
 
@@ -7570,7 +7674,7 @@ async function loadClassCourse() {
 
       const sectionIds = Object.keys(musicData.sections).map(Number).sort((a, b) => a - b);
       const musics = Array.isArray(sourceJson.musics) ? sourceJson.musics : [];
-      
+
       classSongSectionStarts.push(currentSectionOffset);
       let lastBpm = 120;
       let lastBaseBeats = 0.5;
@@ -7579,10 +7683,10 @@ async function loadClassCourse() {
         const music = musics.find((entry) => parseInt(entry.id, 10) === sectionId);
         const csvSection = musicData.sections[sectionId];
         if (!music || !csvSection) return;
-        
+
         lastBpm = csvSection.bpm || music.bpm || 120;
         lastBaseBeats = music.baseBeats || csvSection.baseBeats || 0.5;
-        
+
         allMergedMusics.push({
           ...music,
           id: currentSectionOffset++,
@@ -7590,7 +7694,7 @@ async function loadClassCourse() {
           baseBeats: lastBaseBeats
         });
       });
-      
+
       // Inject a break gap between songs (not after the last song)
       if (i < classCurrentData.songs.length - 1) {
         // Record this section offset so we can inject spacer tiles after loadSongObject
@@ -7611,7 +7715,7 @@ async function loadClassCourse() {
 
     selectedSongData = {
       label: classCurrentData.name,
-      scrollDuration: 100, 
+      scrollDuration: 100,
       musicJson: classCurrentData.songs[0].fileName,
       bpm: allMergedMusics[0].bpm
     };

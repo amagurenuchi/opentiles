@@ -66,12 +66,12 @@ body {
   }
 
   /* Increase all UI elements by 60% for tablet */
-  .dock-button > div {
+  .dock-button>div {
     width: 64px !important;
     height: 64px !important;
   }
 
-  .dock-button > div svg {
+  .dock-button>div svg {
     width: 38.4px !important;
     height: 38.4px !important;
   }
@@ -164,11 +164,11 @@ body {
     padding: 1.36rem 2rem !important;
   }
 
-  #shared-dock > div {
+  #shared-dock>div {
     padding-bottom: calc(1.2rem + env(safe-area-inset-bottom)) !important;
   }
 
-  #shared-dock > div {
+  #shared-dock>div {
     padding: 4.8rem !important;
   }
 
@@ -815,15 +815,41 @@ body {
   transform: translateY(-50%);
 }
 
-.life-pack-icons-1 .life-pack-heart:nth-child(1) { left: 0; }
-.life-pack-icons-3 .life-pack-heart:nth-child(1) { left: 0; }
-.life-pack-icons-3 .life-pack-heart:nth-child(2) { left: 0.72rem; }
-.life-pack-icons-3 .life-pack-heart:nth-child(3) { left: 1.44rem; }
-.life-pack-icons-5 .life-pack-heart:nth-child(1) { left: 0; }
-.life-pack-icons-5 .life-pack-heart:nth-child(2) { left: 0.58rem; }
-.life-pack-icons-5 .life-pack-heart:nth-child(3) { left: 1.16rem; }
-.life-pack-icons-5 .life-pack-heart:nth-child(4) { left: 1.74rem; }
-.life-pack-icons-5 .life-pack-heart:nth-child(5) { left: 2.32rem; }
+.life-pack-icons-1 .life-pack-heart:nth-child(1) {
+  left: 0;
+}
+
+.life-pack-icons-3 .life-pack-heart:nth-child(1) {
+  left: 0;
+}
+
+.life-pack-icons-3 .life-pack-heart:nth-child(2) {
+  left: 0.72rem;
+}
+
+.life-pack-icons-3 .life-pack-heart:nth-child(3) {
+  left: 1.44rem;
+}
+
+.life-pack-icons-5 .life-pack-heart:nth-child(1) {
+  left: 0;
+}
+
+.life-pack-icons-5 .life-pack-heart:nth-child(2) {
+  left: 0.58rem;
+}
+
+.life-pack-icons-5 .life-pack-heart:nth-child(3) {
+  left: 1.16rem;
+}
+
+.life-pack-icons-5 .life-pack-heart:nth-child(4) {
+  left: 1.74rem;
+}
+
+.life-pack-icons-5 .life-pack-heart:nth-child(5) {
+  left: 2.32rem;
+}
 
 .life-pack-icons-3 {
   min-width: 2.95rem;
@@ -869,8 +895,8 @@ body {
   display: none;
 }
 
-.revive-modal > .revive-modal-backdrop,
-.revive-modal > .revive-modal-panel {
+.revive-modal>.revive-modal-backdrop,
+.revive-modal>.revive-modal-panel {
   pointer-events: auto;
 }
 
@@ -1089,6 +1115,7 @@ body {
 }
 
 @media (max-width: 767px) {
+
   .life-display-trigger,
   .life-display {
     min-width: 5.45rem;
@@ -1258,6 +1285,33 @@ body {
   border-right: none;
 }
 
+/* Pre-game info bar: white one-tile-height area at the bottom, shown only before
+   the game starts. It overlays the bottom of the board and is hidden on start. */
+#pregame-info-bar {
+  font-family: inherit;
+}
+
+.pregame-info-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #374151;
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.pregame-info-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  color: #374151;
+}
+
+.pregame-info-label {
+  font-weight: 600;
+}
+
 /* Glassmorphism utility for white theme */
 .glass {
   background: rgba(255, 255, 255, 0.8);
@@ -1275,36 +1329,57 @@ body {
   position: relative;
   overflow: hidden;
   background-color: #111827;
+  /* Base background kept as a paint-order fallback; the two crossfade layers
+     below (::before / ::after) are what actually render the level images. */
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-image: url('gameImage/bgani_01.png');
-  will-change: background-image;
 }
 
-.game-playing.bg-level-2 {
-  background-image: url('gameImage/bgani_02.png');
+/* Two stacked background layers used for a smooth crossfade between level
+   images. The JS toggles which layer is "active" by setting its image and
+   fading it in over the other. This avoids swapping a single background-image
+   (which forced a full-screen decode + repaint hitch on the main thread). */
+.game-playing::before,
+.game-playing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #111827;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1200ms ease-in-out;
+  will-change: opacity;
 }
 
-.game-playing.bg-level-3 {
-  background-image: url('gameImage/bgani_03.png');
+/* Layer A (::before) — starts with the level-1 image visible. */
+.game-playing::before {
+  background-image: var(--game-bg-layer-a, url('gameImage/bgani_01.png'));
+  opacity: var(--game-bg-layer-a-opacity, 1);
 }
 
-.game-playing.bg-level-fallback {
-  background-image: url('gameImage/bgani_fallback.png');
+/* Layer B (::after) — hidden until a crossfade promotes it. */
+.game-playing::after {
+  background-image: var(--game-bg-layer-b, url('gameImage/bgani_01.png'));
+  opacity: var(--game-bg-layer-b-opacity, 0);
 }
 
-.game-playing > * {
+.game-playing>* {
   position: relative;
   z-index: 1;
 }
 
-.game-playing > .revive-modal {
+.game-playing>.revive-modal {
   position: fixed !important;
   z-index: 100000 !important;
 }
 
-.game-playing > .pause-screen {
+.game-playing>.pause-screen {
   position: fixed !important;
   z-index: 9999 !important;
   isolation: isolate;
@@ -1773,7 +1848,8 @@ body {
 
 /* Results screen adjustments */
 #results-medals {
-  padding: 12px; /* add breathing room around stars/crowns */
+  padding: 12px;
+  /* add breathing room around stars/crowns */
   border-radius: 12px;
 }
 
@@ -1810,10 +1886,12 @@ body {
     transform: scale(0.88);
     opacity: 0;
   }
+
   60% {
     transform: scale(1.08);
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -1821,7 +1899,7 @@ body {
 }
 
 .score-increment {
-  animation: score-pop 0.3s cubic-bezier(.2,.9,.3,1) both;
+  animation: score-pop 0.3s cubic-bezier(.2, .9, .3, 1) both;
   transform-origin: center;
 }
 
@@ -1831,10 +1909,12 @@ body {
     transform: scale(0.25);
     opacity: 0;
   }
+
   70% {
     transform: scale(1.06);
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -1848,7 +1928,7 @@ body {
   animation-name: result-pop;
   animation-duration: 0.45s;
   animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(.2,.9,.3,1);
+  animation-timing-function: cubic-bezier(.2, .9, .3, 1);
 }
 
 /* removed combined rule so silhouette styling is consistent and non-animated */
@@ -1856,7 +1936,8 @@ body {
 /* Results screen styles (white background, top-bar inherits .screen-top-bar) */
 #results-screen {
   background: #ffffff;
-  color: #111827; /* dark text */
+  color: #111827;
+  /* dark text */
 }
 
 #results-screen .results-content {
@@ -1877,7 +1958,8 @@ body {
 }
 
 #results-screen #results-medals img {
-  width: 81px; /* 50% bigger */
+  width: 81px;
+  /* 50% bigger */
   height: auto;
 }
 
@@ -1908,7 +1990,7 @@ body {
 
 /* Results dock (bottom) */
 .results-dock {
-  border: 1px solid rgba(0,0,0,0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .results-dock-btn {
@@ -1940,7 +2022,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px; /* restore inner padding to match reference */
+  padding: 12px;
+  /* restore inner padding to match reference */
 }
 
 #results-screen .results-dock-btn[disabled] {
@@ -2326,7 +2409,7 @@ body {
 }
 
 /* Header bar styling for song list screen */
-#song-list-screen > div:first-child {
+#song-list-screen>div:first-child {
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -2358,41 +2441,41 @@ body {
 }
 
 /* Dock button selected state styling */
-.dock-button.selected > div {
+.dock-button.selected>div {
   background-color: var(--selected-color, #ec4899);
   transform: translateY(-1px);
   box-shadow: 0 10px 18px -8px rgba(15, 23, 42, 0.22);
 }
 
-.dock-button.selected > div svg {
+.dock-button.selected>div svg {
   color: white !important;
 }
 
-.dock-button:not(.selected) > div {
+.dock-button:not(.selected)>div {
   background-color: #ffffff;
 }
 
-.dock-button > div {
+.dock-button>div {
   transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 
-.dock-button:hover > div {
+.dock-button:hover>div {
   transform: translateY(-1px);
 }
 
-.dock-button[data-color="blue"]:not(.selected) > div svg {
+.dock-button[data-color="blue"]:not(.selected)>div svg {
   color: #3b82f6 !important;
 }
 
-.dock-button[data-color="pink"]:not(.selected) > div svg {
+.dock-button[data-color="pink"]:not(.selected)>div svg {
   color: #ec4899 !important;
 }
 
-.dock-button[data-color="purple"]:not(.selected) > div svg {
+.dock-button[data-color="purple"]:not(.selected)>div svg {
   color: #a855f7 !important;
 }
 
-.dock-button[data-color="green"]:not(.selected) > div svg {
+.dock-button[data-color="green"]:not(.selected)>div svg {
   color: #22c55e !important;
 }
 
@@ -2431,7 +2514,7 @@ body {
   scrollbar-gutter: stable both-edges;
 }
 
-#home-content-container > * {
+#home-content-container>* {
   width: 100%;
   box-sizing: border-box;
 }
@@ -2574,36 +2657,36 @@ body {
 }
 
 /* Home screen dock button selected state override */
-#home-dock-btn.selected > div {
+#home-dock-btn.selected>div {
   background-color: #3b82f6;
 }
 
-#home-dock-btn.selected > div svg {
+#home-dock-btn.selected>div svg {
   color: white !important;
 }
 
-#music-dock-btn.selected > div {
+#music-dock-btn.selected>div {
   background-color: #ec4899;
 }
 
-#music-dock-btn.selected > div svg {
+#music-dock-btn.selected>div svg {
   color: white !important;
 }
 
 /* Music tab dock button selected state override */
-#music-dock-home-btn.selected > div {
+#music-dock-home-btn.selected>div {
   background-color: #3b82f6;
 }
 
-#music-dock-home-btn.selected > div svg {
+#music-dock-home-btn.selected>div svg {
   color: white !important;
 }
 
-#music-dock-music-btn.selected > div {
+#music-dock-music-btn.selected>div {
   background-color: #ec4899;
 }
 
-#music-dock-music-btn.selected > div svg {
+#music-dock-music-btn.selected>div svg {
   color: white !important;
 }
 
@@ -2620,7 +2703,7 @@ body {
   pointer-events: auto;
 }
 
-#shared-dock > div {
+#shared-dock>div {
   padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 }
 
@@ -2633,7 +2716,7 @@ body {
     z-index: 60;
   }
 
-  #shared-dock > div {
+  #shared-dock>div {
     border-radius: 1.25rem 1.25rem 0 0;
     margin: 0 auto;
     max-width: none;
@@ -2693,38 +2776,45 @@ body {
   flex-direction: column;
   padding: 1rem;
   border-radius: 0.75rem;
-  background-color: #f3f4f6; /* default bg */
+  background-color: #f3f4f6;
+  /* default bg */
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
   border: 1px solid #e5e7eb;
 }
+
 .class-item:active {
   transform: scale(0.98);
 }
+
 .class-item.bg-kaidan {
   background-color: #fee2e2;
   border-color: #fca5a5;
   color: #991b1b;
 }
+
 .class-item.bg-grey {
   background-color: #e5e7eb;
   border-color: #d1d5db;
 }
+
 .class-item-title {
   font-family: 'Outfit', sans-serif;
   font-size: 1.25rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
 }
+
 .class-song-list {
   font-size: 0.9rem;
   color: #4b5563;
   padding-left: 1rem;
-  border-left: 2px solid rgba(0,0,0,0.1);
+  border-left: 2px solid rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
+
 .class-pass-fail-item {
   display: flex;
   justify-content: space-between;
@@ -2733,9 +2823,11 @@ body {
   border-radius: 0.5rem;
   font-weight: 600;
 }
+
 .class-pass {
   color: #16a34a;
 }
+
 .class-fail {
   color: #dc2626;
 }
@@ -2746,41 +2838,54 @@ body {
     gap: 0.25rem;
     padding: 0.4rem 0.2rem;
   }
+
   .screen-top-bar-left,
   .screen-top-bar-right {
     gap: 0.25rem;
   }
+
   .screen-top-bar-box {
     padding: 0.2rem 0.3rem;
   }
+
   .screen-top-bar-right .life-display-trigger {
     padding: 0.2rem 0.3rem;
   }
+
   .screen-top-bar-profile-inner {
     gap: 0.25rem;
   }
+
   .screen-top-bar-left {
     max-width: calc(100% - 150px);
   }
+
   #player-name-text {
     font-size: 0.75rem;
   }
+
   #class-highest-cleared {
     font-size: 0.55rem;
   }
+
   #p-points-display {
     font-size: 0.9rem;
   }
-  #total-crowns, #total-stars, #life-count, .life-display-timer {
+
+  #total-crowns,
+  #total-stars,
+  #life-count,
+  .life-display-timer {
     font-size: 0.75rem;
   }
+
   .screen-top-bar-right .life-display-icon svg {
     width: 1rem;
     height: 1rem;
   }
+
   .screen-top-bar-box img {
     width: 1rem;
     height: auto;
   }
 }
-

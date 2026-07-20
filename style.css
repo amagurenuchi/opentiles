@@ -23,16 +23,6 @@ html[dir="rtl"] {
     text-align: right;
   }
 
-  /* Flip board column separators to the logical (left) side under RTL */
-  .col-element {
-    border-right: none;
-    border-left: 1px solid #e5e7eb;
-  }
-
-  .col-element:last-child {
-    border-left: none;
-  }
-
   /* Reverse decorative icon offsets that were tuned for LTR */
   .life-fly-heart {
     margin-left: 0;
@@ -1360,6 +1350,17 @@ body {
 
 .col-element:last-child {
   border-right: none;
+}
+
+/* The gameplay board must always lay out left-to-right (physical columns 0..3)
+   and must never be mirrored by the RTL language setting, otherwise touch/mouse
+   input would be flipped relative to what the player sees. Force LTR on the
+   board and its containers regardless of the document direction. */
+#game-board-wrapper,
+#game-board,
+#tiles-container,
+.col-element {
+  direction: ltr;
 }
 
 /* Pre-game info bar: white one-tile-height area at the bottom, shown only before

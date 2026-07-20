@@ -2945,6 +2945,9 @@ function playTileAudioNow(tile) {
   let realLen = 0;
   // Handle both formats: array of arrays (normal tiles) or single array (single accompaniment tiles)
   const scoreGroups = Array.isArray(tile.scores[0]) ? tile.scores : [tile.scores];
+  // // Debug: log which notes are playing on this tile. Uncomment to enable.
+  // console.log(`[tile ${tile.id}] type=${tile.type} playing notes:`,
+  //   scoreGroups.map((group) => group.map((n) => n.note).join('+')).join(', '));
   scoreGroups.forEach((scoreGroup) => {
     scoreGroup.forEach((note) => {
       queueTimeout(() => playPitchString(note.note, note.len), (note.start + realLen) * 60000 / currentBpm);
@@ -2968,6 +2971,9 @@ function playComboTapAudio(tile) {
   // Always mark played so the autoplay audio loop doesn't double-trigger.
   tile.played = true;
   if (!scoreGroup) return;
+  // // Debug: log which notes are playing on this combo tap. Uncomment to enable.
+  // console.log(`[tile ${tile.id}] combo tap ${tapIdx} playing notes:`,
+  //   scoreGroup.map((n) => n.note).join('+'));
   scoreGroup.forEach((note) => {
     queueTimeout(() => playPitchString(note.note, note.len), 0);
   });

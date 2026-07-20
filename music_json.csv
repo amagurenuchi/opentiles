@@ -3,9 +3,9 @@ Id,Mid,BPM,,,MusicJson,Musician,Acceleration,AniID,BridgeAniID
 101,100001,90,0.5,180,Little Star,English Folk Music,,1024001,2048001
 102,100001,101,0.5,202,Little Star,,,1024002,2048002
 103,100001,110,0.5,220,Little Star,,,1024008,
-201,100002,105,0.5,210,Jingle Bells,James Lord Pierpont,,,
-202,100002,110,0.5,220,Jingle Bells,,,,
-203,100002,115,0.5,230,Jingle Bells,,,,
+201,100002,224,1,224,Jingle Bells,James Lord Pierpont,,,
+202,100002,232,1,232,Jingle Bells,,,,
+203,100002,240,1,240,Jingle Bells,,,,
 301,100003,63,0.25,252,Canon,Johann Pachelbel,,,
 302,100003,63,0.25,252,Canon,,,,
 303,100003,64,0.25,256,Canon,,,,

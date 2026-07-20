@@ -854,7 +854,7 @@ function getEffectiveSpeedState() {
 }
 
 function getGameplayBackgroundIndex() {
-  const level = isChallengeMode ? bgLevel : speedLevel;
+  const level = (isChallengeMode || isClassMode) ? bgLevel : speedLevel;
   if (level >= 3) return 3;
   if (level >= 2) return 2;
   return 1;
@@ -4965,10 +4965,10 @@ function updateEngineFrame(now) {
         }
         // Advance the normal-song award threshold one tile earlier so it can trigger
         // at the end of the current section rather than the next section's first tile.
-        // Class mode has no star/crown awards, so skip the speedLevelPos push too.
-        if (!isClassMode) {
-          speedLevelPos.push(hpos - 2 + key);
-        }
+        // Class mode has no star/crown awards, but it still pushes speedLevelPos so
+        // its speed follows each song section's own BPM from the CSV instead of the
+        // constant BPM of the first section of the first song.
+        speedLevelPos.push(hpos - 2 + key);
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }

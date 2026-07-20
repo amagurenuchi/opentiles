@@ -38,6 +38,7 @@ const loadSampleJsonBtn = document.getElementById('load-sample-json-btn');
 const clearSongBtn = document.getElementById('clear-song-btn');
 const autoplayToggle = document.getElementById('settings-autoplay');
 const reviveSlowdownToggle = document.getElementById('settings-revive-slowdown');
+const bgChangeToggle = document.getElementById('settings-bg-change');
 const customSpeedInput = document.getElementById('settings-custom-speed');
 const customSpeedDisplay = document.getElementById('custom-speed-display');
 const customSongUpload = document.getElementById('custom-song-upload');
@@ -111,6 +112,7 @@ let highScore = parseFloat(localStorage.getItem('opentile_highscore') || '0');
 let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD","KeyF","KeyJ","KeyK"]');
 let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
 let reviveSlowdownEnabled = localStorage.getItem('opentile_revive_slowdown') !== 'false'; // default true
+let bgChangeEnabled = localStorage.getItem('opentile_bg_change') !== 'false'; // default true
 let isReviveSlowdownActive = false;
 let reviveSlowdownStartTime = 0;
 let isPostReviveState = false;
@@ -762,6 +764,7 @@ function resumeAfterRevive() {
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    applyGameplayBackground();
   }
 
   updatePauseButtonVisibility();
@@ -834,25 +837,37 @@ function getGameplayBackgroundIndex() {
   return 1;
 }
 
-function updateGameplayBackground() {
+function applyGameplayBackground() {
   if (!gameBoardWrapper) return;
 
-  const targetBackgroundIndex = getGameplayBackgroundIndex();
-  
-  if (targetBackgroundIndex === currentGameplayBackgroundIndex) {
+  // When background changes are disabled, force the fallback background (bgani_fallback)
+  if (!bgChangeEnabled) {
+    gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
+    gameBoardWrapper.classList.add('bg-level-fallback');
+    currentGameplayBackgroundIndex = 0;
     return;
   }
 
+  const targetBackgroundIndex = getGameplayBackgroundIndex();
+
   // Use CSS classes for background switching (more performant than inline styles)
-  gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
-  
+  gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3', 'bg-level-fallback');
+
   if (targetBackgroundIndex === 2) {
     gameBoardWrapper.classList.add('bg-level-2');
   } else if (targetBackgroundIndex === 3) {
     gameBoardWrapper.classList.add('bg-level-3');
   }
-  
+
   currentGameplayBackgroundIndex = targetBackgroundIndex;
+}
+
+function updateGameplayBackground() {
+  if (!gameBoardWrapper) return;
+
+  // Force reapplication (e.g. when the background was shown before game start)
+  currentGameplayBackgroundIndex = -1;
+  applyGameplayBackground();
 }
 
 function unexpected(str) {
@@ -1574,6 +1589,7 @@ async function preloadAssets() {
 function loadSettings() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
   if (playerNameText) playerNameText.textContent = playerName;
   updateTpsDisplayColor();
 }
@@ -1615,6 +1631,7 @@ function updateSettingsUI() {
   }
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
   
   // Update language pill status
   updateLanguageSelection();
@@ -1658,6 +1675,10 @@ function saveSettingsToStorage() {
   if (reviveSlowdownToggle) {
     reviveSlowdownEnabled = reviveSlowdownToggle.checked;
     localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
+  }
+  if (bgChangeToggle) {
+    bgChangeEnabled = bgChangeToggle.checked;
+    localStorage.setItem('opentile_bg_change', String(bgChangeEnabled));
   }
   if (customSpeedInput) {
     let value = parseFloat(customSpeedInput.value);
@@ -2523,6 +2544,7 @@ async function loadSongFromData(songData) {
     // Show background immediately when song is loaded
     if (gameBoardWrapper) {
       gameBoardWrapper.classList.add('game-playing');
+      applyGameplayBackground();
     }
   } catch (err) {
     console.error(err);
@@ -2557,6 +2579,7 @@ function loadSongFromText(text, label) {
   // Show background immediately when song is loaded
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
+    applyGameplayBackground();
   }
 }
 
@@ -3074,6 +3097,7 @@ async function finishRun(showLibrary = false) {
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    applyGameplayBackground();
   }
   updatePauseButtonVisibility();
 
@@ -5410,6 +5434,7 @@ function continueFromPause() {
     // Preserve the loaded background when resuming from pause.
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    applyGameplayBackground();
   }
 
   updatePauseButtonVisibility();
@@ -5568,6 +5593,7 @@ function togglePause() {
     // Keep the current gameplay background visible while paused.
     gameBoardWrapper.classList.add('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
+    applyGameplayBackground();
   }
   updatePauseButtonVisibility();
   playMenuLoopCue();
@@ -5812,6 +5838,7 @@ function startClassicMode() {
   // Show background immediately
   if (gameBoardWrapper) {
     gameBoardWrapper.classList.add('game-playing');
+    applyGameplayBackground();
   }
 }
 
@@ -6493,6 +6520,20 @@ document.getElementById('revive-slowdown-pill')?.addEventListener('click', () =>
   // Update checkbox if it exists
   if (reviveSlowdownToggle) {
     reviveSlowdownToggle.checked = reviveSlowdownEnabled;
+  }
+});
+
+document.getElementById('bg-change-pill')?.addEventListener('click', () => {
+  bgChangeEnabled = !bgChangeEnabled;
+  localStorage.setItem('opentile_bg_change', String(bgChangeEnabled));
+  const bgChangeStatus = document.getElementById('bg-change-status');
+  bgChangeStatus.textContent = bgChangeEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  if (bgChangeToggle) {
+    bgChangeToggle.checked = bgChangeEnabled;
+  }
+  // Apply the background change immediately (force fallback if now disabled)
+  if (isGameLoaded) {
+    updateGameplayBackground();
   }
 });
 
@@ -7609,7 +7650,10 @@ async function loadClassCourse() {
     const sharedTopBar = document.getElementById('shared-top-bar');
     if (sharedTopBar) sharedTopBar.classList.add('hidden');
 
-    if (gameBoardWrapper) gameBoardWrapper.classList.add('game-playing');
+    if (gameBoardWrapper) {
+      gameBoardWrapper.classList.add('game-playing');
+      applyGameplayBackground();
+    }
 
   } catch (err) {
     console.error(err);

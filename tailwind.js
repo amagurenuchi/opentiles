@@ -1292,6 +1292,10 @@ body {
   background-image: url('gameImage/bgani_03.png');
 }
 
+.game-playing.bg-level-fallback {
+  background-image: url('gameImage/bgani_fallback.png');
+}
+
 .game-playing > * {
   position: relative;
   z-index: 1;

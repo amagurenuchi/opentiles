@@ -13,6 +13,14 @@
   --dock-offset: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
+/* Keep the inline outline icons visually consistent with the lighter UI. */
+#game-board-wrapper svg[fill="none"] {
+  shape-rendering: geometricPrecision;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Use Arabic-capable fonts when the document direction is RTL (Arabic) */
 html[dir="rtl"] {
   --font-ui: 'Futura Condensed', 'Outfit', 'Noto Sans Arabic', 'Segoe UI', 'Tahoma', sans-serif;
@@ -93,6 +101,161 @@ body {
   text-shadow: 0px 3px 0px rgba(128, 128, 128, 0.1);
   touch-action: manipulation;
   -webkit-touch-callout: none;
+}
+
+/* Dark Mode: a slate palette that keeps the game's colorful actions prominent. */
+html.dark-mode {
+  color-scheme: dark;
+}
+
+html.dark-mode body {
+  background-color: #0b1120;
+  color: #e5e7eb;
+}
+
+html.dark-mode .bg-white,
+html.dark-mode .bg-white\/95,
+html.dark-mode .bg-white\/90,
+html.dark-mode .bg-white\/80,
+html.dark-mode .bg-white\/70,
+html.dark-mode .bg-gray-50,
+html.dark-mode .bg-gray-100 {
+  background-color: #172033 !important;
+}
+
+html.dark-mode .bg-gray-200,
+html.dark-mode .bg-gray-200\/80 {
+  background-color: #263247 !important;
+}
+
+html.dark-mode .text-gray-900,
+html.dark-mode .text-gray-800,
+html.dark-mode .text-gray-700 {
+  color: #f3f4f6 !important;
+}
+
+html.dark-mode .text-gray-600,
+html.dark-mode .text-gray-500,
+html.dark-mode .text-gray-400,
+html.dark-mode .text-slate-600,
+html.dark-mode .text-slate-500 {
+  color: #b7c2d3 !important;
+}
+
+html.dark-mode .border-gray-100,
+html.dark-mode .border-gray-200,
+html.dark-mode .border-gray-300,
+html.dark-mode .border-white\/50,
+html.dark-mode .border-white\/60 {
+  border-color: #334155 !important;
+}
+
+html.dark-mode .hover\:bg-gray-50:hover,
+html.dark-mode .hover\:bg-gray-100:hover,
+html.dark-mode .hover\:bg-gray-200:hover {
+  background-color: #263247 !important;
+}
+
+html.dark-mode .glass-dark,
+html.dark-mode #game-board-wrapper {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+html.dark-mode .glass {
+  background: rgba(23, 32, 51, 0.88);
+  border-color: #334155;
+}
+
+html.dark-mode .col-element {
+  border-color: #475569;
+}
+
+html.dark-mode #gameplay-info-bar,
+html.dark-mode #results-screen,
+html.dark-mode .song-card,
+html.dark-mode .life-modal-panel,
+html.dark-mode .revive-modal-panel,
+html.dark-mode .class-pass-fail-item {
+  background: #172033 !important;
+  color: #e5e7eb;
+}
+
+html.dark-mode .gameplay-info-row,
+html.dark-mode .gameplay-info-icon,
+html.dark-mode .song-card-title,
+html.dark-mode #results-screen {
+  color: #f3f4f6;
+}
+
+html.dark-mode .song-card-artist,
+html.dark-mode .class-song-list {
+  color: #b7c2d3;
+}
+
+html.dark-mode .dock-button:not(.selected) > div {
+  background-color: #172033;
+}
+
+html.dark-mode #shared-dock > div,
+html.dark-mode #welcome-actions {
+  background: rgba(23, 32, 51, 0.94) !important;
+}
+
+html.dark-mode #welcome-disc {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+}
+
+html.dark-mode .revive-modal-header {
+  background: linear-gradient(180deg, #4c1d1d 0%, #3f1717 100%);
+}
+
+html.dark-mode .revive-modal-ring::before {
+  background: radial-gradient(circle at top left, #263247 0%, #172033 60%);
+}
+
+html.dark-mode .revive-progress-row,
+html.dark-mode .revive-status-row,
+html.dark-mode .revive-cancel-btn,
+html.dark-mode .language-option.selected,
+html.dark-mode .class-item,
+html.dark-mode .class-item.bg-kaidan,
+html.dark-mode .class-item.bg-grey {
+  background: #263247 !important;
+  border-color: #475569;
+  color: #e5e7eb;
+}
+
+html.dark-mode .revive-modal-title,
+html.dark-mode .revive-status-value {
+  color: #f3f4f6;
+}
+
+html.dark-mode .revive-modal-subtitle,
+html.dark-mode .revive-progress-label,
+html.dark-mode .revive-status-label {
+  color: #b7c2d3;
+}
+
+html.dark-mode input,
+html.dark-mode select,
+html.dark-mode textarea {
+  background-color: #0f172a !important;
+  color: #e5e7eb !important;
+  border-color: #334155 !important;
+}
+
+html.dark-mode .tile-clicked {
+  background-color: #334155 !important;
+  border-color: #475569 !important;
+}
+
+html.dark-mode .pause-screen {
+  background: rgba(11, 17, 32, 0.88);
+}
+
+html.dark-mode .pause-screen-title {
+  color: #f3f4f6;
 }
 
 /* Tablet layout: stretch tilefield to full screen width */
@@ -1372,28 +1535,28 @@ body {
 
 /* Pre-game info bar: white one-tile-height area at the bottom, shown only before
    the game starts. It overlays the bottom of the board and is hidden on start. */
-#pregame-info-bar {
+#gameplay-info-bar {
   font-family: inherit;
 }
 
-.pregame-info-row {
+.gameplay-info-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   color: #374151;
-  font-size: 1.3rem;
+  font-size: 1.95rem;
   font-weight: 600;
   line-height: 1.25;
 }
 
-.pregame-info-icon {
-  width: 1.25rem;
-  height: 1.25rem;
+.gameplay-info-icon {
+  width: 1.875rem;
+  height: 1.875rem;
   flex-shrink: 0;
   color: #374151;
 }
 
-.pregame-info-label {
+.gameplay-info-label {
   font-weight: 600;
 }
 
@@ -1468,6 +1631,22 @@ body {
   position: fixed !important;
   z-index: 9999 !important;
   isolation: isolate;
+}
+
+/* Low performance mode favors a stable frame time over decorative animation. */
+.low-performance-mode .game-playing::before,
+.low-performance-mode .game-playing::after {
+  transition: none;
+}
+
+.low-performance-mode .tile-image-layer {
+  filter: none !important;
+}
+
+.low-performance-mode .animate-pulse-slow,
+.low-performance-mode .blink-three-times,
+.low-performance-mode .flash-error {
+  animation: none !important;
 }
 
 /* Long tile hold visual effects */
@@ -2564,6 +2743,10 @@ body {
   color: #22c55e !important;
 }
 
+.dock-button[data-color="red"]:not(.selected)>div svg {
+  color: #ef4444 !important;
+}
+
 /* Color mapping for dock buttons */
 .dock-button[data-color="blue"] {
   --selected-color: #3b82f6;
@@ -2579,6 +2762,10 @@ body {
 
 .dock-button[data-color="green"] {
   --selected-color: #22c55e;
+}
+
+.dock-button[data-color="red"] {
+  --selected-color: #ef4444;
 }
 
 /* Home screen specific styles */

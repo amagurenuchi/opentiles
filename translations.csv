@@ -65,6 +65,7 @@ status_on,On,开启,オン,مفعّل
 status_off,Off,关闭,オフ,معطّل
 label_autoplay,Autoplay,自动播放,自動再生,اللعب التلقائي
 label_change_backgrounds,Change Backgrounds,切换背景,背景切り替え,تغيير الخلفيات
+label_dark_mode,Dark Mode,深色模式,ダークモード,الوضع الداكن
 label_credits,Credits,制作人员,クレジット,الشكر والتقدير
 label_privacy_policy,Privacy Policy,隐私政策,プライバシーポリシー,سياسة الخصوصية
 label_donate,Donate,捐赠,寄付,تبرع

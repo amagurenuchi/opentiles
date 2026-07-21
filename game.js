@@ -39,6 +39,8 @@ const clearSongBtn = document.getElementById('clear-song-btn');
 const autoplayToggle = document.getElementById('settings-autoplay');
 const reviveSlowdownToggle = document.getElementById('settings-revive-slowdown');
 const bgChangeToggle = document.getElementById('settings-bg-change');
+const darkModeStatus = document.getElementById('dark-mode-status');
+const lowPerformanceStatus = document.getElementById('low-performance-status');
 const customSpeedInput = document.getElementById('settings-custom-speed');
 const customSpeedDisplay = document.getElementById('custom-speed-display');
 const customSongUpload = document.getElementById('custom-song-upload');
@@ -48,9 +50,9 @@ const closeBpmModalBtn = document.getElementById('close-bpm-modal-btn');
 const colElements = Array.from(document.querySelectorAll('.col-element'));
 const keyHintEls = Array.from(document.querySelectorAll('.key-hint'));
 const gameBoardWrapper = document.getElementById('game-board-wrapper');
-const pregameInfoBar = document.getElementById('pregame-info-bar');
-const pregameSongName = document.getElementById('pregame-song-value');
-const pregameBestScore = document.getElementById('pregame-best-value');
+const gameplayInfoBar = document.getElementById('gameplay-info-bar');
+const gameplaySongName = document.getElementById('gameplay-song-value');
+const gameplayBestScore = document.getElementById('gameplay-best-value');
 const playerNameDisplay = document.getElementById('player-name-display');
 const playerNameText = document.getElementById('player-name-text');
 const pPointsDisplay = document.getElementById('p-points-display');
@@ -116,6 +118,11 @@ let keybinds = JSON.parse(localStorage.getItem('opentile_keybinds') || '["KeyD",
 let autoplayEnabled = localStorage.getItem('opentile_autoplay') === 'true';
 let reviveSlowdownEnabled = localStorage.getItem('opentile_revive_slowdown') !== 'false'; // default true
 let bgChangeEnabled = localStorage.getItem('opentile_bg_change') !== 'false'; // default true
+let darkModeEnabled = localStorage.getItem('opentile_dark_mode') === 'true';
+let lowPerformanceMode = localStorage.getItem('opentile_low_performance') === 'true';
+let lastRenderTime = 0;
+let lastHudTime = 0;
+let lastTpsColorKey = '';
 let isReviveSlowdownActive = false;
 let reviveSlowdownStartTime = 0;
 let isPostReviveState = false;
@@ -471,8 +478,8 @@ function createFloatingHeart(rect, extraClass = '') {
   const heart = document.createElement('div');
   heart.className = `life-fly-heart ${extraClass}`.trim();
   heart.innerHTML = `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
     </svg>
   `;
   heart.style.left = `${rect.left + rect.width / 2}px`;
@@ -779,6 +786,16 @@ function resumeAfterRevive() {
     resetTileForResume(nearestUntapped);
     nearestUntapped.isStartTile = true;
     nearestUntapped.isResumeStartTile = true;
+
+    const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
+    const tileHeight = getTileEffectiveHeight(nearestUntapped);
+    const tileTop = starthpos - adjHpos - tileHeight;
+    const tileBottom = starthpos - adjHpos;
+    const isFullyVisible = tileBottom > 0 && tileTop < key;
+    if (!isFullyVisible) {
+      starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
+      classicScrollTarget = starthpos;
+    }
   }
 
   if (pauseScreen) {
@@ -868,7 +885,7 @@ function initGameplayBackground() {
   // Reset crossfade state so the initial background appears instantly (no fade
   // from a transparent layer) and the active layer is layer A.
   activeBgLayer = 'a';
-  const initialIndex = !bgChangeEnabled ? 0 : getGameplayBackgroundIndex();
+  const initialIndex = (!bgChangeEnabled || lowPerformanceMode) ? 0 : getGameplayBackgroundIndex();
   const initialImage = GAMEPLAY_BG_IMAGES[initialIndex] || GAMEPLAY_BG_IMAGES[1];
   gameBoardWrapper.style.setProperty('--game-bg-layer-a', `url("${initialImage}")`);
   gameBoardWrapper.style.setProperty('--game-bg-layer-a-opacity', '1');
@@ -880,7 +897,7 @@ function initGameplayBackground() {
 function applyGameplayBackground() {
   if (!gameBoardWrapper) return;
 
-  const targetBackgroundIndex = !bgChangeEnabled
+  const targetBackgroundIndex = (!bgChangeEnabled || lowPerformanceMode)
     ? 0
     : getGameplayBackgroundIndex();
 
@@ -1113,6 +1130,7 @@ function noteNameToMp3Path(noteName) {
 }
 
 function spawnHoldEffectForTile(tile) {
+  if (lowPerformanceMode) return;
   const containerRect = hitEffectsEl.getBoundingClientRect();
   const boardRect = boardEl.getBoundingClientRect();
 
@@ -1633,6 +1651,7 @@ function loadSettings() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
   if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
+  applyDarkMode();
   if (playerNameText) playerNameText.textContent = playerName;
   updateTpsDisplayColor();
 }
@@ -1651,6 +1670,9 @@ function updateTpsDisplayColor() {
     colorClass = 'text-white';
   }
 
+  const colorKey = `${colorClass}:${displays.length}`;
+  if (colorKey === lastTpsColorKey) return;
+  lastTpsColorKey = colorKey;
   displays.forEach((display) => {
     display.classList.remove('text-[#ff6b6b]', 'text-yellow-300', 'text-white', 'text-yellow-100');
     display.classList.add(colorClass);
@@ -1675,6 +1697,8 @@ function updateSettingsUI() {
   if (autoplayToggle) autoplayToggle.checked = autoplayEnabled;
   if (reviveSlowdownToggle) reviveSlowdownToggle.checked = reviveSlowdownEnabled;
   if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
+  if (darkModeStatus) darkModeStatus.textContent = darkModeEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  if (lowPerformanceStatus) lowPerformanceStatus.textContent = lowPerformanceMode ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
 
   // Update language pill status
   updateLanguageSelection();
@@ -1708,6 +1732,13 @@ function updateSettingsUI() {
   }
 
   updateTpsDisplayColor();
+}
+
+function applyDarkMode() {
+  document.documentElement.classList.toggle('dark-mode', darkModeEnabled);
+  if (darkModeStatus) {
+    darkModeStatus.textContent = darkModeEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
 }
 
 function saveSettingsToStorage() {
@@ -2012,8 +2043,8 @@ function createSongCard(song, isFavouriteView = false) {
     </div>
     <div class="song-card-action flex items-center gap-2">
       <button class="heart-button ${isFavourite ? 'favourite' : ''}" data-song-id="${song.mid}">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
         </svg>
       </button>
       <button class="btn-play">Play</button>
@@ -2097,8 +2128,8 @@ function createChallengeCard(challengeData) {
     <div class="song-card-action">
       <div class="best-score-display">Best: ${bestDisplayValue}</div>
       <button class="btn-play inline-flex items-center justify-center gap-1 px-4 py-2">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
-          <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54Z" />
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-white">
+          <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
         </svg>
         <span class="text-sm font-black">x2</span>
       </button>
@@ -2980,6 +3011,7 @@ function playComboTapAudio(tile) {
 }
 
 function spawnHitRipple(x, y, options = {}) {
+  if (lowPerformanceMode) return;
   const containerRect = hitEffectsEl.getBoundingClientRect();
   const ripple = document.createElement('div');
   ripple.className = options.big ? 'hit-ripple hit-ripple-combo' : 'hit-ripple';
@@ -3019,6 +3051,7 @@ function spawnHitRipple(x, y, options = {}) {
 }
 
 function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
+  if (lowPerformanceMode) return;
   if (!tile || !isComboTile(tile)) return;
 
   const containerRect = hitEffectsEl.getBoundingClientRect();
@@ -3066,6 +3099,7 @@ function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
 }
 
 function spawnHoldEffect(x, y) {
+  if (lowPerformanceMode) return;
   const containerRect = hitEffectsEl.getBoundingClientRect();
   const effectContainer = document.createElement('div');
   effectContainer.className = 'hold-effect-container';
@@ -3447,7 +3481,7 @@ async function finishRun(showLibrary = false) {
           }
           const numericScore = Number(currentScore || 0);
           const isNewBestScore = (() => {
-            if (!selectedSongData) return false;
+            if (!selectedSongData || autoplayEnabled) return false;
             const mid = String(selectedSongData.mid || selectedSongData.id || '');
             const scoreKey = `opentile_best_score_${mid}`;
             const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
@@ -3832,7 +3866,9 @@ function checkNormalSongAwards(reachedSection) {
         // Only update if the current score is lower (i.e. reached the level more efficiently)
         // or the key doesn't exist yet.
         if (!existing || currentScore < existing) {
-          localStorage.setItem(scoreAtLevelKey, String(currentScore));
+          if (!autoplayEnabled) {
+            localStorage.setItem(scoreAtLevelKey, String(currentScore));
+          }
         }
       }
     }
@@ -4453,6 +4489,8 @@ function updateHUD() {
       }
     }
   }
+
+  updateGameplayInfoBar();
 }
 
 function getTileTop(tile) {
@@ -5233,7 +5271,9 @@ function updateEngineFrame(now) {
       const danNum = classCurrentData.id === 'kaidan' ? 11 : parseInt(classCurrentData.id);
       if (danNum && danNum > classHighestCleared) {
         classHighestCleared = danNum;
-        localStorage.setItem('classHighestCleared', classHighestCleared);
+        if (!autoplayEnabled) {
+          localStorage.setItem('classHighestCleared', classHighestCleared);
+        }
       }
       classSongProgress = classCurrentData.songs.map(s => ({ name: s.customName, status: 'Pass', reached: true }));
       finishRun(false);
@@ -5292,14 +5332,31 @@ function updateEngineFrame(now) {
 }
 
 function frame(now) {
-  // Refresh the board rect cache once per frame so all gameplay code can read
-  // it without triggering synchronous layout calculations.
-  _cachedBoardRect = boardEl.getBoundingClientRect();
-
   if (isGameLoaded) {
     updateEngineFrame(now);
-    updateHUD();
-    renderTiles();
+    // Keep the game simulation/input cadence independent from visual work. On
+    // high-refresh devices Low Performance Mode renders at a stable 60 FPS.
+    const renderInterval = 1000 / 60;
+    const shouldRender = !lowPerformanceMode || lastRenderTime === 0 || now >= lastRenderTime + renderInterval;
+    if (shouldRender) {
+      // Advance by an interval instead of assigning `now` so a 144 Hz display
+      // keeps a 60 FPS cadence instead of repeatedly rounding down to 48 FPS.
+      lastRenderTime = lowPerformanceMode && lastRenderTime !== 0
+        ? Math.max(lastRenderTime + renderInterval, now - renderInterval)
+        : now;
+      // Normal mode updates the HUD every visual frame so scores react on the
+      // same frame as each hit. Low Performance Mode keeps a lighter cadence.
+      const hudInterval = lowPerformanceMode ? 150 : 0;
+      if (hudInterval === 0 || now - lastHudTime >= hudInterval) {
+        lastHudTime = now;
+        updateHUD();
+      }
+      // Reading layout only when a visual frame is about to be painted avoids
+      // an otherwise continuous forced-layout cost while menus are open and
+      // honors the 60 FPS cap in Low Performance Mode.
+      _cachedBoardRect = boardEl.getBoundingClientRect();
+      renderTiles();
+    }
 
     // Handle deferred level increments and background update after critical frame work
     if (pendingBackgroundUpdate) {
@@ -5326,14 +5383,26 @@ function frame(now) {
   rafId = requestAnimationFrame(frame);
 }
 
-function showPregameInfoBar() {
-  if (!pregameInfoBar) return;
+function updateGameplayInfoBar() {
+  if (!gameplayInfoBar) return;
   const label = songName || (selectedSongData ? (selectedSongData.musicJson || selectedSongData.name || '') : '');
   const localizedSongName = i18n ? i18n.getSongName(label) : label;
-  if (pregameSongName) {
-    pregameSongName.textContent = localizedSongName || label;
-    pregameSongName.title = localizedSongName || label;
+
+  const gameplaySongLabel = document.querySelector('.gameplay-info-label');
+  const gameplayBestRow = document.getElementById('gameplay-best-score');
+
+  if (gameplaySongLabel) {
+    if (isChallengeMode) {
+      gameplaySongLabel.textContent = 'Challenge:';
+    } else {
+      gameplaySongLabel.textContent = '';
+    }
   }
+  if (gameplaySongName) {
+    gameplaySongName.textContent = localizedSongName || label;
+    gameplaySongName.title = localizedSongName || label;
+  }
+
   let bestScore = 0;
   if (selectedSongData) {
     const mid = String(selectedSongData.mid || selectedSongData.id || '');
@@ -5347,15 +5416,36 @@ function showPregameInfoBar() {
       bestScore = parseFloat(localStorage.getItem(`opentile_best_score_${mid}`) || '0', 10);
     }
   }
-  if (pregameBestScore) {
-    pregameBestScore.textContent = String(Math.round(bestScore));
+
+  if (gameplayBestScore) {
+    if (isChallengeMode && bestScore > 0) {
+      gameplayBestScore.textContent = `Best score: ${bestScore.toFixed(3)} TPS`;
+    } else if (isChallengeMode) {
+      gameplayBestScore.textContent = 'Best score: 0.000 TPS';
+    } else {
+      gameplayBestScore.textContent = String(Math.round(bestScore));
+    }
   }
-  pregameInfoBar.classList.remove('hidden');
+
+  if (gameplayBestRow) {
+    if (isClassMode) {
+      gameplayBestRow.classList.add('hidden');
+    } else {
+      gameplayBestRow.classList.remove('hidden');
+    }
+  }
 }
 
+function showPregameInfoBar() {
+  if (!gameplayInfoBar) return;
+  updateGameplayInfoBar();
+  gameplayInfoBar.classList.remove('hidden');
+}
+
+
 function hidePregameInfoBar() {
-  if (!pregameInfoBar) return;
-  pregameInfoBar.classList.add('hidden');
+  if (!gameplayInfoBar) return;
+  gameplayInfoBar.classList.add('hidden');
 }
 
 function startGame() {
@@ -5521,11 +5611,25 @@ function continueFromPause() {
   }
   isStarted = false;
   if (!pausedWasStarted) {
+    const lowestUntapped = getLowestManualTile();
     tiles.forEach((tile) => {
       if (tile.type === -1 && tile.hpos === -1 && !tile.played) {
         tile.isStartTile = true;
       }
     });
+
+    if (lowestUntapped && lowestUntapped.isStartTile) {
+      resetTileForResume(lowestUntapped);
+      const adjHpos = lowestUntapped.visualAdjustedHpos ?? lowestUntapped.hpos;
+      const tileHeight = getTileEffectiveHeight(lowestUntapped);
+      const tileTop = starthpos - adjHpos - tileHeight;
+      const tileBottom = starthpos - adjHpos;
+      const isFullyVisible = tileBottom > 0 && tileTop < key;
+      if (!isFullyVisible) {
+        starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
+        classicScrollTarget = starthpos;
+      }
+    }
   }
   pausedWasStarted = false;
   pauseScreen.classList.add('hidden');
@@ -6130,21 +6234,17 @@ function render700PlusSongs() {
 
 // Song of the Day functions
 function getDailySong() {
-  // Get today's date as a string (YYYY-MM-DD) for consistent daily selection
   const today = new Date();
-  const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
 
-  // Use a simple hash of the date string to select a song
-  let hash = 0;
-  for (let i = 0; i < dateString.length; i++) {
-    hash = ((hash << 5) - hash) + dateString.charCodeAt(i);
-    hash = hash & hash; // Convert to 32bit integer
+  let hash = seed;
+  for (let i = 0; i < 4; i++) {
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = (hash >> 16) ^ hash;
   }
 
-  // Filter out challenge songs and get regular songs
   const regularSongs = musicCsvData.filter(song => !isChallengeSong(song));
-
-  // Use the hash to select a song (ensure positive index)
   const songIndex = Math.abs(hash) % regularSongs.length;
   return regularSongs[songIndex];
 }
@@ -6504,6 +6604,7 @@ function syncTopDockData() {
 }
 
 function initUi() {
+  document.body.classList.toggle('low-performance-mode', lowPerformanceMode);
   bestDisplay.textContent = `${highScore.toFixed(3)} t/s`;
   startScreen.classList.add('hidden');
   songListScreen.classList.add('hidden');
@@ -6639,6 +6740,26 @@ document.getElementById('bg-change-pill')?.addEventListener('click', () => {
   if (isGameLoaded) {
     updateGameplayBackground();
   }
+});
+
+document.getElementById('dark-mode-pill')?.addEventListener('click', () => {
+  darkModeEnabled = !darkModeEnabled;
+  localStorage.setItem('opentile_dark_mode', String(darkModeEnabled));
+  applyDarkMode();
+});
+
+document.getElementById('low-performance-pill')?.addEventListener('click', () => {
+  lowPerformanceMode = !lowPerformanceMode;
+  localStorage.setItem('opentile_low_performance', String(lowPerformanceMode));
+  document.body.classList.toggle('low-performance-mode', lowPerformanceMode);
+  if (lowPerformanceStatus) {
+    lowPerformanceStatus.textContent = lowPerformanceMode ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
+  // Reset timing so switching modes never leaves a delayed first paint.
+  lastRenderTime = 0;
+  lastHudTime = 0;
+  if (lowPerformanceMode) hitEffectsEl?.replaceChildren();
+  if (isGameLoaded) updateGameplayBackground();
 });
 
 document.getElementById('keybinds-pill')?.addEventListener('click', () => {

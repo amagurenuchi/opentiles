@@ -59,7 +59,9 @@
       </div>
 
       <!-- Note Debug Display -->
-      <div id="note-debug-display" class="hidden absolute bottom-4 left-2 z-30 font-mono text-[10px] leading-snug text-white/80 bg-black/60 rounded-lg px-2 py-1 pointer-events-none max-w-[45vw]"></div>
+      <div id="note-debug-display"
+        class="hidden absolute bottom-4 left-2 z-30 font-mono text-m leading-normal text-white/90 bg-black/60 rounded-lg px-3 py-1.5 pointer-events-none max-w-[45vw]">
+      </div>
 
       <!-- Live Tiles Container (overflow-hidden keeps tiles clipped to the board) -->
       <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
@@ -74,7 +76,8 @@
       <div id="gameplay-info-bar"
         class="absolute bottom-0 left-0 right-0 h-[25vh] bg-white flex flex-col justify-center gap-1.5 px-4 z-[25] hidden">
         <div id="gameplay-song-name" class="gameplay-info-row">
-          <svg class="gameplay-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="gameplay-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 17.5V5l12-2.5v12.5M9 9.5l12-2.5"></path>
             <circle cx="6" cy="17.5" r="3"></circle>
             <circle cx="18" cy="15.5" r="3"></circle>
@@ -82,7 +85,8 @@
           <span><span class="gameplay-info-label"></span> <span id="gameplay-song-value"></span></span>
         </div>
         <div id="gameplay-best-score" class="gameplay-info-row">
-          <svg class="gameplay-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="gameplay-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8 21h8m-4-4v4M6 4h12a2 2 0 0 1 2 2v2a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6V6a2 2 0 0 1 2-2z"></path>
             <path d="M4 6H2a2 2 0 0 0 0 4h2m16-4h2a2 2 0 0 1 0 4h-2"></path>
           </svg>
@@ -216,7 +220,8 @@
             class="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg tracking-wide uppercase active:scale-[0.98] shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
               stroke="currentColor" class="w-5 h-5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 9l10.5-3m0 6.553a3.375 3.375 0 11-3-3.298m3 3.298V3L9 6v10.553a3.375 3.375 0 11-3-3.298" />
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 9l10.5-3m0 6.553a3.375 3.375 0 11-3-3.298m3 3.298V3L9 6v10.553a3.375 3.375 0 11-3-3.298" />
             </svg>
             <span data-i18n="btn_song_library">Song Library</span>
           </button>
@@ -338,11 +343,14 @@
                     stroke="currentColor" class="w-6 h-6 text-slate-500">
                     <path stroke-linecap="round" stroke-linejoin="round"
                       d="M12 18.75a6.75 6.75 0 006.75-6.75c0-1.51-.495-2.904-1.33-4.03A4.5 4.5 0 009.32 5.1 6.75 6.75 0 0012 18.75z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75V21m0-18V5.25M3.75 12H6m12 0h2.25" />
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M12 18.75V21m0-18V5.25M3.75 12H6m12 0h2.25" />
                   </svg>
                   <div class="flex flex-col items-start">
-                    <span class="text-base font-semibold text-gray-800" data-i18n="label_low_performance_mode">Low Performance Mode</span>
-                    <span class="text-xs text-gray-500" data-i18n="msg_low_performance_mode_desc">Reduces visual effects for smoother play</span>
+                    <span class="text-base font-semibold text-gray-800" data-i18n="label_low_performance_mode">Low
+                      Performance Mode</span>
+                    <span class="text-xs text-gray-500" data-i18n="msg_low_performance_mode_desc">Reduces visual effects
+                      for smoother play</span>
                   </div>
                 </div>
                 <span id="low-performance-status" class="text-base font-semibold text-gray-600">Off</span>
@@ -350,7 +358,7 @@
 
               <!-- Note Debug Pill -->
               <button id="note-debug-pill"
-                class="settings-pill flex items-center justify-between bg-gray-50 rounded-2xl px-6 py-5 shadow-sm">
+                class="hidden settings-pill flex items-center justify-between bg-gray-50 rounded-2xl px-6 py-5 shadow-sm">
                 <div class="flex items-center gap-4">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" class="w-6 h-6 text-gray-500">
@@ -757,12 +765,14 @@
             </div>
 
             <div class="mb-4">
-              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2" data-i18n="label_best_play">Best Play</h4>
+              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2" data-i18n="label_best_play">Best
+                Play</h4>
               <div id="stats-best-play-list" class="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1"></div>
             </div>
 
             <div>
-              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2" data-i18n="label_challenge_best">Challenge Best</h4>
+              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2"
+                data-i18n="label_challenge_best">Challenge Best</h4>
               <div id="stats-challenge-cycle" class="text-center py-2"></div>
             </div>
           </div>
@@ -810,9 +820,13 @@
                 <div id="life-timer" class="life-display-timer">03:05</div>
               </div>
             </button>
-            <div class="screen-top-bar-box">
+            <div id="crown-display-box" class="screen-top-bar-box cursor-pointer select-none relative">
               <img src="gameImage/crown.png" class="w-5 h-auto" data-i18n-alt="alt_crown">
               <span id="total-crowns" class="text-yellow-400 font-bold text-sm">0</span>
+              <div id="note-debug-unlock-msg"
+                class="hidden absolute top-full mt-[-8px] left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] font-semibold px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap pointer-events-none z-50">
+                Psst! Check Settings for a surprise...
+              </div>
             </div>
             <div class="screen-top-bar-box">
               <img src="gameImage/star.png" class="w-5 h-auto" alt="Star">
@@ -867,7 +881,8 @@
         <div class="flex-1 flex flex-col w-full">
           <div class="w-full max-w-[520px] mx-auto">
             <!-- Song title (number + title) appears directly under the top bar -->
-            <div id="results-song-title" class="font-game text-2xl font-bold mb-3 text-center" data-i18n="example_song_title">3. Nocturne Op. 55 No. 1
+            <div id="results-song-title" class="font-game text-2xl font-bold mb-3 text-center"
+              data-i18n="example_song_title">3. Nocturne Op. 55 No. 1
             </div>
 
             <!-- Class mode specific results -->
@@ -884,12 +899,13 @@
               <!-- Score area centered vertically in screen -->
               <div class="flex-1 flex items-center justify-center">
                 <div class="w-full flex items-center justify-center gap-8 px-4">
-          <div id="results-tps" class="text-2xl font-game">0.000 <span data-i18n="label_tps_unit">TPS</span></div>
-          <div id="results-main-score" class="text-center">
-            <div id="results-score" class="font-game text-8xl font-bold">0</div>
-            <div id="results-subtext" class="text-xl font-game mt-2" data-i18n="msg_new_best">New Best!</div>
-          </div>
-          <div id="results-laps" class="text-lg">0 <span data-i18n="label_laps">Laps</span></div>
+                  <div id="results-tps" class="text-2xl font-game">0.000 <span data-i18n="label_tps_unit">TPS</span>
+                  </div>
+                  <div id="results-main-score" class="text-center">
+                    <div id="results-score" class="font-game text-8xl font-bold">0</div>
+                    <div id="results-subtext" class="text-xl font-game mt-2" data-i18n="msg_new_best">New Best!</div>
+                  </div>
+                  <div id="results-laps" class="text-lg">0 <span data-i18n="label_laps">Laps</span></div>
                 </div>
               </div>
             </div>
@@ -913,7 +929,8 @@
               <span data-i18n="btn_retry">Retry</span>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2" class="w-6 h-6 ms-2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
               </svg>
             </button>
 
@@ -923,11 +940,13 @@
               <svg id="results-fav-heart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                 class="w-6 h-6 text-gray-800">
-                <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                <path
+                  d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
               </svg>
               <!-- copy icon (for custom songs, hidden by default) -->
               <svg id="results-fav-copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-gray-800 hidden">
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="w-6 h-6 text-gray-800 hidden">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
               </svg>
@@ -1031,8 +1050,11 @@
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-gray-800 font-bold text-sm" data-i18n="header_song_of_the_day">Song of the Day</h3>
               <div class="flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-orange-500">
-                  <path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.176 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.443-.87 1.15-1.586 2.013-2.025a3.75 3.75 0 015.3 3.197z" clip-rule="evenodd" />
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                  class="w-4 h-4 text-orange-500">
+                  <path fill-rule="evenodd"
+                    d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.176 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248zM15.75 14.25a3.75 3.75 0 11-7.313-1.172c.443-.87 1.15-1.586 2.013-2.025a3.75 3.75 0 015.3 3.197z"
+                    clip-rule="evenodd" />
                 </svg>
                 <span id="song-of-the-day-streak" class="text-orange-600 font-bold text-sm">0</span>
               </div>
@@ -1077,8 +1099,10 @@
           <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
             <div class="flex items-center justify-between px-4 py-4 border-b border-gray-200">
               <div>
-                <h2 class="text-xl font-black tracking-tight text-gray-900" data-i18n="label_edit_section_bpms">Edit Section BPMs</h2>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500" data-i18n="label_custom_song_settings">Custom Song Settings</p>
+                <h2 class="text-xl font-black tracking-tight text-gray-900" data-i18n="label_edit_section_bpms">Edit
+                  Section BPMs</h2>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500"
+                  data-i18n="label_custom_song_settings">Custom Song Settings</p>
               </div>
               <button id="close-bpm-modal-btn"
                 class="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]">
@@ -1088,31 +1112,43 @@
 
             <div class="p-6 flex flex-col gap-4">
               <div>
-                <label id="custom-bpm-label-1" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_section_1_bpm">Section 1 BPM</label>
-                <input id="custom-bpm-1" type="number" min="60" max="300" data-i18n-placeholder="placeholder_leave_empty_original"
+                <label id="custom-bpm-label-1"
+                  class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1"
+                  data-i18n="label_section_1_bpm">Section 1 BPM</label>
+                <input id="custom-bpm-1" type="number" min="60" max="300"
+                  data-i18n-placeholder="placeholder_leave_empty_original"
                   class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
                 <div class="flex justify-between mt-1 text-[9px] text-gray-500">
-                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-1">-</span> BPM, <span id="original-beats-1">-</span>
+                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-1">-</span> BPM, <span
+                      id="original-beats-1">-</span>
                     <span data-i18n="label_beats">beats</span></span>
                   <span><span data-i18n="label_speed">Speed:</span> <span id="speed-1">-</span> t/s</span>
                 </div>
               </div>
               <div>
-                <label id="custom-bpm-label-2" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_section_2_bpm">Section 2 BPM</label>
-                <input id="custom-bpm-2" type="number" min="60" max="300" data-i18n-placeholder="placeholder_leave_empty_original"
+                <label id="custom-bpm-label-2"
+                  class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1"
+                  data-i18n="label_section_2_bpm">Section 2 BPM</label>
+                <input id="custom-bpm-2" type="number" min="60" max="300"
+                  data-i18n-placeholder="placeholder_leave_empty_original"
                   class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
                 <div class="flex justify-between mt-1 text-[9px] text-gray-500">
-                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-2">-</span> BPM, <span id="original-beats-2">-</span>
+                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-2">-</span> BPM, <span
+                      id="original-beats-2">-</span>
                     <span data-i18n="label_beats">beats</span></span>
                   <span><span data-i18n="label_speed">Speed:</span> <span id="speed-2">-</span> t/s</span>
                 </div>
               </div>
               <div>
-                <label id="custom-bpm-label-3" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1" data-i18n="label_section_3_bpm">Section 3 BPM</label>
-                <input id="custom-bpm-3" type="number" min="60" max="300" data-i18n-placeholder="placeholder_leave_empty_original"
+                <label id="custom-bpm-label-3"
+                  class="text-[10px] font-bold uppercase tracking-widest text-gray-400 pl-1"
+                  data-i18n="label_section_3_bpm">Section 3 BPM</label>
+                <input id="custom-bpm-3" type="number" min="60" max="300"
+                  data-i18n-placeholder="placeholder_leave_empty_original"
                   class="block w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-700 outline-none focus:border-indigo-500">
                 <div class="flex justify-between mt-1 text-[9px] text-gray-500">
-                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-3">-</span> BPM, <span id="original-beats-3">-</span>
+                  <span><span data-i18n="label_original">Original:</span> <span id="original-bpm-3">-</span> BPM, <span
+                      id="original-beats-3">-</span>
                     <span data-i18n="label_beats">beats</span></span>
                   <span><span data-i18n="label_speed">Speed:</span> <span id="speed-3">-</span> t/s</span>
                 </div>
@@ -1297,8 +1333,10 @@
             data-color="blue">
             <div
               class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-blue-500">
-                <path d="M11.47 2.47a.75.75 0 011.06 0l7.5 7.5a.75.75 0 11-1.06 1.06l-.47-.47V19.25a1.75 1.75 0 01-1.75 1.75H14.25a.75.75 0 01-.75-.75v-4.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v4.5a.75.75 0 01-.75.75H7.25A1.75 1.75 0 015.5 19.25V10.59l-.47.47a.75.75 0 01-1.06-1.06l7.5-7.5z" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                class="w-6 h-6 text-blue-500">
+                <path
+                  d="M11.47 2.47a.75.75 0 011.06 0l7.5 7.5a.75.75 0 11-1.06 1.06l-.47-.47V19.25a1.75 1.75 0 01-1.75 1.75H14.25a.75.75 0 01-.75-.75v-4.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v4.5a.75.75 0 01-.75.75H7.25A1.75 1.75 0 015.5 19.25V10.59l-.47.47a.75.75 0 01-1.06-1.06l7.5-7.5z" />
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_home">Home</span>
@@ -1310,8 +1348,11 @@
             data-color="pink">
             <div
               class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-pink-500">
-                <path fill-rule="evenodd" d="M19.952 1.65a.75.75 0 01.548.72v11.88a3.75 3.75 0 11-1.5-2.998V5.37l-10.5 2.1v9.78a3.75 3.75 0 11-1.5-2.998V4.5a.75.75 0 01.602-.735l12.35-2.115z" clip-rule="evenodd" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                class="w-6 h-6 text-pink-500">
+                <path fill-rule="evenodd"
+                  d="M19.952 1.65a.75.75 0 01.548.72v11.88a3.75 3.75 0 11-1.5-2.998V5.37l-10.5 2.1v9.78a3.75 3.75 0 11-1.5-2.998V4.5a.75.75 0 01.602-.735l12.35-2.115z"
+                  clip-rule="evenodd" />
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_music">Music</span>
@@ -1323,8 +1364,11 @@
             data-color="purple">
             <div
               class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-purple-500">
-                <path fill-rule="evenodd" d="M5.166 2.621A.75.75 0 016 2.25h12a.75.75 0 01.834.371l.697 1.395c.57 1.139.712 2.455.399 3.692l-.248.983c-.389 1.541-1.392 2.842-2.777 3.602a8.27 8.27 0 01-3.655 1.138v2.819h2.25a.75.75 0 010 1.5h-7.5a.75.75 0 010-1.5h2.25v-2.819a8.27 8.27 0 01-3.655-1.138c-1.385-.76-2.388-2.061-2.777-3.602l-.248-.983a6.762 6.762 0 01.399-3.692l.697-1.395zM4.153 6.942A5.26 5.26 0 013.844 4.1L3.4 3.212A2.25 2.25 0 001.387 2.25H.75a.75.75 0 000 1.5h.637c.394 0 .752.217.935.566l.444.887a3.762 3.762 0 00.285 2.637 5.262 5.262 0 001.986 2.203.75.75 0 00.884-1.214A3.762 3.762 0 014.153 6.942zm15.694 0a3.762 3.762 0 01-1.77 1.885.75.75 0 00.884 1.214 5.262 5.262 0 001.986-2.203 3.762 3.762 0 00.285-2.637l.444-.887c.183-.349.541-.566.935-.566h.637a.75.75 0 000-1.5h-.637a2.25 2.25 0 00-2.013.962l-.444.887a5.26 5.26 0 00-.309 2.842z" clip-rule="evenodd" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                class="w-6 h-6 text-purple-500">
+                <path fill-rule="evenodd"
+                  d="M5.166 2.621A.75.75 0 016 2.25h12a.75.75 0 01.834.371l.697 1.395c.57 1.139.712 2.455.399 3.692l-.248.983c-.389 1.541-1.392 2.842-2.777 3.602a8.27 8.27 0 01-3.655 1.138v2.819h2.25a.75.75 0 010 1.5h-7.5a.75.75 0 010-1.5h2.25v-2.819a8.27 8.27 0 01-3.655-1.138c-1.385-.76-2.388-2.061-2.777-3.602l-.248-.983a6.762 6.762 0 01.399-3.692l.697-1.395zM4.153 6.942A5.26 5.26 0 013.844 4.1L3.4 3.212A2.25 2.25 0 001.387 2.25H.75a.75.75 0 000 1.5h.637c.394 0 .752.217.935.566l.444.887a3.762 3.762 0 00.285 2.637 5.262 5.262 0 001.986 2.203.75.75 0 00.884-1.214A3.762 3.762 0 014.153 6.942zm15.694 0a3.762 3.762 0 01-1.77 1.885.75.75 0 00.884 1.214 5.262 5.262 0 001.986-2.203 3.762 3.762 0 00.285-2.637l.444-.887c.183-.349.541-.566.935-.566h.637a.75.75 0 000-1.5h-.637a2.25 2.25 0 00-2.013.962l-.444.887a5.26 5.26 0 00-.309 2.842z"
+                  clip-rule="evenodd" />
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_challenges">Challenges</span>
@@ -1336,9 +1380,12 @@
             data-color="red">
             <div
               class="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-1 shadow-sm ring-1 ring-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-red-500">
-                <path d="M11.7 2.805a.75.75 0 01.6 0l9.5 4.25a.75.75 0 010 1.37l-9.5 4.25a.75.75 0 01-.6 0l-9.5-4.25a.75.75 0 010-1.37l9.5-4.25z" />
-                <path d="M3.5 10.198l7.9 3.535a1.75 1.75 0 001.2 0l7.9-3.535v4.552a4.25 4.25 0 01-2.25 3.754l-5.25 2.625a2.25 2.25 0 01-2.01 0l-5.25-2.625A4.25 4.25 0 013.5 14.75v-4.552z" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                class="w-6 h-6 text-red-500">
+                <path
+                  d="M11.7 2.805a.75.75 0 01.6 0l9.5 4.25a.75.75 0 010 1.37l-9.5 4.25a.75.75 0 01-.6 0l-9.5-4.25a.75.75 0 010-1.37l9.5-4.25z" />
+                <path
+                  d="M3.5 10.198l7.9 3.535a1.75 1.75 0 001.2 0l7.9-3.535v4.552a4.25 4.25 0 01-2.25 3.754l-5.25 2.625a2.25 2.25 0 01-2.01 0l-5.25-2.625A4.25 4.25 0 013.5 14.75v-4.552z" />
               </svg>
             </div>
             <span class="text-[11px] font-bold tracking-tight" data-i18n="nav_class">Class</span>

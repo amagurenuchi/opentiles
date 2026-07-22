@@ -141,6 +141,7 @@ let bgChangeEnabled = localStorage.getItem('opentile_bg_change') !== 'false'; //
 let darkModeEnabled = localStorage.getItem('opentile_dark_mode') === 'true';
 let lowPerformanceMode = localStorage.getItem('opentile_low_performance') === 'true';
 let noteDebugEnabled = localStorage.getItem('opentile_note_debug') === 'true';
+let noteDebugUnlocked = localStorage.getItem('opentile_note_debug_unlocked') === 'true';
 let lastRenderTime = 0;
 let lastHudTime = 0;
 let lastTpsColorKey = '';
@@ -1725,6 +1726,10 @@ function updateSettingsUI() {
   if (darkModeStatus) darkModeStatus.textContent = darkModeEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   if (lowPerformanceStatus) lowPerformanceStatus.textContent = lowPerformanceMode ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   if (noteDebugStatus) noteDebugStatus.textContent = noteDebugEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  const noteDebugPill = document.getElementById('note-debug-pill');
+  if (noteDebugPill) {
+    noteDebugPill.classList.toggle('hidden', !noteDebugUnlocked);
+  }
 
   // Update language pill status
   updateLanguageSelection();
@@ -7036,6 +7041,33 @@ document.getElementById('note-debug-pill')?.addEventListener('click', () => {
   if (!noteDebugEnabled && noteDebugDisplay) {
     noteDebugDisplay.classList.add('hidden');
     noteDebugDisplay.textContent = '';
+  }
+});
+
+let crownDebugClicks = 0;
+let crownDebugResetTimer = null;
+document.getElementById('crown-display-box')?.addEventListener('click', () => {
+  crownDebugClicks += 1;
+  clearTimeout(crownDebugResetTimer);
+  crownDebugResetTimer = setTimeout(() => { crownDebugClicks = 0; }, 2000);
+  if (crownDebugClicks >= 10) {
+    if (!noteDebugUnlocked) {
+      noteDebugUnlocked = true;
+      localStorage.setItem('opentile_note_debug_unlocked', 'true');
+      const noteDebugPill = document.getElementById('note-debug-pill');
+      if (noteDebugPill) {
+        noteDebugPill.classList.remove('hidden');
+      }
+      const unlockMsg = document.getElementById('note-debug-unlock-msg');
+      if (unlockMsg) {
+        unlockMsg.classList.remove('hidden');
+        clearTimeout(unlockMsg._timer);
+        unlockMsg._timer = setTimeout(() => {
+          unlockMsg.classList.add('hidden');
+        }, 3000);
+      }
+    }
+    crownDebugClicks = 0;
   }
 });
 

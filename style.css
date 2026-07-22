@@ -1860,6 +1860,25 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
   display: block;
 }
 
+/* Soundfont option styling */
+.soundfont-option {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.soundfont-option:hover {
+  border-color: #6366f1;
+}
+
+.soundfont-option.selected {
+  border-color: #6366f1;
+  background-color: #eef2ff;
+}
+
+.soundfont-option.selected .soundfont-check {
+  display: block;
+}
+
 /* Long/Hold note styling */
 .tile-long {
   border-bottom: none !important;

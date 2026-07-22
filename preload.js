@@ -18,5 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File operations (if needed)
   saveFile: (content, filename) => ipcRenderer.invoke('save-file', content, filename),
   
+  // List available soundfont folders under /music/
+  listSoundfonts: () => ipcRenderer.invoke('list-soundfonts'),
+  
   // Any other safe IPC methods you need
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, protocol } = require('electron');
+const { app, BrowserWindow, session, protocol, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -9,6 +9,24 @@ let server;
 function createLocalServer() {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // Handle dynamic soundfont listing endpoint
+      if (req.url === '/soundfonts.json') {
+        const musicDir = path.join(__dirname, 'music');
+        try {
+          const entries = fs.readdirSync(musicDir, { withFileTypes: true });
+          const dirs = entries
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name)
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(dirs), 'utf-8');
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([]), 'utf-8');
+        }
+        return;
+      }
+
       // Decode URL-encoded paths (e.g., %20 -> space)
       let filePath = decodeURIComponent(req.url);
       if (filePath === '/') {
@@ -108,6 +126,23 @@ function createAppDataDir() {
     fs.mkdirSync(songsDir, { recursive: true });
   }
 }
+
+// Handle listing soundfont subdirectories under /music/
+ipcMain.handle('list-soundfonts', async () => {
+  const musicDir = path.join(__dirname, 'music');
+  try {
+    const entries = await fs.promises.readdir(musicDir, { withFileTypes: true });
+    const dirs = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name)
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    console.log('[IPC list-soundfonts] Found soundfonts:', dirs);
+    return dirs;
+  } catch (err) {
+    console.warn('[IPC list-soundfonts] Failed to list soundfonts:', err);
+    return [];
+  }
+});
 
 app.whenReady().then(async () => {
   createAppDataDir();

@@ -149,6 +149,7 @@ let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
 let customStartingSpeed = parseFloat(localStorage.getItem('opentile_custom_speed') || '0'); // 0 = disabled, direct t/s value
+let currentSoundfont = localStorage.getItem('opentile_soundfont') || 'default'; // single source of truth inside gameplay
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -1117,7 +1118,7 @@ async function getCachedAudioBuffer(basePath) {
 function noteNameToMp3Path(noteName) {
   const normalized = String(noteName || '').trim();
   if (!normalized) return null;
-  if (normalized === 'mute' || normalized === 'chuanshao') return 'music/mute';
+  if (normalized === 'mute' || normalized === 'chuanshao') return `music/${currentSoundfont}/mute`;
 
   const cleaned = normalized
     .replace(/^[\s(<\[]+/g, '')
@@ -1145,7 +1146,8 @@ function noteNameToMp3Path(noteName) {
       filename = `${accidental}${letter.toLowerCase()}${octave}`;
     }
   }
-  return `music/${filename}`;
+
+  return `music/${currentSoundfont}/${filename}`;
 }
 
 function spawnHoldEffectForTile(tile) {
@@ -1347,7 +1349,9 @@ function startSongTextTransition(text, label) {
 async function playLoseSound() {
   const ctx = ensureAudioEngine();
   if (!ctx) return;
-  const path = 'music/#D-2.mp3';
+  const basePath = noteNameToMp3Path('#D-2');
+  if (!basePath) return;
+  const path = `${basePath}.mp3`;
   const encodedPath = path.replace(/#/g, '%23');
   if (audioBufferCache.has(path)) {
     const buffer = audioBufferCache.get(path);
@@ -1721,6 +1725,12 @@ function updateSettingsUI() {
 
   // Update language pill status
   updateLanguageSelection();
+
+  // Update soundfont pill status
+  const soundfontStatus = document.getElementById('soundfont-status');
+  if (soundfontStatus) {
+    soundfontStatus.textContent = localStorage.getItem('opentile_soundfont') || 'default';
+  }
 
   // Update sound status based on audio context state
   const soundStatus = document.getElementById('sound-status');
@@ -7094,6 +7104,132 @@ document.getElementById('language-modal-backdrop')?.addEventListener('click', ()
   // Discard any unsaved language selection
   selectedLanguage = null;
   document.getElementById('language-modal').classList.add('hidden');
+});
+
+// Soundfont selection handlers
+let availableSoundfonts = [];
+
+async function getAvailableSoundfonts() {
+  if (availableSoundfonts.length) return availableSoundfonts;
+
+  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.listSoundfonts) {
+    try {
+      console.log('[renderer] Requesting soundfonts via IPC...');
+      availableSoundfonts = await window.electronAPI.listSoundfonts();
+      console.log('[renderer] Received soundfonts via IPC:', availableSoundfonts);
+    } catch (err) {
+      console.warn('[renderer] IPC listSoundfonts failed, will try fetch fallback:', err);
+    }
+  }
+
+  if (!availableSoundfonts.length) {
+    try {
+      console.log('[renderer] Trying fetch /soundfonts.json fallback...');
+      const response = await fetch('/soundfonts.json');
+      if (response.ok) {
+        availableSoundfonts = await response.json();
+        console.log('[renderer] Received soundfonts via fetch:', availableSoundfonts);
+      }
+    } catch (err) {
+      console.warn('[renderer] fetch /soundfonts.json failed:', err);
+    }
+  }
+
+  if (!availableSoundfonts.length) {
+    console.log('[renderer] No soundfonts found, falling back to ["default"]');
+    availableSoundfonts = ['default'];
+  }
+
+  return availableSoundfonts;
+}
+
+let selectedSoundfont = null;
+
+function renderSoundfontOptions() {
+  const container = document.getElementById('soundfont-options');
+  if (!container) return;
+
+  const current = localStorage.getItem('opentile_soundfont') || 'default';
+  const display = selectedSoundfont || current;
+
+  container.innerHTML = availableSoundfonts.map(name => `
+    <button class="soundfont-option flex items-center justify-between bg-white rounded-full px-5 py-4 shadow-sm transition-all active:scale-[0.98]" data-soundfont="${name}">
+      <span class="text-base font-semibold text-gray-800">${name}</span>
+      <svg class="soundfont-check w-6 h-6 text-green-500 ${name === display ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+      </svg>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.soundfont-option').forEach((option) => {
+    option.addEventListener('click', () => {
+      selectedSoundfont = option.dataset.soundfont;
+
+      container.querySelectorAll('.soundfont-option').forEach(opt => {
+        const check = opt.querySelector('.soundfont-check');
+        if (opt.dataset.soundfont === selectedSoundfont) {
+          check.classList.remove('hidden');
+          opt.classList.add('selected');
+        } else {
+          check.classList.add('hidden');
+          opt.classList.remove('selected');
+        }
+      });
+    });
+  });
+}
+
+async function updateSoundfontSelection() {
+  const current = localStorage.getItem('opentile_soundfont') || 'default';
+
+  // Reset selected soundfont when modal opens
+  selectedSoundfont = null;
+
+  // Update pill status
+  const soundfontStatus = document.getElementById('soundfont-status');
+  if (soundfontStatus) {
+    soundfontStatus.textContent = current;
+  }
+
+  await getAvailableSoundfonts();
+  renderSoundfontOptions();
+}
+
+document.getElementById('soundfont-pill')?.addEventListener('click', async () => {
+  await updateSoundfontSelection();
+  document.getElementById('soundfont-modal').classList.remove('hidden');
+});
+
+document.getElementById('close-soundfont-modal')?.addEventListener('click', () => {
+  selectedSoundfont = null;
+  document.getElementById('soundfont-modal').classList.add('hidden');
+});
+
+document.getElementById('done-soundfont-modal')?.addEventListener('click', () => {
+  const current = localStorage.getItem('opentile_soundfont') || 'default';
+
+  if (selectedSoundfont && selectedSoundfont !== current) {
+    const soundfontStatus = document.getElementById('soundfont-status');
+    if (soundfontStatus) {
+      soundfontStatus.textContent = selectedSoundfont;
+    }
+
+    localStorage.setItem('opentile_soundfont', selectedSoundfont);
+    currentSoundfont = selectedSoundfont;
+
+    // Audio buffer cache lives for the lifetime of the page, so keys loaded
+    // from the old soundfont would still be cached. Force the user to reload
+    // to fully switch instruments.
+    alert('Please reload the game to apply the new soundfont.');
+  }
+
+  selectedSoundfont = null;
+  document.getElementById('soundfont-modal').classList.add('hidden');
+});
+
+document.getElementById('soundfont-modal-backdrop')?.addEventListener('click', () => {
+  selectedSoundfont = null;
+  document.getElementById('soundfont-modal').classList.add('hidden');
 });
 
 // Profile modal handlers

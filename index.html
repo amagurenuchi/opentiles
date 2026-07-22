@@ -251,7 +251,7 @@
       <!-- Settings Panel -->
       <div id="settings-screen" class="absolute inset-0 z-50 hidden transition-all duration-300">
         <div class="h-full flex flex-col bg-white overflow-hidden">
-          <div class="settings-scroll-panel flex-1 overflow-y-auto px-4 py-4 pt-8">
+          <div class="settings-scroll-panel flex-1 overflow-y-auto px-4 py-4">
             <div class="flex w-full flex-col gap-4">
               <!-- Manage Local Profile Pill -->
               <button id="profile-pill"
@@ -968,8 +968,8 @@
       <!-- Pause Screen -->
       <div id="pause-screen" class="pause-screen hidden">
         <h2 class="pause-screen-title" data-i18n="title_game_paused">Game Paused</h2>
-        <div id="class-pause-timer-container" class="hidden text-center text-red-500 font-bold mb-4 font-game text-2xl">
-          Time left: <span id="class-pause-timer">60</span>s
+        <div id="class-pause-timer-container" class="hidden text-center text-red-500 font-bold mb-4 font-game text-5xl">
+          <span id="class-pause-timer">60</span>
         </div>
         <div class="pause-screen-actions">
           <button id="pause-exit-btn" class="pause-screen-btn" type="button" data-i18n="btn_quit">Quit</button>
@@ -1054,7 +1054,7 @@
           </div>
 
           <!-- Song of the Day card -->
-          <div class="w-full bg-gradient-to-r from-indigo-100 to-purple-100 rounded-2xl p-4">
+          <div class="song-of-the-day-card w-full bg-gradient-to-r from-indigo-100 to-purple-100 rounded-2xl p-4">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-gray-800 font-bold text-sm" data-i18n="header_song_of_the_day">Song of the Day</h3>
               <div class="flex items-center gap-1">

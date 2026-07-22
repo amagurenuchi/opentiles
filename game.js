@@ -812,16 +812,6 @@ function resumeAfterRevive() {
     resetTileForResume(nearestUntapped);
     nearestUntapped.isStartTile = true;
     nearestUntapped.isResumeStartTile = true;
-
-    const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
-    const tileHeight = getTileEffectiveHeight(nearestUntapped);
-    const tileTop = starthpos - adjHpos - tileHeight;
-    const tileBottom = starthpos - adjHpos;
-    const isFullyVisible = tileBottom > 0 && tileTop < key;
-    if (!isFullyVisible) {
-      starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
-      classicScrollTarget = starthpos;
-    }
   }
 
   if (pauseScreen) {
@@ -873,9 +863,21 @@ function updatePauseButtonVisibility() {
   pauseBtn.classList.toggle('force-show', shouldShow);
 }
 
+function getDisplayBpm() {
+  if (preslowdownBpm > 0) return preslowdownBpm;
+  if (pausedSpeedBpm > 0) return pausedSpeedBpm;
+  return currentBpm || 120;
+}
+
+function getDisplayTps() {
+  const bpm = getDisplayBpm();
+  const beats = (currentBeats > 0 ? currentBeats : pausedSpeedBeats) || 0.5;
+  return beats > 0 ? bpm / beats / 60 : 0;
+}
+
 function captureCurrentSpeedState() {
-  pausedSpeedBpm = currentBpm;
-  pausedSpeedBeats = currentBeats;
+  pausedSpeedBpm = preslowdownBpm > 0 ? preslowdownBpm : (currentBpm || 120);
+  pausedSpeedBeats = currentBeats || 0.5;
 }
 
 function getEffectiveSpeedState() {
@@ -883,17 +885,9 @@ function getEffectiveSpeedState() {
     return { bpm: 0, beats: 0.5 };
   }
 
-  if (isPaused || !isStarted) {
-    return {
-      bpm: pausedSpeedBpm || currentBpm || 120,
-      beats: pausedSpeedBeats || currentBeats || 0.5
-    };
-  }
-
-  return {
-    bpm: currentBpm || pausedSpeedBpm || 120,
-    beats: currentBeats || pausedSpeedBeats || 0.5
-  };
+  const bpm = getDisplayBpm();
+  const beats = (currentBeats > 0 ? currentBeats : pausedSpeedBeats) || 0.5;
+  return { bpm, beats };
 }
 
 function getGameplayBackgroundIndex() {
@@ -1300,6 +1294,7 @@ function spendLifeCost(cost) {
 }
 
 function getPlayLifeCost(songData) {
+  if (isClassMode) return 4;
   return isChallengeSong(songData) ? 2 : 1;
 }
 
@@ -2365,6 +2360,7 @@ function resetEngineState() {
   preserveCurrentSpeedOnNextFrame = false;
   pausedSpeedBpm = 120;
   pausedSpeedBeats = 0.5;
+  preslowdownBpm = 0;
   resetInputState();
   pendingHitEffects = [];
   isReviveSlowdownActive = false;
@@ -2927,12 +2923,12 @@ function isDoubleTile(tile) {
 }
 
 function getTileDisplayColumns(tile) {
-  if (isComboTile(tile) && !autoplayEnabled) return [1, 2];
+  if (isComboTile(tile)) return [1, 2];
   return getActiveColumns(tile);
 }
 
 function getTileHitColumns(tile) {
-  if (isComboTile(tile) && !autoplayEnabled) return [1, 2];
+  if (isComboTile(tile)) return [1, 2];
   return getActiveColumns(tile);
 }
 
@@ -3138,6 +3134,37 @@ function spawnComboPlusOne(tile, colIdx, pointerEvent = null) {
   }, 350);
 }
 
+function spawnLongTileScorePopup(tile, scoreAdded) {
+  if (lowPerformanceMode) return;
+  if (!tile || !isLongTile(tile) || !scoreAdded || scoreAdded <= 0) return;
+  // Popup shows ONLY on fully completed long tiles (not incomplete / early released tiles)
+  if (!tile.holdCompleted && !(autoplayEnabled && tile.playing > tile.hlen - 1)) return;
+
+  const displayCols = getTileDisplayColumns(tile);
+  const domKey = `${tile.id}:${displayCols.join('-')}`;
+  let el = tileDomCache.get(domKey);
+  if (!el) {
+    renderTiles();
+    el = tileDomCache.get(domKey);
+  }
+  if (!el) return;
+
+  const popup = document.createElement('div');
+  popup.className = 'long-tile-score-popup';
+  popup.textContent = `+${scoreAdded}`;
+  el.appendChild(popup);
+
+  const cleanup = () => {
+    if (popup.parentNode) {
+      popup.remove();
+    }
+  };
+
+  popup.addEventListener('animationend', cleanup);
+  setTimeout(cleanup, 500);
+}
+
+
 function spawnHoldEffect(x, y) {
   if (lowPerformanceMode) return;
   const containerRect = hitEffectsEl.getBoundingClientRect();
@@ -3276,7 +3303,7 @@ async function finishRun(showLibrary = false) {
 
   if (isChallengeMode) {
     // In challenge mode: save best TPS, display final TPS and earned medals
-    const finalTps = currentBpm / currentBeats / 60;
+    const finalTps = getDisplayTps();
     const rewardState = shouldShowChallengeRewards(selectedSongData) ? getChallengeRewardStateFromTps(finalTps) : null;
     const finalStarsEl = document.getElementById('final-stars');
     const finalCrownsEl = document.getElementById('final-crowns');
@@ -3472,7 +3499,7 @@ async function finishRun(showLibrary = false) {
         document.getElementById('results-class-mode')?.classList.add('hidden');
 
         if (isChallengeMode) {
-          const finalTps = currentBpm / currentBeats / 60;
+          const finalTps = getDisplayTps();
           if (tpsEl) {
             tpsEl.classList.add('hidden');
             tpsEl.textContent = '';
@@ -3518,7 +3545,7 @@ async function finishRun(showLibrary = false) {
         } else {
           if (tpsEl) {
             tpsEl.classList.remove('hidden');
-            tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
+            tpsEl.textContent = `${getDisplayTps().toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
           }
           if (scoreEl) animateNumberTo(scoreEl, Number(currentScore || 0), 300, 0);
           if (lapsEl) {
@@ -3839,10 +3866,11 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
 
   if (failureType === 'miss' && tile) {
     // Scroll back to reveal the missed tile
-    // Calculate target position so the tile's bottom is at the hitline (key - 1)
-    // We want: starthpos - tile.hpos = key - 1
-    // So: starthpos = tile.hpos + key - 1
-    const targetHpos = tile.hpos + key - 1;
+    // Calculate target position so the tile's bottom is at the lowest row (key)
+    // We want: starthpos - adjHpos = key
+    // So: starthpos = adjHpos + key
+    const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
+    const targetHpos = adjHpos + key;
     const scrollDuration = 300;
     const startHpos = starthpos;
     const startTime = performance.now();
@@ -4201,7 +4229,9 @@ function handleManualInputDown(colIdx, pointerEvent = null) {
       activeLongInOtherCol.played = true;
 
       const completedHeight = Math.max(0, activeLongInOtherCol.playing - (activeLongInOtherCol.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
+      const scoreAdded = Math.max(1, Math.ceil(completedHeight));
+      currentScore += scoreAdded;
+      if (isClassMode && !activeLongInOtherCol.classHitCounted) { activeLongInOtherCol.classHitCounted = true; incrementClassHitTiles(activeLongInOtherCol); }
 
       if (!tileMatchesColumn(tile, colIdx)) {
         return;
@@ -4341,7 +4371,9 @@ function handleManualInputUp(colIdx) {
     activeLong.played = true; // Mark as played so audio doesn't re-trigger
 
     const completedHeight = Math.max(0, activeLong.playing - (activeLong.tapPlaying || 0));
-    currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
+    const scoreAdded = Math.max(1, Math.ceil(completedHeight));
+    currentScore += scoreAdded;
+    if (isClassMode && !activeLong.classHitCounted) { activeLong.classHitCounted = true; incrementClassHitTiles(activeLong); }
 
   }
 }
@@ -4353,7 +4385,7 @@ function updateChallengeRewardAnimation() {
     return;
   }
 
-  const rewardState = getChallengeRewardStateFromTps(currentBeats > 0 ? currentBpm / currentBeats / 60 : 0);
+  const rewardState = getChallengeRewardStateFromTps(getDisplayTps());
   const previousRewardState = lastHudRewardState;
   const previousTier = getRewardTierRank(previousRewardState);
   const currentTier = getRewardTierRank(rewardState);
@@ -4408,8 +4440,8 @@ function updateNormalSongAwardDisplay() {
 function updateHUD() {
   updateTpsDisplayColor();
   const { bpm: effectiveBpm, beats: effectiveBeats } = getEffectiveSpeedState();
-  // Use the cached active combo tile (set once per engine frame) for TPS display.
-  const displayBpm = (preslowdownBpm > 0 && cachedActiveComboTile) ? preslowdownBpm : effectiveBpm;
+  // Use the pre-slowdown BPM for the TPS display if available.
+  const displayBpm = getDisplayBpm();
   const scrollSpeed = hasStartedGameplay ? displayBpm / effectiveBeats / 60 : 0;
   const tpsText = `${scrollSpeed.toFixed(3)}`;
 
@@ -4616,7 +4648,7 @@ function renderTiles() {
       }
 
       const leftCol = Math.min(...cols);
-      const widthCols = isComboTile(tile) && !autoplayEnabled ? 2 : cols.length;
+      const widthCols = isComboTile(tile) ? 2 : cols.length;
       const headEl = el._head;
       const lightStripEl = el._lightStrip;
       const lightOrbEl = el._lightOrb;
@@ -4722,7 +4754,7 @@ function renderTiles() {
           startLabelEl.classList.remove('hidden');
           startLabelEl.style.display = 'flex';
         }
-      } else if (isComboTile(tile) && !autoplayEnabled) {
+      } else if (isComboTile(tile)) {
         if (el.className !== 'tile-combo') el.className = 'tile-combo';
         el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
         comboBadgeEl.classList.remove('hidden');
@@ -4737,7 +4769,7 @@ function renderTiles() {
           startLabelEl.classList.remove('hidden');
           startLabelEl.style.display = 'flex';
         }
-      } else if (isLongTile(tile) || isComboTile(tile)) {
+      } else if (isLongTile(tile)) {
         const played = tile.played || tile.clicked;
         const ended = tile.ended || tile.holdCompleted;
         const isReleased = isLongTile(tile) && tile.holdReleased;
@@ -4843,7 +4875,7 @@ function updateEngineFrame(now) {
 
   if (!shouldPreserveSpeed) {
     if (isChallengeMode) {
-      nextBpm = challengeBaseBpm;
+      nextBpm = challengeBaseBpm + challengeBpmOffset;
       nextBeats = challengeBaseBeats;
     } else if (isClassicMode) {
       nextBpm = currentBpm;
@@ -4870,25 +4902,27 @@ function updateEngineFrame(now) {
     : 1;
 
   // Challenge mode uses constant acceleration as its only speed-changing mechanic.
-  if (isChallengeMode && isStarted && !isPaused) {
-    if (!activeComboTile) {
-      // Accumulate BPM increase only when no combo tile is active
-      if (challengeLastAccelerationTime === 0) {
+  if (isChallengeMode) {
+    if (isStarted && !isPaused) {
+      if (!activeComboTile) {
+        // Accumulate BPM increase only when no combo tile is active
+        if (challengeLastAccelerationTime === 0) {
+          challengeLastAccelerationTime = now;
+        }
+        const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000;
+        if (timeSinceLastAcceleration >= 0.093303) {
+          const bpmIncrease = challengeAcceleration * nextBeats * 60;
+          challengeBpmOffset += bpmIncrease;
+          challengeLastAccelerationTime = now;
+        }
+      } else {
+        // While a combo tile is active, freeze the acceleration timer so we don't
+        // accumulate a large gap when it resumes.
         challengeLastAccelerationTime = now;
       }
-      const timeSinceLastAcceleration = (now - challengeLastAccelerationTime) / 1000;
-      if (timeSinceLastAcceleration >= 0.093303) {
-        const bpmIncrease = challengeAcceleration * nextBeats * 60;
-        challengeBpmOffset += bpmIncrease;
-        challengeLastAccelerationTime = now;
-      }
-    } else {
-      // While a combo tile is active, freeze the acceleration timer so we don't
-      // accumulate a large gap when it resumes.
-      challengeLastAccelerationTime = now;
     }
     // Always apply the already-accumulated offset so slowdown is relative to current speed
-    nextBpm += challengeBpmOffset;
+    nextBpm = challengeBaseBpm + challengeBpmOffset;
   }
 
   // Capture the pre-slowdown BPM for the TPS display.
@@ -5065,17 +5099,26 @@ function updateEngineFrame(now) {
         currentSectionTileIndex = 0;
       }
     } else {
-      if (isClassicMode || isClassMode) break;
+      if (isClassicMode) {
+        loadNextClassicSong();
+        break;
+      }
+      if (isClassMode) break;
       currentSectionIndex = 0;
       songLoopCount += 1;
     }
 
+    if (isClassicMode && currentSectionIndex >= sheet.length - 2) {
+      loadNextClassicSong();
+    }
   }
 
   let maxEffectiveSectionReached = -1;
 
   tiles.forEach((tile) => {
-    tile.playing = starthpos - tile.hpos - (key - 1);
+    tile.playing = (isClassicMode && autoplayEnabled && isStarted)
+      ? (classicScrollTarget - tile.hpos - (key - 1))
+      : (starthpos - tile.hpos - (key - 1));
 
     // Check section progression for normal song awards
     if (tile.playing >= -0.5 || tile.clicked || tile.ended > 0) {
@@ -5087,7 +5130,9 @@ function updateEngineFrame(now) {
 
     // Use the visual-adjusted position for the autoplay audio trigger so tiles after a
     // combo tile (which have a large visualHposOffset) are triggered at the correct time.
-    const visualPlaying = starthpos - (tile.visualAdjustedHpos ?? tile.hpos) - (key - 1);
+    const visualPlaying = (isClassicMode && autoplayEnabled && isStarted)
+      ? (classicScrollTarget - (tile.visualAdjustedHpos ?? tile.hpos) - (key - 1))
+      : (starthpos - (tile.visualAdjustedHpos ?? tile.hpos) - (key - 1));
     if (autoplayEnabled && visualPlaying > 0 && !tile.played && !tile.isAccompanimentLong) {
       let realLen = 0;
       // Handle both formats: array of arrays (normal tiles) or single array (single accompaniment tiles)
@@ -5105,6 +5150,66 @@ function updateEngineFrame(now) {
     }
 
     if (autoplayEnabled) {
+      // In Classic mode, auto-play the lowest active tile once it enters the tap area
+      if (isClassicMode && isStarted && !isPaused && !tile.clicked && !tile.ended && tile.type !== 1) {
+        const tileBottom = (classicScrollTarget - (tile.visualAdjustedHpos ?? tile.hpos));
+        if (tileBottom >= key - 1.05) {
+          if (!tile.played) {
+            let realLen = 0;
+            const scoreGroups = Array.isArray(tile.scores[0]) ? tile.scores : [tile.scores];
+            scoreGroups.forEach((scoreGroup) => {
+              scoreGroup.forEach((note) => {
+                queueTimeout(() => playPitchString(note.note, note.len), (note.start + realLen) * 60000 / currentBpm);
+              });
+              if (scoreGroup[0]) realLen += scoreGroup[0].len;
+            });
+            tile.played = true;
+          }
+          if (tile.type === 3) {
+            if (tile.lastAutoTapAt === undefined) tile.lastAutoTapAt = 0;
+            const elapsed = now - tile.lastAutoTapAt;
+            if (elapsed >= 100) {
+              tile.lastAutoTapAt = now;
+              const activeComboCols = getTileDisplayColumns(tile);
+              const autoComboSide = (tile.autoTapCount || 0) % 2 === 0 ? 0 : activeComboCols.length - 1;
+              const autoComboColIdx = activeComboCols[autoComboSide] ?? (activeComboCols[0] ?? 0);
+              tile.autoTapCount = (tile.autoTapCount || 0) + 1;
+              const autoColEl = colElements[autoComboColIdx];
+              const autoColRect = autoColEl?.getBoundingClientRect();
+              const autoRippleX = autoColRect ? autoColRect.left + autoColRect.width / 2 : null;
+              const autoRippleY = autoColRect ? autoColRect.bottom - autoColRect.height * 0.25 : null;
+              playComboTapAudio(tile);
+              spawnComboPlusOne(tile, autoComboColIdx, null);
+              spawnHitRipple(autoRippleX, autoRippleY, { tile, colIdx: autoComboColIdx, big: true });
+              tile.remainingTaps = Math.max(0, (tile.remainingTaps || tile.taps || 2) - 1);
+              currentScore += 1;
+              if (tile.remainingTaps <= 0) {
+                classicTappedTiles++;
+                advanceClassicTilefield();
+                tile.clicked = true;
+                tile.ended = 1;
+              }
+            }
+          } else {
+            triggerTileHitAnimation(tile);
+            classicTappedTiles++;
+            advanceClassicTilefield();
+            tile.clicked = true;
+            tile.ended = 1;
+            if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1;
+            else if (tile.type === 5) currentScore += 4;
+            else if (isLongTile(tile)) {
+              const scoreAdded = Math.round(tile.hlen) + 1;
+              currentScore += scoreAdded;
+              if (!tile.scorePopupTriggered && scoreAdded > 0) {
+                tile.scorePopupTriggered = true;
+                spawnLongTileScorePopup(tile, scoreAdded);
+              }
+            }
+          }
+        }
+      }
+
       switch (tile.type) {
         case -1:
           // Start tile must be clicked manually even in autoplay mode
@@ -5126,6 +5231,7 @@ function updateEngineFrame(now) {
             }
           } else if (tile.played && !tile.ended) {
             currentScore++; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+            if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -5135,6 +5241,7 @@ function updateEngineFrame(now) {
         case 5:
           if (tile.played && !tile.ended) {
             currentScore += 4; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+            if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
             tile.clicked = true;
             tile.ended = 1;
           } else if (tile.ended) {
@@ -5143,12 +5250,12 @@ function updateEngineFrame(now) {
           break;
         case 3:
           if (tile.played && !tile.clicked) {
-            if (!tile.lastAutoTapAt) tile.lastAutoTapAt = now;
+            if (tile.lastAutoTapAt === undefined) tile.lastAutoTapAt = 0;
             const elapsed = now - tile.lastAutoTapAt;
             if (elapsed >= 100) {
               tile.lastAutoTapAt = now;
               // Alternate left/right column for effects
-              const activeComboCols = getActiveColumns(tile);
+              const activeComboCols = getTileDisplayColumns(tile);
               const autoComboSide = (tile.autoTapCount || 0) % 2 === 0 ? 0 : activeComboCols.length - 1;
               const autoComboColIdx = activeComboCols[autoComboSide] ?? (activeComboCols[0] ?? 0);
               tile.autoTapCount = (tile.autoTapCount || 0) + 1;
@@ -5164,6 +5271,7 @@ function updateEngineFrame(now) {
               tile.remainingTaps = Math.max(0, (tile.remainingTaps || tile.taps || 2) - 1);
               currentScore += 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
               if (tile.remainingTaps <= 0) {
+                if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
                 tile.clicked = true;
                 tile.ended = 1;
               }
@@ -5175,9 +5283,16 @@ function updateEngineFrame(now) {
         case 6:
           if (tile.playing > tile.hlen - 1) {
             if (!tile.ended) {
-              currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+              const scoreAdded = Math.round(tile.hlen) + 1;
+              currentScore += scoreAdded;
+              if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+              if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
               tile.clicked = true;
               tile.ended = 1;
+              if (!tile.scorePopupTriggered && scoreAdded > 0) {
+                tile.scorePopupTriggered = true;
+                spawnLongTileScorePopup(tile, scoreAdded);
+              }
             } else {
               tile.ended++;
             }
@@ -5198,9 +5313,16 @@ function updateEngineFrame(now) {
             if (tile.type === 3) scoreDelta = tile.scores.length - 1;
             if (tile.type === 10) scoreDelta = 0;
             if (!tile.ended) {
-              currentScore += Math.round(scoreDelta) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+              const scoreAdded = Math.round(scoreDelta) + 1;
+              currentScore += scoreAdded;
+              if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+              if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
               tile.clicked = true;
               tile.ended = 1;
+              if (isLongTile(tile) && !tile.scorePopupTriggered && scoreAdded > 0) {
+                tile.scorePopupTriggered = true;
+                spawnLongTileScorePopup(tile, scoreAdded);
+              }
             } else {
               tile.ended++;
             }
@@ -5212,7 +5334,13 @@ function updateEngineFrame(now) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
-        currentScore += Math.round(tile.hlen) + 1; if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+        const scoreAdded = Math.round(tile.hlen) + 1;
+        currentScore += scoreAdded;
+        if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
+        if (!tile.scorePopupTriggered && scoreAdded > 0) {
+          tile.scorePopupTriggered = true;
+          spawnLongTileScorePopup(tile, scoreAdded);
+        }
       } else if ((tile.clicked || tile.holdCompleted) && tile.ended) {
         tile.ended++;
       }
@@ -5224,10 +5352,8 @@ function updateEngineFrame(now) {
   }
 
   if (!autoplayEnabled && !isPaused) {
-    // Handle combo tiles going off-screen:
-    // - Never-tapped combos (remainingTaps === taps) → silently dismissed
-    // - Partially-tapped combos (remainingTaps < taps) → game-over
-    let partiallyTappedComboMissed = null;
+    // Handle combo tiles going off-screen: missing a combo tile fails the game
+    let comboMissed = null;
     tiles.forEach((tile) => {
       if (
         isComboTile(tile) &&
@@ -5235,18 +5361,14 @@ function updateEngineFrame(now) {
         tile.remainingTaps > 0 &&
         getTileTop(tile) > key + 0.05
       ) {
-        if (tile.remainingTaps < (tile.taps || 2)) {
-          // Player started tapping but didn't finish — game over
-          partiallyTappedComboMissed = tile;
-        } else {
-          // Never tapped — silently dismiss
-          tile.clicked = true;
-          tile.ended = 1;
+        if (!isStarted && (tile.isStartTile || tile.isResumeStartTile)) {
+          return;
         }
+        comboMissed = tile;
       }
     });
-    if (partiallyTappedComboMissed) {
-      failRun('miss', partiallyTappedComboMissed);
+    if (comboMissed) {
+      failRun('miss', comboMissed);
       return;
     }
 
@@ -5601,6 +5723,24 @@ function returnToMainMenu() {
   }
 }
 
+function ensureStartTileVisible(tile) {
+  if (!tile) return;
+  const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
+  const targetHeight = (isLongTile(tile) || isComboTile(tile)) ? 1 : getTileEffectiveHeight(tile);
+  const tileBottom = starthpos - adjHpos;
+  const tileTop = tileBottom - targetHeight;
+
+  if (tileTop < 0) {
+    // Off-screen above: push down to the second topmost row (Y range [1, 1 + targetHeight])
+    starthpos = adjHpos + 1 + targetHeight;
+    classicScrollTarget = starthpos;
+  } else if (tileBottom > key) {
+    // Off-screen below: push up to the lowest row (Y range [key - targetHeight, key])
+    starthpos = adjHpos + key;
+    classicScrollTarget = starthpos;
+  }
+}
+
 function resetTileForResume(tile) {
   tile.clicked = false;
   tile.played = false;
@@ -5618,6 +5758,7 @@ function resetTileForResume(tile) {
   delete tile.tapScreenY;
   delete tile.tapPlaying;
   delete tile.completionPlaying;
+  delete tile.scorePopupTriggered;
   if (tile.type === 3) {
     // Preserve remainingTaps for combo tiles to maintain partial progress
     // Only reset if it hasn't been tapped yet (remainingTaps equals taps)
@@ -5628,27 +5769,8 @@ function resetTileForResume(tile) {
   // Mark this tile as a resume/revive start tile to show START label
   tile.isResumeStartTile = true;
 
-  // Center the START tile on screen if it's not fully visible
-  const adjHpos = tile.visualAdjustedHpos ?? tile.hpos;
-  const tileHeight = getTileEffectiveHeight(tile);
-  const tileTop = starthpos - adjHpos - tileHeight;
-  const tileBottom = starthpos - adjHpos;
-
-  // Check if tile (or head of long tile) is fully visible on-screen
-  // Using the same visibility check as the rest of the game: screen spans from 0 to key
-  const isFullyVisible = tileBottom > 0 && tileTop < key;
-
-  if (!isFullyVisible) {
-    // Calculate new starthpos to center the tile, shifted down by 1 tile height
-    // Tile center in screen coordinates: starthpos - adjHpos - tileHeight/2
-    // Screen center shifted down by 1: starthpos - (key-1)/2 - 1
-    // We want tile center = screen center shifted down by 1
-    // So: starthpos - adjHpos - tileHeight/2 = starthpos - (key-1)/2 - 1
-    // This simplifies to: adjHpos + tileHeight/2 = (key-1)/2 + 1
-    // So: starthpos = adjHpos + tileHeight/2 + (key-1)/2 + 1
-    starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
-    classicScrollTarget = starthpos;
-  }
+  // Push tile (or head of long tile / combo tile) on-screen if partially off-screen
+  ensureStartTileVisible(tile);
 }
 
 function continueFromPause() {
@@ -5674,15 +5796,6 @@ function continueFromPause() {
 
     if (lowestUntapped && lowestUntapped.isStartTile) {
       resetTileForResume(lowestUntapped);
-      const adjHpos = lowestUntapped.visualAdjustedHpos ?? lowestUntapped.hpos;
-      const tileHeight = getTileEffectiveHeight(lowestUntapped);
-      const tileTop = starthpos - adjHpos - tileHeight;
-      const tileBottom = starthpos - adjHpos;
-      const isFullyVisible = tileBottom > 0 && tileTop < key;
-      if (!isFullyVisible) {
-        starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
-        classicScrollTarget = starthpos;
-      }
     }
   }
   pausedWasStarted = false;
@@ -5776,29 +5889,16 @@ function togglePause() {
 
       // Calculate score based on completed height, same as normal release
       const completedHeight = Math.max(0, heldLongTile.playing - (heldLongTile.tapPlaying || 0));
-      currentScore += Math.max(1, Math.ceil(completedHeight)); if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; incrementClassHitTiles(heldLongTile); }
+      const scoreAdded = Math.max(1, Math.ceil(completedHeight));
+      currentScore += scoreAdded;
+      if (isClassMode && !heldLongTile.classHitCounted) { heldLongTile.classHitCounted = true; incrementClassHitTiles(heldLongTile); }
     }
 
     const nearestUntapped = getLowestManualTile();
-    if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1 && getTileBottom(nearestUntapped) >= 0) {
+    if (nearestUntapped && nearestUntapped.type !== 1 && nearestUntapped.hpos !== -1) {
       resetTileForResume(nearestUntapped);
       nearestUntapped.isStartTile = true;
       nearestUntapped.isResumeStartTile = true;
-
-      // Center the START tile on screen if it's not fully visible
-      const adjHpos = nearestUntapped.visualAdjustedHpos ?? nearestUntapped.hpos;
-      const tileHeight = getTileEffectiveHeight(nearestUntapped);
-      const tileTop = starthpos - adjHpos - tileHeight;
-      const tileBottom = starthpos - adjHpos;
-
-      // Check if tile (or head of long tile) is fully visible on-screen
-      const isFullyVisible = tileBottom > 0 && tileTop < key;
-
-      if (!isFullyVisible) {
-        // Calculate new starthpos to center the tile, shifted down by 1 tile height
-        starthpos = adjHpos + tileHeight / 2 + (key - 1) / 2 + 1;
-        classicScrollTarget = starthpos;
-      }
     }
   } else {
     tiles.forEach((tile) => {
@@ -5975,6 +6075,7 @@ function initializeClassicMode() {
   classicTappedTiles = 0;
   classicCurrentSongIndex = 0;
   classicLoadFailCount = 0;
+  classicIsLoadingNextSong = false;
   classicScrollTarget = key - 2;
 
   // Create shuffled queue of Classic1-13
@@ -5994,7 +6095,80 @@ function initializeClassicMode() {
   }
 }
 
+function appendClassicSongObject(data, label) {
+  let baseBpm = data.baseBpm || 120;
+  const musics = Array.isArray(data.musics) ? [...data.musics].sort((a, b) => a.id - b.id) : [];
+  if (!musics.length) return;
+  const firstSectionMusic = musics[0];
+  let baseBeats = firstSectionMusic?.baseBeats || 0.5;
+
+  for (const music of musics) {
+    erm.part = music.id;
+    erm.track = 0;
+    const base = strToTiles(music.scores[0]);
+    for (let j = 1; j < music.scores.length; j++) {
+      let baseDur = 0;
+      let baseIdx = 0;
+      let branchDur = 0;
+      let branchIdx = 0;
+      erm.track = j;
+      const branch = strToTiles(music.scores[j]);
+      while (baseIdx < base.length && branchIdx < branch.length) {
+        if (branchDur < baseDur + base[baseIdx].len) {
+          if (branch[branchIdx].notes[0]) {
+            base[baseIdx].notes.push({
+              note: branch[branchIdx].notes[0].note,
+              start: branchDur - baseDur,
+              len: branch[branchIdx].notes[0].len
+            });
+          }
+          branchDur += branch[branchIdx++].len;
+        } else {
+          baseDur += base[baseIdx++].len;
+        }
+      }
+    }
+
+    const sectionBaseBeats = music.baseBeats || baseBeats || 0.5;
+    const sectionBpm = music.bpm != null ? music.bpm : baseBpm;
+    const tileLengthBaseBeats = sectionBaseBeats;
+    const minTileLen = sectionBaseBeats;
+    const scalingFactor = tileLengthBaseBeats / minTileLen;
+
+    const realscore = [];
+    for (const tile of base) {
+      if (tile.type) {
+        const hlenValue = (tile.len / tileLengthBaseBeats) * scalingFactor;
+        realscore.push({
+          type: 2,
+          scores: [tile.notes],
+          hlen: hlenValue
+        });
+      } else if (realscore.length) {
+        realscore[realscore.length - 1].scores.push(tile.notes);
+        realscore[realscore.length - 1].hlen += (tile.len / tileLengthBaseBeats) * scalingFactor;
+      }
+    }
+
+    sheet.push(realscore);
+    if (music.bpm != null) {
+      baseBpm = music.bpm;
+      baseBeats = music.baseBeats;
+    }
+    info.push({
+      bpm: Math.trunc(sectionBpm / sectionBaseBeats * sectionBaseBeats),
+      beats: sectionBaseBeats,
+      id: music.id,
+      isExplicitBreak: music.isExplicitBreak || false,
+      breakDurationSeconds: music.breakDurationSeconds || 3
+    });
+  }
+}
+
+let classicIsLoadingNextSong = false;
+
 function loadNextClassicSong() {
+  if (classicIsLoadingNextSong) return;
   // Guard: stop retrying if we've failed every song in the current queue rotation
   if (classicLoadFailCount >= classicSongQueue.length) {
     console.error('All classic songs failed to load. Offline with no cache?');
@@ -6003,7 +6177,7 @@ function loadNextClassicSong() {
   }
 
   if (classicCurrentSongIndex >= classicSongQueue.length) {
-    // Reshuffle and start over
+    // Reshuffle and start over endlessly
     classicCurrentSongIndex = 0;
     for (let i = classicSongQueue.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -6013,6 +6187,7 @@ function loadNextClassicSong() {
 
   const songName = classicSongQueue[classicCurrentSongIndex];
   classicCurrentSongIndex++;
+  classicIsLoadingNextSong = true;
 
   // Load the song JSON directly
   fetch(`song/${songName}.json`)
@@ -6022,11 +6197,17 @@ function loadNextClassicSong() {
     })
     .then(data => {
       classicLoadFailCount = 0; // reset on success
-      loadSongObject(data, songName);
+      classicIsLoadingNextSong = false;
+      if (!isGameLoaded) {
+        loadSongObject(data, songName);
+      } else {
+        appendClassicSongObject(data, songName);
+      }
     })
     .catch(err => {
       console.error('Failed to load classic song:', songName, err);
       classicLoadFailCount++;
+      classicIsLoadingNextSong = false;
       loadNextClassicSong(); // skip to next, bounded by guard above
     });
 }
@@ -8252,7 +8433,7 @@ function renderClassScreen() {
     `;
     item.onclick = () => {
       if (isPlayInProgress) return;
-      if (!spendLifeCost(1)) return;
+      if (!spendLifeCost(4)) return;
 
       isPlayInProgress = true;
       animateLifeSpendFromTopBar();

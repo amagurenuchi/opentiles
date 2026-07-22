@@ -362,25 +362,27 @@ body {
 #challenges-screen,
 #home-screen,
 #results-screen,
-#gameover-screen,
-#settings-screen {
+#gameover-screen {
   padding-top: var(--top-bar-offset);
 }
 
 /* Reserve space above the shared bottom dock on tab screens */
 #home-screen,
 #song-list-screen,
-#challenges-screen,
-#settings-screen {
+#challenges-screen {
   padding-bottom: var(--dock-offset);
   box-sizing: border-box;
 }
 
 #home-content-container,
 #song-list-container,
-#challenges-container,
-#settings-screen .settings-scroll-panel {
+#challenges-container {
   padding-bottom: 1rem;
+}
+
+#settings-screen .settings-scroll-panel {
+  padding-top: var(--top-bar-offset);
+  padding-bottom: calc(var(--dock-offset) + 1rem);
 }
 
 #song-list-container {

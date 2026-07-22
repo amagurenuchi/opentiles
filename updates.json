@@ -1,6 +1,16 @@
 {
   "updates": [
     {
+      "version": "v1.0.2",
+      "date": "2026-07-23",
+      "changes": [
+        "Changed the classic mode life cost to 4",
+        "Fixed a bug that was making the game freeze for a bit when a Class run is finished",
+        "Made the game slightly closer to PT2",
+        "and something else i forgot"
+      ]
+    },
+    {
       "version": "v1.0.1",
       "date": "2026-07-22",
       "changes": [

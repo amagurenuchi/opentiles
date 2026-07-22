@@ -217,6 +217,14 @@ html.dark-mode #welcome-actions {
   background: rgba(23, 32, 51, 0.94) !important;
 }
 
+html.dark-mode .song-of-the-day-card {
+  background: linear-gradient(135deg, #312e81 0%, #4c1d95 100%) !important;
+}
+
+html.dark-mode .song-of-the-day-card h3 {
+  color: #f3f4f6 !important;
+}
+
 html.dark-mode #welcome-disc {
   background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
 }
@@ -242,8 +250,9 @@ html.dark-mode .class-item.bg-grey {
 }
 
 html.dark-mode .revive-modal-title,
-html.dark-mode .revive-status-value {
-  color: #f3f4f6;
+html.dark-mode .revive-status-value,
+html.dark-mode .revive-modal-ring-text {
+  color: #ffffff;
 }
 
 html.dark-mode .revive-modal-subtitle,
@@ -632,25 +641,27 @@ html.dark-mode .pause-screen-title {
 #challenges-screen,
 #home-screen,
 #results-screen,
-#gameover-screen,
-#settings-screen {
+#gameover-screen {
   padding-top: var(--top-bar-offset);
 }
 
 /* Reserve space above the shared bottom dock on tab screens */
 #home-screen,
 #song-list-screen,
-#challenges-screen,
-#settings-screen {
+#challenges-screen {
   padding-bottom: var(--dock-offset);
   box-sizing: border-box;
 }
 
 #home-content-container,
 #song-list-container,
-#challenges-container,
-#settings-screen .settings-scroll-panel {
+#challenges-container {
   padding-bottom: 1rem;
+}
+
+#settings-screen .settings-scroll-panel {
+  padding-top: var(--top-bar-offset);
+  padding-bottom: calc(var(--dock-offset) + 1rem);
 }
 
 #song-list-container {
@@ -2083,6 +2094,48 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
   transform: translate(-50%, -50%);
   animation: combo-plus-one-float 0.35s ease-out forwards;
 }
+
+.long-tile-score-popup {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  transform: translate(-50%, -100%);
+  font-family: var(--font-game);
+  font-weight: 700;
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  line-height: 1;
+  color: #ef4444;
+  text-shadow: none;
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+  animation: long-tile-score-popup-fade 0.5s ease-out forwards;
+}
+
+@keyframes long-tile-score-popup-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -100%) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1.05);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -100%) scale(0.95);
+  }
+}
+
+
 
 @keyframes combo-plus-one-float {
   0% {

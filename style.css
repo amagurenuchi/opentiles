@@ -560,6 +560,22 @@ html.dark-mode .pause-screen-title {
   text-overflow: ellipsis;
 }
 
+.profile-display-trigger {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.profile-display-trigger:hover {
+  filter: brightness(1.03);
+}
+
+.profile-display-trigger:active {
+  transform: scale(0.98);
+}
+
 .screen-top-bar-profile-inner {
   width: 100%;
   display: flex;
@@ -1787,6 +1803,37 @@ html.dark-mode .pause-screen-title {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.keyboard-nav-selected {
+  position: relative;
+  border-radius: 1.5rem;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.95), 0 14px 28px -18px rgba(37, 99, 235, 0.7);
+  transform: translateY(-1px);
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+
+.keyboard-nav-selected.song-card,
+.keyboard-nav-selected.class-item {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.96));
+}
+
+.keyboard-nav-selected.settings-pill,
+.keyboard-nav-selected#welcome-play-btn,
+.keyboard-nav-selected.results-dock-center {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(219, 234, 254, 0.98));
+}
+
+html.dark-mode .keyboard-nav-selected {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.95), 0 14px 28px -18px rgba(30, 64, 175, 0.72);
+}
+
+html.dark-mode .keyboard-nav-selected.song-card,
+html.dark-mode .keyboard-nav-selected.class-item,
+html.dark-mode .keyboard-nav-selected.settings-pill,
+html.dark-mode .keyboard-nav-selected#welcome-play-btn,
+html.dark-mode .keyboard-nav-selected.results-dock-center {
+  background: rgba(30, 41, 59, 0.96) !important;
+}
+
 /* Modal backdrop */
 #keybinds-modal-backdrop,
 #speed-modal-backdrop,
@@ -2711,6 +2758,14 @@ html.dark-mode .pause-screen-title {
   box-shadow: 0 10px 18px -8px rgba(15, 23, 42, 0.22);
 }
 
+.dock-button.keyboard-tab-selected>div {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.9), 0 10px 18px -8px rgba(15, 23, 42, 0.24);
+}
+
+html.dark-mode .dock-button.keyboard-tab-selected>div {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.92), 0 10px 18px -8px rgba(15, 23, 42, 0.32);
+}
+
 .dock-button.selected>div svg {
   color: white !important;
 }
@@ -2915,17 +2970,24 @@ html.dark-mode .pause-screen-title {
 .heart-button svg {
   width: 24px;
   height: 24px;
-  transition: fill 0.2s;
+  transition: fill 0.2s, stroke 0.2s;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .heart-button.favourite svg {
   fill: #ef4444;
   color: #ef4444;
+  stroke: #ef4444;
 }
 
 .heart-button:not(.favourite) svg {
   fill: none;
   color: #9ca3af;
+  stroke: currentColor;
 }
 
 /* Home screen dock button selected state override */

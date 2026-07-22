@@ -2526,17 +2526,24 @@ body {
 .heart-button svg {
   width: 24px;
   height: 24px;
-  transition: fill 0.2s;
+  transition: fill 0.2s, stroke 0.2s;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .heart-button.favourite svg {
   fill: #ef4444;
   color: #ef4444;
+  stroke: #ef4444;
 }
 
 .heart-button:not(.favourite) svg {
   fill: none;
   color: #9ca3af;
+  stroke: currentColor;
 }
 
 /* Home screen dock button selected state override */
@@ -2750,4 +2757,3 @@ body {
     height: auto;
   }
 }
-

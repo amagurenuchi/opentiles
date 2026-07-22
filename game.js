@@ -86,6 +86,25 @@ const lifeTimerEls = [
 let currentDockTab = 'home';
 let previousDockTabBeforeSettings = 'home';
 
+function t(key, fallback = key) {
+  if (typeof i18n !== 'undefined' && i18n && typeof i18n.t === 'function') {
+    return i18n.t(key, fallback);
+  }
+  return fallback;
+}
+
+function getLapsLabel(count) {
+  return count === 1 ? t('label_lap', 'Lap') : t('label_laps', 'Laps');
+}
+
+function getClassificationText() {
+  const level = classHighestCleared || 0;
+  if (level <= 0) return t('label_class_none', 'Class: None');
+  if (level === 11) return t('label_class_kaidan', 'Class: Kaidan');
+  const suffix = level === 1 ? 'st' : level === 2 ? 'nd' : level === 3 ? 'rd' : 'th';
+  return `${t('label_class_prefix', 'Class:')} ${level}${suffix} ${t('label_dan', 'Dan')}`;
+}
+
 // Player name is stored locally
 const erm = { part: 0, track: 0, index: 0 };
 const table = {};
@@ -593,7 +612,7 @@ function updateReviveModalProgress() {
 
       if (score >= bestScore) {
         // Already beating (or matching) the best score — no target to chase
-        progressHtml = '<div class="revive-progress-label">Revive now</div>';
+        progressHtml = `<div class="revive-progress-label">${t('msg_revive_now', 'Revive now')}</div>`;
       } else {
         const gap = bestScore - score;
         progressHtml = `
@@ -602,7 +621,7 @@ function updateReviveModalProgress() {
             <img src="gameImage/crown.png" class="revive-progress-icon filled" alt="crown">
             <img src="gameImage/crown.png" class="revive-progress-icon filled" alt="crown">
           </div>
-          <div class="revive-progress-label">${gap} more points to beat your best score</div>`;
+          <div class="revive-progress-label">${gap} ${t('msg_more_points_to_beat_your_best_score', 'more points to beat your best score')}</div>`;
       }
     } else {
       // Determine the minimum level needed to reach the next award tier
@@ -1455,15 +1474,15 @@ function updateLoadingProgress(stage, current, total) {
   }
 
   const stageNames = {
-    'sprites': 'Loading sprites...',
-    'csv': 'Loading song data...',
-    'audio': 'Preparing audio...',
-    'complete': 'Ready!'
+    sprites: t('msg_loading_sprites', 'Loading sprites...'),
+    csv: t('msg_loading_song_data', 'Loading song data...'),
+    audio: t('msg_preparing_audio', 'Preparing audio...'),
+    complete: t('msg_ready', 'Ready!')
   };
 
-  loadingStatus.textContent = stageNames[stage] || `Loading ${stage}...`;
+  loadingStatus.textContent = stageNames[stage] || `${t('msg_loading_generic', 'Loading')} ${stage}...`;
   if (stage === 'complete' && loadingSubstatus) {
-    loadingSubstatus.textContent = 'Initialization complete!';
+    loadingSubstatus.textContent = t('msg_initialization_complete', 'Initialization complete!');
   }
 }
 
@@ -1611,11 +1630,11 @@ async function preloadAssets() {
     if (loadingProgress) loadingProgress.style.width = `${percentage}%`;
     if (loadingPercentage) loadingPercentage.textContent = `${percentage}%`;
 
-    let typeLabel = 'Loading assets...';
-    if (type === 'sprite' || type === 'special_image') typeLabel = 'Loading graphics...';
-    else if (type === 'audio_effect') typeLabel = 'Loading audio effects...';
-    else if (type === 'note') typeLabel = 'Loading piano keys...';
-    else if (type === 'song_json') typeLabel = 'Caching song data...';
+    let typeLabel = t('msg_loading_assets', 'Loading assets...');
+    if (type === 'sprite' || type === 'special_image') typeLabel = t('msg_loading_graphics', 'Loading graphics...');
+    else if (type === 'audio_effect') typeLabel = t('msg_loading_audio_effects', 'Loading audio effects...');
+    else if (type === 'note') typeLabel = t('msg_loading_piano_keys', 'Loading piano keys...');
+    else if (type === 'song_json') typeLabel = t('msg_caching_song_data', 'Caching song data...');
 
     if (loadingStatus) loadingStatus.textContent = typeLabel;
     if (loadingSubstatus) {
@@ -1826,7 +1845,7 @@ function parseMusicCsv(csvText) {
 
 function populateMusicSelect() {
   if (!pt2MusicSelect) return;
-  pt2MusicSelect.innerHTML = '<option value="">Select a song...</option>';
+  pt2MusicSelect.innerHTML = `<option value="">${t('placeholder_select_song', 'Select a song...')}</option>`;
   musicCsvData.forEach((song) => {
     const firstSection = song.sections[1] || Object.values(song.sections)[0];
     const option = document.createElement('option');
@@ -1850,14 +1869,14 @@ function createCustomSongCard() {
         <div class="rank-number" style="color: #e879f9;">0</div>
       </div>
       <div class="song-card-content">
-        <div class="song-card-title" style="color: #e879f9;">Custom Song</div>
+        <div class="song-card-title" style="color: #e879f9;">${t('label_custom_song', 'Custom Song')}</div>
         <div class="song-card-artist">${customSongLabel}</div>
         <div class="song-card-progress"></div>
       </div>
       <div class="song-card-action flex items-center gap-2">
-        <button class="btn-bpm">BPM</button>
-        <button class="btn-load">Load</button>
-        <button class="btn-play">Play</button>
+        <button class="btn-bpm">${t('btn_bpm', 'BPM')}</button>
+        <button class="btn-load">${t('btn_load', 'Load')}</button>
+        <button class="btn-play">${t('btn_play', 'Play')}</button>
       </div>
     `;
 
@@ -1984,14 +2003,14 @@ function createCustomSongCard() {
         <div class="rank-number" style="color: #e879f9;">0</div>
       </div>
       <div class="song-card-content">
-        <div class="song-card-title" style="color: #a78bfa;">Upload Custom Song</div>
-        <div class="song-card-artist">No song loaded</div>
+        <div class="song-card-title" style="color: #a78bfa;">${t('msg_upload_custom_song', 'Upload Custom Song')}</div>
+        <div class="song-card-artist">${t('msg_no_song_loaded', 'No song loaded')}</div>
         <div class="song-card-progress"></div>
       </div>
       <div class="song-card-action flex items-center gap-2">
-        <button class="btn-bpm" disabled style="opacity: 0.5; cursor: not-allowed;">BPM</button>
-        <button class="btn-load">Load</button>
-        <button class="btn-play" disabled style="opacity: 0.5; cursor: not-allowed;">Play</button>
+        <button class="btn-bpm" disabled style="opacity: 0.5; cursor: not-allowed;">${t('btn_bpm', 'BPM')}</button>
+        <button class="btn-load">${t('btn_load', 'Load')}</button>
+        <button class="btn-play" disabled style="opacity: 0.5; cursor: not-allowed;">${t('btn_play', 'Play')}</button>
       </div>
     `;
 
@@ -2047,7 +2066,7 @@ function createSongCard(song, isFavouriteView = false) {
           <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3c1.806 0 3.447.886 4.312 2.26.865-1.374 2.506-2.26 4.313-2.26 2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 10.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
         </svg>
       </button>
-      <button class="btn-play">Play</button>
+      <button class="btn-play">${t('btn_play', 'Play')}</button>
     </div>
   `;
 
@@ -2075,7 +2094,7 @@ function createSongCard(song, isFavouriteView = false) {
       if (!favouriteSongs.has(String(song.mid))) {
         card.remove();
         if (favouriteSongsContainer.children.length === 0) {
-          favouriteSongsContainer.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No favourite songs yet. Tap the heart on any song to add it here!</p>';
+          favouriteSongsContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${t('msg_no_favourites', 'No favourite songs yet. Tap the heart on any song to add it here!')}</p>`;
         }
       }
     }
@@ -2090,7 +2109,9 @@ function createChallengeCard(challengeData) {
     ? `opentile_classic_challenge_best_tiles_${challengeData.mid}`
     : `opentile_challenge_best_tps_${challengeData.mid}`;
   const storedBestScore = parseFloat(localStorage.getItem(bestScoreKey) || '0', 10);
-  const bestDisplayValue = isClassicChallenge ? `${Math.round(storedBestScore)} tiles` : `${storedBestScore.toFixed(3)} TPS`;
+  const bestDisplayValue = isClassicChallenge
+    ? `${Math.round(storedBestScore)} ${t('label_tiles', 'tiles')}`
+    : `${storedBestScore.toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
   const rewardState = shouldShowChallengeRewards(challengeData)
     ? (isClassicChallenge ? getClassicChallengeRewardStateFromTiles(storedBestScore) : getChallengeRewardStateFromTps(storedBestScore))
     : null;
@@ -2190,6 +2211,7 @@ function renderSongList(searchQuery = '') {
 
   // Sync top dock data across both tabs
   syncTopDockData();
+  queueKeyboardNavigationRefresh();
 }
 
 function renderChallenges() {
@@ -2208,6 +2230,7 @@ function renderChallenges() {
 
   // Sync top dock data
   syncTopDockData();
+  queueKeyboardNavigationRefresh();
 }
 
 async function loadMusicCsv() {
@@ -3227,9 +3250,9 @@ async function finishRun(showLibrary = false) {
       }
 
       if (classCourseCleared) {
-        await playClassAudio('Audio/NewBest');
+        playClassAudio('Audio/NewBest').catch(() => { });
       } else {
-        await playClassAudio('Audio/FailPage');
+        playClassAudio('Audio/FailPage').catch(() => { });
       }
     }
   }
@@ -3436,11 +3459,11 @@ async function finishRun(showLibrary = false) {
           if (lapsEl) {
             lapsEl.classList.remove('hidden');
             const lapCount = Math.max(1, songLoopCount + 1);
-            lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
+            lapsEl.textContent = `${lapCount} ${getLapsLabel(lapCount)}`;
           }
           if (subtextEl) {
             subtextEl.classList.remove('hidden');
-            subtextEl.textContent = 'TPS';
+            subtextEl.textContent = t('label_tps_unit', 'TPS');
           }
           const medalsEl = document.getElementById('results-medals');
           if (medalsEl) {
@@ -3452,7 +3475,7 @@ async function finishRun(showLibrary = false) {
           const averageTilesPerSecond = finalTiles / Math.max(1, classicTimerDuration || 30);
           if (tpsEl) {
             tpsEl.classList.remove('hidden');
-            tpsEl.textContent = `${averageTilesPerSecond.toFixed(2)} tiles/sec`;
+            tpsEl.textContent = `${averageTilesPerSecond.toFixed(2)} ${t('label_tiles_per_sec_full', 'tiles/sec')}`;
           }
           if (scoreEl) animateNumberTo(scoreEl, finalTiles, 300, 0);
           if (lapsEl) {
@@ -3471,13 +3494,13 @@ async function finishRun(showLibrary = false) {
         } else {
           if (tpsEl) {
             tpsEl.classList.remove('hidden');
-            tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} TPS`;
+            tpsEl.textContent = `${(currentBpm / currentBeats / 60).toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
           }
           if (scoreEl) animateNumberTo(scoreEl, Number(currentScore || 0), 300, 0);
           if (lapsEl) {
             lapsEl.classList.remove('hidden');
             const lapCount = Math.max(1, songLoopCount + 1);
-            lapsEl.textContent = `${lapCount} Lap${lapCount === 1 ? '' : 's'}`;
+            lapsEl.textContent = `${lapCount} ${getLapsLabel(lapCount)}`;
           }
           const numericScore = Number(currentScore || 0);
           const isNewBestScore = (() => {
@@ -3495,7 +3518,7 @@ async function finishRun(showLibrary = false) {
           if (subtextEl) {
             if (isNewBestScore) {
               subtextEl.classList.remove('hidden');
-              subtextEl.textContent = 'New Best!';
+              subtextEl.textContent = t('msg_new_best', 'New Best!');
             } else {
               subtextEl.classList.add('hidden');
               subtextEl.textContent = '';
@@ -3607,6 +3630,7 @@ async function finishRun(showLibrary = false) {
       homeScreen.classList.add('hidden');
 
       resultsScreen.classList.remove('hidden');
+      queueKeyboardNavigationRefresh({ scrollIntoView: true });
 
       // Ensure shared top bar is visible on results screen
       const sharedTopBar = document.getElementById('shared-top-bar');
@@ -3622,7 +3646,7 @@ async function finishRun(showLibrary = false) {
         if (favBtn) favBtn.classList.add('hidden');
       } else {
         if (backBtn) backBtn.classList.remove('hidden');
-        if (favBtn) favBtn.classList.remove('hidden');
+        if (favBtn) favBtn.classList.toggle('hidden', isChallengeMode);
       }
 
       if (backBtn) {
@@ -3807,7 +3831,7 @@ function failRun(failureType = 'miss', tile = null, colIdx = null) {
         requestAnimationFrame(scrollAnimation);
       } else {
         blinkTile(tile);
-        setTimeout(openOrFinish, 1000);
+        setTimeout(openOrFinish, 700);
       }
     }
     requestAnimationFrame(scrollAnimation);
@@ -5260,10 +5284,8 @@ function updateEngineFrame(now) {
     }
 
     // Complete Dan course when all tiles are cleared and sheet is exhausted.
-    // Guard with isStarted && !isPaused so finishRun (async) is invoked exactly
-    // once; otherwise the un-awaited completion re-fires every frame during the
-    // result audio await, spawning ~60 concurrent finishRun calls that overwrite
-    // the class results panel with the standard results screen.
+    // Guard with isStarted && !isPaused so finishRun is invoked exactly once;
+    // isStarted is cleared immediately before the 1s results delay.
     if (isStarted && !isPaused && tiles.length === 0 && currentSectionIndex >= sheet.length) {
       // Signal a successful clear BEFORE calling finishRun so that isClassMode
       // remains true inside finishRun and the class results panel is shown.
@@ -5276,7 +5298,9 @@ function updateEngineFrame(now) {
         }
       }
       classSongProgress = classCurrentData.songs.map(s => ({ name: s.customName, status: 'Pass', reached: true }));
-      finishRun(false);
+      isStarted = false;
+      isPaused = true;
+      setTimeout(() => finishRun(false), 1000);
       return;
     }
   }
@@ -5393,7 +5417,7 @@ function updateGameplayInfoBar() {
 
   if (gameplaySongLabel) {
     if (isChallengeMode) {
-      gameplaySongLabel.textContent = 'Challenge:';
+      gameplaySongLabel.textContent = t('label_challenge_prefix', 'Challenge:');
     } else {
       gameplaySongLabel.textContent = '';
     }
@@ -5419,9 +5443,9 @@ function updateGameplayInfoBar() {
 
   if (gameplayBestScore) {
     if (isChallengeMode && bestScore > 0) {
-      gameplayBestScore.textContent = `Best score: ${bestScore.toFixed(3)} TPS`;
+      gameplayBestScore.textContent = `${t('label_best_score_prefix', 'Best score:')} ${bestScore.toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
     } else if (isChallengeMode) {
-      gameplayBestScore.textContent = 'Best score: 0.000 TPS';
+      gameplayBestScore.textContent = `${t('label_best_score_prefix', 'Best score:')} 0.000 ${t('label_tps_unit', 'TPS')}`;
     } else {
       gameplayBestScore.textContent = String(Math.round(bestScore));
     }
@@ -6098,7 +6122,7 @@ function renderHomeScreen() {
   if (songToDisplay) {
     const localizedSongName = getLocalizedSongDisplayName(songToDisplay);
     welcomeSongTitle.textContent = `${songToDisplay.id}. ${localizedSongName}`;
-    welcomePlayBtn.textContent = i18n ? i18n.t('btn_play') : 'Play';
+    welcomePlayBtn.textContent = t('btn_play', 'Play');
     welcomePlayBtn.onclick = () => {
       if (isPlayInProgress) {
         return; // Prevent multiple play button presses
@@ -6108,15 +6132,15 @@ function renderHomeScreen() {
   } else {
     // Show "Loading songs..." if music data hasn't loaded yet
     if (musicCsvData.length === 0) {
-      welcomeSongTitle.textContent = 'Loading songs...';
+      welcomeSongTitle.textContent = t('msg_loading_songs', 'Loading songs...');
     } else if (!lastPlayedSong) {
       // Only show "No song played yet" if songs are loaded but none have been played
-      welcomeSongTitle.textContent = i18n ? i18n.t('msg_no_song_played') : 'No song played yet';
+      welcomeSongTitle.textContent = t('msg_no_song_played', 'No song played yet');
     } else {
       // Last played song exists but wasn't found in data (maybe deleted)
-      welcomeSongTitle.textContent = 'Song not found';
+      welcomeSongTitle.textContent = t('msg_song_not_found', 'Song not found');
     }
-    welcomePlayBtn.textContent = i18n ? i18n.t('btn_play') : 'Play';
+    welcomePlayBtn.textContent = t('btn_play', 'Play');
     welcomePlayBtn.onclick = null;
   }
 
@@ -6199,7 +6223,7 @@ function renderFavouriteSongs() {
   const favouriteSongsList = musicCsvData.filter(song => favouriteSongs.has(String(song.mid)));
 
   if (favouriteSongsList.length === 0) {
-    const noFavouritesMsg = i18n ? i18n.t('msg_no_favourites') : 'No favourite songs yet. Tap the heart on any song to add it here!';
+    const noFavouritesMsg = t('msg_no_favourites', 'No favourite songs yet. Tap the heart on any song to add it here!');
     favouriteSongsContainer.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${noFavouritesMsg}</p>`;
     return;
   }
@@ -6209,6 +6233,8 @@ function renderFavouriteSongs() {
     const songCard = createSongCard(song, true);
     favouriteSongsContainer.appendChild(songCard);
   });
+
+  queueKeyboardNavigationRefresh();
 }
 
 function render700PlusSongs() {
@@ -6230,6 +6256,8 @@ function render700PlusSongs() {
     const songCard = createSongCard(song, true);
     songs700PlusContainer.appendChild(songCard);
   });
+
+  queueKeyboardNavigationRefresh();
 }
 
 // Song of the Day functions
@@ -6416,7 +6444,7 @@ function renderSongOfTheDay() {
 
   const dailySong = getDailySong();
   if (!dailySong) {
-    container.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${i18n ? i18n.t('msg_no_song_of_the_day') : 'No Song of the Day available.'}</p>`;
+    container.innerHTML = `<p class="text-gray-500 text-xs text-center py-4">${t('msg_no_song_of_the_day', 'No Song of the Day available.')}</p>`;
     return;
   }
 
@@ -6426,6 +6454,8 @@ function renderSongOfTheDay() {
   container.innerHTML = '';
   const songCard = createSongOfTheDayCard(dailySong);
   container.appendChild(songCard);
+
+  queueKeyboardNavigationRefresh();
 }
 
 async function renderLatestUpdates() {
@@ -6440,7 +6470,7 @@ async function renderLatestUpdates() {
     const data = await response.json();
 
     if (!data.updates || data.updates.length === 0) {
-      updatesContainer.innerHTML = '<p class="text-gray-500 text-xs">No updates available.</p>';
+      updatesContainer.innerHTML = `<p class="text-gray-500 text-xs">${t('msg_no_updates_available', 'No updates available.')}</p>`;
       return;
     }
 
@@ -6467,7 +6497,7 @@ async function renderLatestUpdates() {
     updatesContainer.innerHTML = updatesHtml;
   } catch (error) {
     console.error('Error loading updates:', error);
-    updatesContainer.innerHTML = '<p class="text-gray-500 text-xs">Failed to load updates.</p>';
+    updatesContainer.innerHTML = `<p class="text-gray-500 text-xs">${t('msg_failed_to_load_updates', 'Failed to load updates.')}</p>`;
   }
 }
 
@@ -6534,6 +6564,212 @@ function setDockView(tab) {
   updatePauseButtonVisibility();
 
   syncTopDockData();
+  queueKeyboardNavigationRefresh();
+}
+
+const keyboardTabOrder = ['home', 'music', 'challenges', 'class', 'settings'];
+const keyboardSelectionByScope = new Map();
+let keyboardNavigationRefreshHandle = null;
+let lastNavigationInputMode = 'keyboard';
+
+function isElementVisible(element) {
+  return Boolean(
+    element &&
+    !element.classList.contains('hidden') &&
+    element.getClientRects &&
+    element.getClientRects().length > 0
+  );
+}
+
+function isAnyNavigationBlockingModalOpen() {
+  const blockingIds = [
+    'keybinds-modal',
+    'speed-modal',
+    'language-modal',
+    'profile-modal',
+    'credits-modal',
+    'privacy-modal',
+    'player-stats-modal',
+    'bpm-modal'
+  ];
+
+  if (lifeModal && !lifeModal.classList.contains('hidden')) return true;
+  if (pauseScreen && !pauseScreen.classList.contains('hidden')) return true;
+
+  return blockingIds.some((id) => {
+    const element = document.getElementById(id);
+    return element && !element.classList.contains('hidden');
+  });
+}
+
+function getActiveKeyboardScope() {
+  const resultsScreen = document.getElementById('results-screen');
+  if (resultsScreen && !resultsScreen.classList.contains('hidden')) return 'results';
+  if (settingsScreen && !settingsScreen.classList.contains('hidden')) return 'settings';
+  if (songListScreen && !songListScreen.classList.contains('hidden')) return 'music';
+  if (challengesScreen && !challengesScreen.classList.contains('hidden')) return 'challenges';
+  if (classScreen && !classScreen.classList.contains('hidden')) return 'class';
+  if (homeScreen && !homeScreen.classList.contains('hidden')) return 'home';
+  return null;
+}
+
+function getKeyboardEntries(scope) {
+  const selectors = {
+    home: [
+      '#welcome-play-btn',
+      '#song-of-the-day-container .song-card',
+      '#favourite-songs-container .song-card',
+      '[id="700-plus-songs-container"] .song-card'
+    ],
+    music: ['#song-list-container .song-card'],
+    challenges: ['#challenges-container .song-card'],
+    class: ['#class-list-container .class-item'],
+    settings: ['#settings-screen .settings-pill'],
+    results: ['#results-back-btn:not(.hidden)']
+  };
+
+  return (selectors[scope] || [])
+    .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+    .filter(isElementVisible);
+}
+
+function getKeyboardScrollContainer(scope) {
+  if (scope === 'home') return document.getElementById('home-content-container');
+  if (scope === 'music') return document.getElementById('song-list-container');
+  if (scope === 'challenges') return document.getElementById('challenges-container');
+  if (scope === 'class') return document.getElementById('class-list-container');
+  if (scope === 'settings') return document.querySelector('#settings-screen .settings-scroll-panel');
+  if (scope === 'results') return document.querySelector('#results-screen .overflow-y-auto') || document.getElementById('results-screen');
+  return null;
+}
+
+function updateKeyboardTabHighlight(scope) {
+  document.querySelectorAll('.dock-button').forEach((button) => {
+    button.classList.remove('keyboard-tab-selected');
+  });
+
+  if (!scope || scope === 'results' || isAnyNavigationBlockingModalOpen() || lastNavigationInputMode !== 'keyboard') {
+    return;
+  }
+
+  const activeDockButton = document.getElementById(`dock-${currentDockTab}-btn`);
+  activeDockButton?.classList.add('keyboard-tab-selected');
+}
+
+function syncKeyboardSelection(options = {}) {
+  const { scrollIntoView = false } = options;
+  document.querySelectorAll('.keyboard-nav-selected').forEach((element) => {
+    element.classList.remove('keyboard-nav-selected');
+  });
+
+  const scope = getActiveKeyboardScope();
+  updateKeyboardTabHighlight(scope);
+  if (!scope || lastNavigationInputMode !== 'keyboard') return;
+
+  const entries = getKeyboardEntries(scope);
+  if (!entries.length) return;
+
+  const rawIndex = keyboardSelectionByScope.get(scope) ?? 0;
+  const safeIndex = Math.max(0, Math.min(rawIndex, entries.length - 1));
+  keyboardSelectionByScope.set(scope, safeIndex);
+
+  const selectedEntry = entries[safeIndex];
+  if (!selectedEntry) return;
+
+  selectedEntry.classList.add('keyboard-nav-selected');
+  if (scrollIntoView) {
+    selectedEntry.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function queueKeyboardNavigationRefresh(options = {}) {
+  const { scrollIntoView = false } = options;
+  if (keyboardNavigationRefreshHandle) {
+    cancelAnimationFrame(keyboardNavigationRefreshHandle);
+  }
+
+  keyboardNavigationRefreshHandle = requestAnimationFrame(() => {
+    keyboardNavigationRefreshHandle = null;
+    syncKeyboardSelection({ scrollIntoView });
+  });
+}
+
+function setNavigationInputMode(mode) {
+  if (lastNavigationInputMode === mode) return;
+  lastNavigationInputMode = mode;
+  queueKeyboardNavigationRefresh();
+}
+
+function moveKeyboardSelection(step) {
+  const scope = getActiveKeyboardScope();
+  if (!scope) return false;
+
+  const entries = getKeyboardEntries(scope);
+  if (!entries.length) return false;
+
+  const currentIndex = keyboardSelectionByScope.get(scope) ?? 0;
+  const nextIndex = Math.max(0, Math.min(currentIndex + step, entries.length - 1));
+  keyboardSelectionByScope.set(scope, nextIndex);
+  syncKeyboardSelection({ scrollIntoView: true });
+  return nextIndex !== currentIndex;
+}
+
+function scrollKeyboardContainer(step) {
+  const scope = getActiveKeyboardScope();
+  if (!scope) return false;
+
+  const container = getKeyboardScrollContainer(scope);
+  if (!container) return false;
+
+  const distance = Math.max(120, Math.round(container.clientHeight * 0.7)) * step;
+  container.scrollBy({ top: distance, behavior: 'smooth' });
+  return true;
+}
+
+function activateKeyboardSelection() {
+  const scope = getActiveKeyboardScope();
+  if (!scope) return false;
+
+  if (scope === 'results') {
+    const retryButton = document.getElementById('results-back-btn');
+    if (retryButton && !retryButton.classList.contains('hidden')) {
+      retryButton.click();
+      return true;
+    }
+    return false;
+  }
+
+  const entries = getKeyboardEntries(scope);
+  if (!entries.length) return false;
+
+  const currentIndex = Math.max(0, Math.min(keyboardSelectionByScope.get(scope) ?? 0, entries.length - 1));
+  const selectedEntry = entries[currentIndex];
+  if (!selectedEntry) return false;
+
+  if (selectedEntry.matches('.song-card')) {
+    const playButton = selectedEntry.querySelector('.btn-play:not([disabled])');
+    if (playButton) {
+      playButton.click();
+      return true;
+    }
+  }
+
+  selectedEntry.click();
+  return true;
+}
+
+function moveDockTab(step) {
+  const scope = getActiveKeyboardScope();
+  if (!scope || scope === 'results') return false;
+
+  const currentIndex = Math.max(0, keyboardTabOrder.indexOf(currentDockTab));
+  const nextIndex = (currentIndex + step + keyboardTabOrder.length) % keyboardTabOrder.length;
+  const nextTab = keyboardTabOrder[nextIndex];
+  if (!nextTab) return false;
+
+  setDockView(nextTab);
+  playMenuLoopCue();
+  return true;
 }
 
 function showHomeScreen() {
@@ -6592,12 +6828,7 @@ function syncTopDockData() {
   // Update classification display
   const classHighestClearedEl = document.getElementById('class-highest-cleared');
   if (classHighestClearedEl) {
-    let clearedText = "None";
-    if (classHighestCleared > 0) {
-      if (classHighestCleared === 11) clearedText = "Kaidan";
-      else clearedText = classHighestCleared + (classHighestCleared === 1 ? "st" : classHighestCleared === 2 ? "nd" : classHighestCleared === 3 ? "rd" : "th") + " Dan";
-    }
-    classHighestClearedEl.textContent = "Class: " + clearedText;
+    classHighestClearedEl.textContent = getClassificationText();
   }
 
   updateLifeUi();
@@ -6624,6 +6855,8 @@ function initUi() {
   if (sharedTopBar) sharedTopBar.classList.remove('hidden');
   const sharedDock = document.getElementById('shared-dock');
   if (sharedDock) sharedDock.classList.remove('hidden');
+
+  queueKeyboardNavigationRefresh();
 }
 
 async function initializeGame() {
@@ -6633,11 +6866,11 @@ async function initializeGame() {
   }
 
   try {
-    const loadingStatus = document.getElementById('loading-status');
-    const loadingSubstatus = document.getElementById('loading-substatus');
+  const loadingStatus = document.getElementById('loading-status');
+  const loadingSubstatus = document.getElementById('loading-substatus');
 
-    if (loadingStatus) loadingStatus.textContent = 'Loading database...';
-    if (loadingSubstatus) loadingSubstatus.textContent = 'Fetching game CSV configurations';
+    if (loadingStatus) loadingStatus.textContent = t('msg_loading_database', 'Loading database...');
+    if (loadingSubstatus) loadingSubstatus.textContent = t('msg_fetching_game_csv_configurations', 'Fetching game CSV configurations');
 
     // 1. First, load music CSV and translations (required to parse unique songs)
     await loadMusicCsv();
@@ -7043,7 +7276,7 @@ document.getElementById('player-stats-modal-backdrop')?.addEventListener('click'
 });
 
 document.getElementById('stats-player-name')?.addEventListener('click', () => {
-  const newName = prompt('Enter your player name:', playerName);
+  const newName = prompt(t('msg_enter_player_name', 'Enter your player name:'), playerName);
   if (newName && newName.trim()) {
     playerName = newName.trim();
     localStorage.setItem('opentile_playername', playerName);
@@ -7126,7 +7359,7 @@ document.getElementById('restart-btn')?.addEventListener('click', () => {
   if (selectedSongData) {
     startSongTransition(selectedSongData);
   } else if (lastLoadedJsonText) {
-    startSongTextTransition(lastLoadedJsonText, lastLoadedLabel || 'Reloaded song');
+    startSongTextTransition(lastLoadedJsonText, lastLoadedLabel || t('msg_reloaded_song', 'Reloaded song'));
   }
 });
 
@@ -7274,7 +7507,7 @@ function openPlayerStatsModal() {
       .sort((a, b) => b.tps - a.tps);
 
     if (plays.length === 0) {
-      bestPlayList.innerHTML = `<div class="text-xs text-gray-400 text-center py-2" data-i18n="msg_no_song_played">No song played yet</div>`;
+      bestPlayList.innerHTML = `<div class="text-xs text-gray-400 text-center py-2" data-i18n="msg_no_song_played">${t('msg_no_song_played', 'No song played yet')}</div>`;
     } else {
       bestPlayList.innerHTML = plays
         .slice(0, 50)
@@ -7287,7 +7520,7 @@ function openPlayerStatsModal() {
             </div>
             <div class="flex items-center gap-2 shrink-0">
               ${renderRewardIcons(p.stage, 'w-4 h-auto')}
-              <span class="text-xs font-bold text-gray-600 w-16 text-right">${p.tps.toFixed(2)} t/s</span>
+              <span class="text-xs font-bold text-gray-600 w-16 text-right">${p.tps.toFixed(2)} ${t('label_tiles_per_sec_full', 'tiles/sec')}</span>
             </div>
           </div>
         `
@@ -7307,7 +7540,7 @@ function openPlayerStatsModal() {
           : `opentile_challenge_best_tps_${song.mid}`;
         const best = parseFloat(localStorage.getItem(key) || '0', 10);
         if (best <= 0) return null;
-        const display = isClassic ? `${Math.round(best)} tiles` : `${best.toFixed(3)} TPS`;
+        const display = isClassic ? `${Math.round(best)} ${t('label_tiles', 'tiles')}` : `${best.toFixed(3)} ${t('label_tps_unit', 'TPS')}`;
         const rewardState = isClassic
           ? getClassicChallengeRewardStateFromTiles(best)
           : getChallengeRewardStateFromTps(best);
@@ -7316,7 +7549,7 @@ function openPlayerStatsModal() {
       .filter(Boolean);
 
     if (challengeScores.length === 0) {
-      challengeCycle.innerHTML = `<div class="text-xs text-gray-400">No challenge scores yet</div>`;
+      challengeCycle.innerHTML = `<div class="text-xs text-gray-400">${t('msg_no_challenge_scores_yet', 'No challenge scores yet')}</div>`;
     } else {
       let currentIndex = 0;
       const showChallenge = () => {
@@ -7348,16 +7581,8 @@ function closePlayerStatsModal() {
   }
 }
 
-function getClassificationText() {
-  const level = classHighestCleared || 0;
-  if (level <= 0) return 'Class: None';
-  if (level === 11) return 'Class: Kaidan';
-  const suffix = level === 1 ? 'st' : level === 2 ? 'nd' : level === 3 ? 'rd' : 'th';
-  return `Class: ${level}${suffix} Dan`;
-}
-
 document.getElementById('player-name-text-home')?.addEventListener('click', () => {
-  const newName = prompt('Enter your player name:', playerName);
+  const newName = prompt(t('msg_enter_player_name', 'Enter your player name:'), playerName);
   if (newName && newName.trim()) {
     playerName = newName.trim();
     localStorage.setItem('opentile_playername', playerName);
@@ -7365,12 +7590,12 @@ document.getElementById('player-name-text-home')?.addEventListener('click', () =
   }
 });
 
-document.getElementById('player-name-text')?.addEventListener('click', () => {
+document.getElementById('profile-display-trigger')?.addEventListener('click', () => {
   openPlayerStatsModal();
 });
 
 document.getElementById('player-name-text-challenges')?.addEventListener('click', () => {
-  const newName = prompt('Enter your player name:', playerName);
+  const newName = prompt(t('msg_enter_player_name', 'Enter your player name:'), playerName);
   if (newName && newName.trim()) {
     playerName = newName.trim();
     localStorage.setItem('opentile_playername', playerName);
@@ -7429,6 +7654,7 @@ customSongUpload?.addEventListener('change', async (event) => {
     if (existingCard) {
       const newCard = createCustomSongCard();
       existingCard.replaceWith(newCard);
+      queueKeyboardNavigationRefresh();
     }
   } catch (err) {
     customSongData = null;
@@ -7522,7 +7748,7 @@ clearSongBtn?.addEventListener('click', () => {
   songListScreen.classList.remove('hidden');
   gameoverScreen.classList.add('hidden');
   scoreDisplay.innerHTML = '<span class="score-digit-wrapper">0</span>';
-  setSongStatus('Load a PT2 JSON file to play a song.');
+  setSongStatus(t('msg_load_pt2_to_play', 'Load a PT2 JSON file to play a song.'));
 });
 
 document.querySelectorAll('.keybind-setter').forEach((button) => {
@@ -7567,8 +7793,68 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
+  const keyboardScope = getActiveKeyboardScope();
+  const canUseKeyboardNavigation = Boolean(keyboardScope) && !isAnyNavigationBlockingModalOpen();
+
   if ((event.code === 'Escape' || event.code === 'Space') && event.repeat) {
     return;
+  }
+
+  if (canUseKeyboardNavigation) {
+    setNavigationInputMode('keyboard');
+  }
+
+  if (canUseKeyboardNavigation) {
+    if (keyboardScope === 'results') {
+      if (event.code === 'Escape') {
+        const homeButton = document.getElementById('results-home-btn');
+        if (homeButton) {
+          homeButton.click();
+          event.preventDefault();
+          return;
+        }
+      }
+
+      if (event.code === 'Enter' || event.code === 'NumpadEnter' || event.code === 'Space') {
+        if (activateKeyboardSelection()) {
+          event.preventDefault();
+          return;
+        }
+      }
+    } else {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+        const moved = moveDockTab(event.code === 'ArrowRight' ? 1 : -1);
+        if (moved) {
+          event.preventDefault();
+          return;
+        }
+      }
+
+      if (event.shiftKey && (event.code === 'ArrowUp' || event.code === 'ArrowDown')) {
+        if (scrollKeyboardContainer(event.code === 'ArrowDown' ? 1 : -1)) {
+          event.preventDefault();
+          return;
+        }
+      }
+
+      if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+        moveKeyboardSelection(event.code === 'ArrowDown' ? 1 : -1);
+        event.preventDefault();
+        return;
+      }
+
+      if (event.code === 'Enter' || event.code === 'NumpadEnter') {
+        if (activateKeyboardSelection()) {
+          event.preventDefault();
+          return;
+        }
+      }
+    }
   }
 
   if (event.code === 'Escape') {
@@ -7694,6 +7980,10 @@ document.addEventListener('gesturestart', (event) => {
   event.preventDefault();
 }, false);
 
+document.addEventListener('pointerdown', () => {
+  setNavigationInputMode('pointer');
+}, true);
+
 document.addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (!target) return;
@@ -7771,6 +8061,8 @@ function renderClassScreen() {
     };
     container.appendChild(item);
   });
+
+  queueKeyboardNavigationRefresh();
 }
 
 function startClassMode(dan) {

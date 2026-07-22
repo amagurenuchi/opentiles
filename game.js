@@ -339,6 +339,9 @@ function preloadGameplayBackgrounds() {
   for (const key of Object.keys(GAMEPLAY_BG_IMAGES)) {
     const img = new Image();
     img.src = GAMEPLAY_BG_IMAGES[key];
+    if (img.decode) {
+      img.decode().catch(() => {});
+    }
   }
 }
 let pendingBackgroundUpdate = false;
@@ -900,56 +903,42 @@ function getGameplayBackgroundIndex() {
   return 1;
 }
 
+function setBgLayerOpacities(targetIndex) {
+  const layers = {
+    1: document.getElementById('game-bg-layer-1'),
+    2: document.getElementById('game-bg-layer-2'),
+    3: document.getElementById('game-bg-layer-3'),
+    0: document.getElementById('game-bg-layer-0')
+  };
+
+  Object.keys(layers).forEach((key) => {
+    const layer = layers[key];
+    if (!layer) return;
+    layer.style.opacity = Number(key) === targetIndex ? '1' : '0';
+  });
+}
+
 function initGameplayBackground() {
-  if (!gameBoardWrapper) return;
-
   preloadGameplayBackgrounds();
-
-  // Reset crossfade state so the initial background appears instantly (no fade
-  // from a transparent layer) and the active layer is layer A.
-  activeBgLayer = 'a';
   const initialIndex = (!bgChangeEnabled || lowPerformanceMode) ? 0 : getGameplayBackgroundIndex();
-  const initialImage = GAMEPLAY_BG_IMAGES[initialIndex] || GAMEPLAY_BG_IMAGES[1];
-  gameBoardWrapper.style.setProperty('--game-bg-layer-a', `url("${initialImage}")`);
-  gameBoardWrapper.style.setProperty('--game-bg-layer-a-opacity', '1');
-  gameBoardWrapper.style.setProperty('--game-bg-layer-b', `url("${initialImage}")`);
-  gameBoardWrapper.style.setProperty('--game-bg-layer-b-opacity', '0');
+  setBgLayerOpacities(initialIndex);
   currentGameplayBackgroundIndex = initialIndex;
 }
 
 function applyGameplayBackground() {
-  if (!gameBoardWrapper) return;
-
   const targetBackgroundIndex = (!bgChangeEnabled || lowPerformanceMode)
     ? 0
     : getGameplayBackgroundIndex();
 
-  // Bail out early if the target image is already the one being shown — avoids
-  // an unnecessary crossfade (and the layout/style recalc that comes with it).
   if (targetBackgroundIndex === currentGameplayBackgroundIndex) return;
 
-  const targetImage = GAMEPLAY_BG_IMAGES[targetBackgroundIndex] || GAMEPLAY_BG_IMAGES[1];
-
-  // Crossfade: paint the new image onto the currently-hidden layer, then flip
-  // the opacities so it fades in over the previous one. Because both images are
-  // preloaded, the new layer is already decoded and the swap is a cheap
-  // compositor opacity transition instead of a full-screen repaint hitch.
-  const incomingLayer = activeBgLayer === 'a' ? 'b' : 'a';
-  gameBoardWrapper.style.setProperty(`--game-bg-layer-${incomingLayer}`, `url("${targetImage}")`);
-  gameBoardWrapper.style.setProperty(`--game-bg-layer-${incomingLayer}-opacity`, '1');
-  gameBoardWrapper.style.setProperty(`--game-bg-layer-${activeBgLayer}-opacity`, '0');
-  activeBgLayer = incomingLayer;
-
-  gameBoardWrapper.classList.add('game-bg-transition-active');
-
+  setBgLayerOpacities(targetBackgroundIndex);
   currentGameplayBackgroundIndex = targetBackgroundIndex;
 }
 
 function updateGameplayBackground() {
   if (!gameBoardWrapper) return;
 
-  // Force reapplication (e.g. when the background was shown before game start)
-  currentGameplayBackgroundIndex = -1;
   applyGameplayBackground();
 }
 
@@ -3897,7 +3886,7 @@ function checkNormalSongAwards(reachedSection) {
 
   const currentAwardLevel = normalSongAwardLevel || 1;
   // Maximum award level is 10 (3 crowns).
-  if (currentAwardLevel >= 10) return;
+  if (currentAwardLevel > 10) return;
 
   // Trigger animation one tile early (when approaching the next award level)
   // but don't increment the award level yet
@@ -3914,7 +3903,7 @@ function checkNormalSongAwards(reachedSection) {
   }
 
   // Increment award level when section is actually reached
-  if (reachedSection >= currentAwardLevel) {
+  if (reachedSection >= currentAwardLevel && currentAwardLevel < 10) {
     normalSongAwardLevel = currentAwardLevel + 1;
 
     // Persist the score at which this level was reached so the revive modal
@@ -4601,7 +4590,7 @@ function renderTiles() {
         el.dataset.tileKey = domKey;
         el.style.position = 'absolute';
         el.style.pointerEvents = 'none';
-        el.style.borderRight = '1px solid rgba(51,65,85,0.45)';
+        el.style.borderRight = '1px solid rgba(255, 255, 255, 0.15)';
         el.style.borderBottom = '1px solid rgba(51,65,85,0.45)';
         el.style.display = 'flex';
         el.style.alignItems = 'center';
@@ -4641,11 +4630,15 @@ function renderTiles() {
       const styleHeight = `${(tileHeight / key) * 100}%`;
       const styleFilter = (tile.type === 3 || (tile.type >= 7 && !(tile.type === 9 && tile.isAccompanimentLong))) ? 'hue-rotate(-90deg)' : 'none';
 
+      const maxCol = leftCol + widthCols - 1;
+      const styleBorderRight = maxCol < key - 1 ? '1px solid rgba(255, 255, 255, 0.15)' : 'none';
+
       if (el._lastLeft !== styleLeft) { el.style.left = styleLeft; el._lastLeft = styleLeft; }
       if (el._lastWidth !== styleWidth) { el.style.width = styleWidth; el._lastWidth = styleWidth; }
       if (el._lastTop !== styleTop) { el.style.top = styleTop; el._lastTop = styleTop; }
       if (el._lastHeight !== styleHeight) { el.style.height = styleHeight; el._lastHeight = styleHeight; }
       if (el._lastFilter !== styleFilter) { el.style.filter = styleFilter; el._lastFilter = styleFilter; }
+      if (el._lastBorderRight !== styleBorderRight) { el.style.borderRight = styleBorderRight; el._lastBorderRight = styleBorderRight; }
 
       if (el._lastBgStyle !== 'batched') {
         el.style.backgroundColor = 'transparent';

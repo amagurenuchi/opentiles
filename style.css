@@ -183,7 +183,7 @@ html.dark-mode .glass {
 }
 
 html.dark-mode .col-element {
-  border-color: #475569;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 html.dark-mode #gameplay-info-bar,
@@ -1548,9 +1548,9 @@ html.dark-mode .pause-screen-title {
   font-family: var(--font-game);
 }
 
-/* Board columns: thin black lines separating columns */
+/* Board columns: thin lines separating columns */
 .col-element {
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .col-element:last-child {
@@ -1627,36 +1627,22 @@ html.dark-mode .pause-screen-title {
   background-image: url('gameImage/bgani_01.png');
 }
 
-/* Two stacked background layers used for a smooth crossfade between level
-   images. The JS toggles which layer is "active" by setting its image and
-   fading it in over the other. This avoids swapping a single background-image
-   (which forced a full-screen decode + repaint hitch on the main thread). */
-.game-playing::before,
-.game-playing::after {
-  content: '';
+/* Dedicated pre-rendered GPU background layers for smooth, zero-lag level crossfades */
+.game-bg-layer {
   position: absolute;
   inset: 0;
-  z-index: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-color: #111827;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 1200ms ease-in-out;
+  transition: opacity 300ms ease-out;
+  transform: translateZ(0);
   will-change: opacity;
 }
 
-/* Layer A (::before) — starts with the level-1 image visible. */
-.game-playing::before {
-  background-image: var(--game-bg-layer-a, url('gameImage/bgani_01.png'));
-  opacity: var(--game-bg-layer-a-opacity, 1);
-}
-
-/* Layer B (::after) — hidden until a crossfade promotes it. */
-.game-playing::after {
-  background-image: var(--game-bg-layer-b, url('gameImage/bgani_01.png'));
-  opacity: var(--game-bg-layer-b-opacity, 0);
+.low-performance-mode .game-bg-layer {
+  transition: none !important;
 }
 
 .game-playing>* {

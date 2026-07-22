@@ -50,6 +50,14 @@
     <div id="game-board-wrapper"
       class="relative h-full min-h-dvh w-[50vh] max-w-full shrink-0 glass-dark shadow-2xl border-x border-gray-250 flex flex-col justify-between">
 
+      <!-- Dedicated GPU Background Layers (Pre-decoded, zero main-thread decode lag) -->
+      <div id="game-bg-container" class="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div id="game-bg-layer-1" class="game-bg-layer absolute inset-0 opacity-100" style="background-image: url('gameImage/bgani_01.png');"></div>
+        <div id="game-bg-layer-2" class="game-bg-layer absolute inset-0 opacity-0" style="background-image: url('gameImage/bgani_02.png');"></div>
+        <div id="game-bg-layer-3" class="game-bg-layer absolute inset-0 opacity-0" style="background-image: url('gameImage/bgani_03.png');"></div>
+        <div id="game-bg-layer-0" class="game-bg-layer absolute inset-0 opacity-0" style="background-image: url('gameImage/bgani_fallback.png');"></div>
+      </div>
+
       <!-- Columns (4 columns) -->
       <div id="game-board" class="absolute inset-0 flex z-0">
         <div data-col="0" class="col-element relative flex-1 h-full transition-colors duration-100"></div>

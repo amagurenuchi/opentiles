@@ -58,6 +58,9 @@
         <div data-col="3" class="col-element relative flex-1 h-full transition-colors duration-100"></div>
       </div>
 
+      <!-- Note Debug Display -->
+      <div id="note-debug-display" class="hidden absolute bottom-4 left-2 z-30 font-mono text-[10px] leading-snug text-white/80 bg-black/60 rounded-lg px-2 py-1 pointer-events-none max-w-[45vw]"></div>
+
       <!-- Live Tiles Container (overflow-hidden keeps tiles clipped to the board) -->
       <div id="tiles-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
 
@@ -343,6 +346,20 @@
                   </div>
                 </div>
                 <span id="low-performance-status" class="text-base font-semibold text-gray-600">Off</span>
+              </button>
+
+              <!-- Note Debug Pill -->
+              <button id="note-debug-pill"
+                class="settings-pill flex items-center justify-between bg-gray-50 rounded-2xl px-6 py-5 shadow-sm">
+                <div class="flex items-center gap-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                    stroke="currentColor" class="w-6 h-6 text-gray-500">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3.75 6A2.25 2.25 0 001.5 8.25v7.5A2.25 2.25 0 003.75 18h16.5A2.25 2.25 0 0022.5 15.75v-7.5A2.25 2.25 0 0020.25 6H3.75zM6 9.75h.008v.008H6V9.75zm3.75 0h.008v.008H9.75V9.75zm3.75 0h.008v.008H13.5V9.75zm3.75 0h.008v.008H17.25V9.75zm-11.25 3h.008v.008H6v-.008zm3.75 0h8.25v.008H9.75v-.008zm11.25 0h.008v.008H21v-.008z" />
+                  </svg>
+                  <span class="text-base font-semibold text-gray-800">Note Debug</span>
+                </div>
+                <span id="note-debug-status" class="text-base font-semibold text-gray-600">Off</span>
               </button>
 
               <!-- Keybinds Pill -->

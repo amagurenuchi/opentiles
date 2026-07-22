@@ -41,6 +41,7 @@ const reviveSlowdownToggle = document.getElementById('settings-revive-slowdown')
 const bgChangeToggle = document.getElementById('settings-bg-change');
 const darkModeStatus = document.getElementById('dark-mode-status');
 const lowPerformanceStatus = document.getElementById('low-performance-status');
+const noteDebugStatus = document.getElementById('note-debug-status');
 const customSpeedInput = document.getElementById('settings-custom-speed');
 const customSpeedDisplay = document.getElementById('custom-speed-display');
 const customSongUpload = document.getElementById('custom-song-upload');
@@ -139,6 +140,7 @@ let reviveSlowdownEnabled = localStorage.getItem('opentile_revive_slowdown') !==
 let bgChangeEnabled = localStorage.getItem('opentile_bg_change') !== 'false'; // default true
 let darkModeEnabled = localStorage.getItem('opentile_dark_mode') === 'true';
 let lowPerformanceMode = localStorage.getItem('opentile_low_performance') === 'true';
+let noteDebugEnabled = localStorage.getItem('opentile_note_debug') === 'true';
 let lastRenderTime = 0;
 let lastHudTime = 0;
 let lastTpsColorKey = '';
@@ -1722,6 +1724,7 @@ function updateSettingsUI() {
   if (bgChangeToggle) bgChangeToggle.checked = bgChangeEnabled;
   if (darkModeStatus) darkModeStatus.textContent = darkModeEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   if (lowPerformanceStatus) lowPerformanceStatus.textContent = lowPerformanceMode ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  if (noteDebugStatus) noteDebugStatus.textContent = noteDebugEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
 
   // Update language pill status
   updateLanguageSelection();
@@ -3009,9 +3012,6 @@ function playTileAudioNow(tile) {
   let realLen = 0;
   // Handle both formats: array of arrays (normal tiles) or single array (single accompaniment tiles)
   const scoreGroups = Array.isArray(tile.scores[0]) ? tile.scores : [tile.scores];
-  // // Debug: log which notes are playing on this tile. Uncomment to enable.
-  // console.log(`[tile ${tile.id}] type=${tile.type} playing notes:`,
-  //   scoreGroups.map((group) => group.map((n) => n.note).join('+')).join(', '));
   scoreGroups.forEach((scoreGroup) => {
     scoreGroup.forEach((note) => {
       queueTimeout(() => playPitchString(note.note, note.len), (note.start + realLen) * 60000 / currentBpm);
@@ -3020,6 +3020,14 @@ function playTileAudioNow(tile) {
       realLen += scoreGroup[0].len;
     }
   });
+  if (noteDebugEnabled) {
+    const noteDebugDisplay = document.getElementById('note-debug-display');
+    if (noteDebugDisplay) {
+      noteDebugDisplay.classList.remove('hidden');
+      const notesStr = scoreGroups.map((group) => group.map((n) => n.note).join('+')).join(', ');
+      noteDebugDisplay.textContent = `tile ${tile.id} type=${tile.type} notes: ${notesStr}`;
+    }
+  }
   tile.audioPlayed = true;
   tile.played = true;
 }
@@ -3035,9 +3043,14 @@ function playComboTapAudio(tile) {
   // Always mark played so the autoplay audio loop doesn't double-trigger.
   tile.played = true;
   if (!scoreGroup) return;
-  // // Debug: log which notes are playing on this combo tap. Uncomment to enable.
-  // console.log(`[tile ${tile.id}] combo tap ${tapIdx} playing notes:`,
-  //   scoreGroup.map((n) => n.note).join('+'));
+  if (noteDebugEnabled) {
+    const noteDebugDisplay = document.getElementById('note-debug-display');
+    if (noteDebugDisplay) {
+      noteDebugDisplay.classList.remove('hidden');
+      const notesStr = scoreGroup.map((n) => n.note).join('+');
+      noteDebugDisplay.textContent = `tile ${tile.id} tap ${tapIdx} notes: ${notesStr}`;
+    }
+  }
   scoreGroup.forEach((note) => {
     queueTimeout(() => playPitchString(note.note, note.len), 0);
   });
@@ -7007,11 +7020,23 @@ document.getElementById('low-performance-pill')?.addEventListener('click', () =>
   if (lowPerformanceStatus) {
     lowPerformanceStatus.textContent = lowPerformanceMode ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   }
-  // Reset timing so switching modes never leaves a delayed first paint.
   lastRenderTime = 0;
   lastHudTime = 0;
   if (lowPerformanceMode) hitEffectsEl?.replaceChildren();
   if (isGameLoaded) updateGameplayBackground();
+});
+
+document.getElementById('note-debug-pill')?.addEventListener('click', () => {
+  noteDebugEnabled = !noteDebugEnabled;
+  localStorage.setItem('opentile_note_debug', String(noteDebugEnabled));
+  if (noteDebugStatus) {
+    noteDebugStatus.textContent = noteDebugEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
+  const noteDebugDisplay = document.getElementById('note-debug-display');
+  if (!noteDebugEnabled && noteDebugDisplay) {
+    noteDebugDisplay.classList.add('hidden');
+    noteDebugDisplay.textContent = '';
+  }
 });
 
 document.getElementById('keybinds-pill')?.addEventListener('click', () => {

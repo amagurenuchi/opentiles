@@ -149,7 +149,7 @@ let playerName = localStorage.getItem('opentile_playername') || 'Player';
 let lastPlayedSong = localStorage.getItem('opentile_last_played') || null;
 let favouriteSongs = new Set(JSON.parse(localStorage.getItem('opentile_favourites') || '[]'));
 let customStartingSpeed = parseFloat(localStorage.getItem('opentile_custom_speed') || '0'); // 0 = disabled, direct t/s value
-let currentSoundfont = localStorage.getItem('opentile_soundfont') || 'default'; // single source of truth inside gameplay
+let currentSoundfont = localStorage.getItem('opentile_soundfont') || 'Default'; // single source of truth inside gameplay
 let customSongData = null;
 let customSongLabel = '';
 let key = 4;
@@ -1729,7 +1729,7 @@ function updateSettingsUI() {
   // Update soundfont pill status
   const soundfontStatus = document.getElementById('soundfont-status');
   if (soundfontStatus) {
-    soundfontStatus.textContent = localStorage.getItem('opentile_soundfont') || 'default';
+    soundfontStatus.textContent = localStorage.getItem('opentile_soundfont') || 'Default';
   }
 
   // Update sound status based on audio context state
@@ -3411,13 +3411,18 @@ async function finishRun(showLibrary = false) {
       const totalStarsEl = document.getElementById('total-stars');
       // Snapshot before the panel block may clear isClassMode
       const wasClassMode = isClassMode;
+      const isRtl = document.documentElement.getAttribute('dir') === 'rtl';
 
       if (selectedSongData) {
         const num = selectedSongData.id ?? selectedSongData.mid ?? '';
         const shouldPrefixTitle = !isChallengeMode && !isClassicMode;
         const localizedSongName = i18n ? i18n.getSongName(selectedSongData.musicJson) : selectedSongData.musicJson;
         const localizedArtistName = i18n ? i18n.getArtistName(selectedSongData.musician) : selectedSongData.musician;
-        const displayTitle = `${shouldPrefixTitle && num ? String(num) + '. ' : ''}${localizedSongName}`;
+        const displayTitle = shouldPrefixTitle && num
+          ? isRtl
+            ? `${localizedSongName} ${num}.`
+            : `${String(num)}. ${localizedSongName}`
+          : localizedSongName;
         if (titleEl) titleEl.textContent = displayTitle;
         if (artistEl) artistEl.textContent = localizedArtistName || '';
       }
@@ -3469,7 +3474,9 @@ async function finishRun(showLibrary = false) {
           if (lapsEl) {
             lapsEl.classList.remove('hidden');
             const lapCount = Math.max(1, songLoopCount + 1);
-            lapsEl.textContent = `${lapCount} ${getLapsLabel(lapCount)}`;
+            lapsEl.textContent = isRtl
+              ? `${getLapsLabel(lapCount)} ${lapCount}`
+              : `${lapCount} ${getLapsLabel(lapCount)}`;
           }
           if (subtextEl) {
             subtextEl.classList.remove('hidden');
@@ -3510,7 +3517,9 @@ async function finishRun(showLibrary = false) {
           if (lapsEl) {
             lapsEl.classList.remove('hidden');
             const lapCount = Math.max(1, songLoopCount + 1);
-            lapsEl.textContent = `${lapCount} ${getLapsLabel(lapCount)}`;
+            lapsEl.textContent = isRtl
+              ? `${getLapsLabel(lapCount)} ${lapCount}`
+              : `${lapCount} ${getLapsLabel(lapCount)}`;
           }
           const numericScore = Number(currentScore || 0);
           const isNewBestScore = (() => {
@@ -7136,8 +7145,8 @@ async function getAvailableSoundfonts() {
   }
 
   if (!availableSoundfonts.length) {
-    console.log('[renderer] No soundfonts found, falling back to ["default"]');
-    availableSoundfonts = ['default'];
+    console.log('[renderer] No soundfonts found, falling back to ["Default"]');
+    availableSoundfonts = ['Default'];
   }
 
   return availableSoundfonts;
@@ -7149,7 +7158,7 @@ function renderSoundfontOptions() {
   const container = document.getElementById('soundfont-options');
   if (!container) return;
 
-  const current = localStorage.getItem('opentile_soundfont') || 'default';
+  const current = localStorage.getItem('opentile_soundfont') || 'Default';
   const display = selectedSoundfont || current;
 
   container.innerHTML = availableSoundfonts.map(name => `
@@ -7180,7 +7189,7 @@ function renderSoundfontOptions() {
 }
 
 async function updateSoundfontSelection() {
-  const current = localStorage.getItem('opentile_soundfont') || 'default';
+  const current = localStorage.getItem('opentile_soundfont') || 'Default';
 
   // Reset selected soundfont when modal opens
   selectedSoundfont = null;
@@ -7206,7 +7215,7 @@ document.getElementById('close-soundfont-modal')?.addEventListener('click', () =
 });
 
 document.getElementById('done-soundfont-modal')?.addEventListener('click', () => {
-  const current = localStorage.getItem('opentile_soundfont') || 'default';
+  const current = localStorage.getItem('opentile_soundfont') || 'Default';
 
   if (selectedSoundfont && selectedSoundfont !== current) {
     const soundfontStatus = document.getElementById('soundfont-status');
@@ -7217,10 +7226,7 @@ document.getElementById('done-soundfont-modal')?.addEventListener('click', () =>
     localStorage.setItem('opentile_soundfont', selectedSoundfont);
     currentSoundfont = selectedSoundfont;
 
-    // Audio buffer cache lives for the lifetime of the page, so keys loaded
-    // from the old soundfont would still be cached. Force the user to reload
-    // to fully switch instruments.
-    alert('Please reload the game to apply the new soundfont.');
+    localStorage.setItem('opentile_soundfont', selectedSoundfont);
   }
 
   selectedSoundfont = null;
@@ -7230,6 +7236,23 @@ document.getElementById('done-soundfont-modal')?.addEventListener('click', () =>
 document.getElementById('soundfont-modal-backdrop')?.addEventListener('click', () => {
   selectedSoundfont = null;
   document.getElementById('soundfont-modal').classList.add('hidden');
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    const languageModal = document.getElementById('language-modal');
+    const soundfontModal = document.getElementById('soundfont-modal');
+
+    if (languageModal && !languageModal.classList.contains('hidden')) {
+      selectedLanguage = null;
+      languageModal.classList.add('hidden');
+    }
+
+    if (soundfontModal && !soundfontModal.classList.contains('hidden')) {
+      selectedSoundfont = null;
+      soundfontModal.classList.add('hidden');
+    }
+  }
 });
 
 // Profile modal handlers

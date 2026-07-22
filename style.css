@@ -85,6 +85,21 @@ html[dir="rtl"] {
   .challenge-card .best-score-display {
     text-align: left;
   }
+
+  /* Results screen RTL: mirror TPS/LAPS positioning and flip back arrow */
+  html[dir="rtl"] #results-tps {
+    right: calc(50% - 160px);
+    left: auto;
+  }
+
+  html[dir="rtl"] #results-laps {
+    left: calc(50% - 160px);
+    right: auto;
+  }
+
+  html[dir="rtl"] #results-home-btn svg {
+    transform: scaleX(-1);
+  }
 }
 
 
@@ -437,6 +452,17 @@ html.dark-mode .pause-screen-title {
   #results-laps {
     font-size: 28.8px !important;
     right: calc(50% - 256px) !important;
+  }
+
+  /* Results screen RTL adjustments inside tablet layout */
+  html[dir="rtl"] #results-tps {
+    right: calc(50% - 256px) !important;
+    left: auto !important;
+  }
+
+  html[dir="rtl"] #results-laps {
+    left: calc(50% - 256px) !important;
+    right: auto !important;
   }
 
   .results-dock {

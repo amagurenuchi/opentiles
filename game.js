@@ -182,6 +182,7 @@ let speedLevel = 1;
 let speedLevelPos = [];
 let normalSongAwardLevel = 1;
 let warr = new Array(key).fill(0);
+let activeLongTiles = []; // { col, endHpos } — columns blocked by in-progress long tiles
 let accompanimentLongColumn = null;
 let accompanimentSingleToggle = 0;
 let accompanimentSequenceActive = false;
@@ -2325,6 +2326,7 @@ function resetEngineState() {
   normalSongAwardLevel = 1;
   starterColumn = Math.floor(Math.random() * key);
   warr = new Array(key).fill(0).map((_, idx) => (idx === starterColumn ? 1 : 0));
+  activeLongTiles = [];
   accompanimentLongColumn = null;
   accompanimentSingleToggle = 0;
   accompanimentSequenceActive = false;
@@ -5047,7 +5049,24 @@ function updateEngineFrame(now) {
 
           warr = new Array(key).fill(0);
         } else {
-          warr = nextPos(warr, currentTile.type);
+          // Expire long tiles that have fully passed the current hpos
+          activeLongTiles = activeLongTiles.filter(lt => lt.endHpos > hpos);
+
+          // Build an effective blocked-columns array that includes any still-active long tiles
+          const blockedWarr = [...warr];
+          for (const lt of activeLongTiles) {
+            if (lt.col >= 0 && lt.col < key) blockedWarr[lt.col] = 1;
+          }
+
+          warr = nextPos(blockedWarr, currentTile.type);
+
+          // If this new tile is itself a long tile, register it so future tiles avoid its column
+          if (currentTile.hlen > 1 && currentTile.type !== 3 && currentTile.type !== 5) {
+            const longCol = warr.indexOf(1);
+            if (longCol !== -1) {
+              activeLongTiles.push({ col: longCol, endHpos: hpos + currentTile.hlen });
+            }
+          }
           tiles.push({
             id: nextTileId++,
             type: currentTile.type,

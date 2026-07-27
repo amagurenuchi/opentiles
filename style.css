@@ -3307,3 +3307,54 @@ html.dark-mode .dock-button.keyboard-tab-selected>div {
     height: auto;
   }
 }
+
+/* ─── Performance: compositor-layer isolation for gameplay ─────────────────
+   These are updated every RAF tick; promoting them avoids re-painting the
+   rest of the page on every frame.                                          */
+#tiles-container {
+  /* Containment: nothing inside affects outside layout/paint, which lets
+     the browser skip expensive cross-tree checks on every style mutation. */
+  contain: layout style;
+  /* Promote to a composited layer so tile position changes don't trigger
+     main-thread layout or paint for the rest of the page. */
+  will-change: transform;
+}
+
+#hit-effects {
+  contain: layout style;
+  will-change: transform;
+}
+
+/* ─── Static styles for tile child layers set once at creation ─────────────
+   Replaces per-frame JS style writes for properties that never change.      */
+.tile-image-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+  display: none;
+}
+
+/* Tile start label base styles — dynamic parts (display, height, bottom,
+   inset) are still applied via JS only when the state actually changes.    */
+.tile-start-label {
+  justify-content: center;
+  font-family: var(--font-game);
+  font-weight: 500;
+  font-size: 2.8rem;
+  color: #ffffff;
+  letter-spacing: 0.1em;
+  display: none;
+  position: absolute;
+  inset: 0;
+  height: auto;
+  align-items: center;
+}
+
+/* When the label is anchored to the long-tile head, only dynamic overrides
+   (left/right/top/bottom/height/fontSize) are set via JS.                 */
+.tile-start-label-at-head {
+  inset: auto;
+}

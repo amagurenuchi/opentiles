@@ -4753,7 +4753,7 @@ function renderTiles() {
         const animatedHitFrame = getTileHitAnimationFrame(tile);
         const tileImageSuffix = animatedHitFrame > 0
           ? getTileFinishImage(animatedHitFrame)
-          : (isPlayed ? getTileFinishImage(isEnded) : 'tile_black');
+          : (isPlayed ? getTileFinishImage(isEnded) : (tile.isAccompanimentSingle ? 'tile_accom' : 'tile_black'));
         // Fix 2: Dirty-check tap tile background.
         const _tapBgImg = `url("gameImage/${tileImageSuffix}.png")`;
         if (el._lastBgImage !== _tapBgImg) { el.style.backgroundImage = _tapBgImg; el._lastBgImage = _tapBgImg; }

@@ -5007,8 +5007,13 @@ function updateEngineFrame(now) {
           });
 
           const numSingleTiles = Math.round(currentTile.hlen);
+          // Track the last accompaniment single tile's column so we can carry it
+          // forward into warr after the block, preventing the next regular tile
+          // from spawning in that same column.
+          let lastAccompSingleCol = -1;
           for (let i = 0; i < numSingleTiles; i++) {
             const currentSingleColumn = getAccompanimentSingleColumn();
+            lastAccompSingleCol = currentSingleColumn;
             const singleWarr = new Array(key).fill(0);
             singleWarr[currentSingleColumn] = 1;
             const singleTileHpos = hpos + i;
@@ -5047,10 +5052,21 @@ function updateEngineFrame(now) {
             });
           }
 
-          warr = new Array(key).fill(0);
+          // After the accompaniment block, carry the last single tile's column
+          // into warr so the very next regular tile cannot land in that same column.
+          // If there were no single tiles, fall back to preserving the pre-block warr.
+          if (lastAccompSingleCol >= 0) {
+            warr = new Array(key).fill(0);
+            warr[lastAccompSingleCol] = 1;
+          } else {
+            // No single tiles spawned; keep warr as-is to preserve the previous
+            // tile's column constraint rather than wiping it.
+          }
         } else {
           // Expire long tiles that have fully passed the current hpos
-          activeLongTiles = activeLongTiles.filter(lt => lt.endHpos > hpos);
+          // Use a small epsilon to guard against floating-point drift where
+          // endHpos is fractionally less than hpos due to accumulated rounding.
+          activeLongTiles = activeLongTiles.filter(lt => lt.endHpos > hpos - Number.EPSILON);
 
           // Build an effective blocked-columns array that includes any still-active long tiles
           const blockedWarr = [...warr];

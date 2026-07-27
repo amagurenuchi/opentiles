@@ -84,8 +84,14 @@ const lifeCountEls = [
 const lifeTimerEls = [
   document.getElementById('life-timer')
 ].filter(Boolean);
+// Fix 4: Cache infrequently-changing info-bar elements that were previously
+// queried via document.querySelector/getElementById inside updateGameplayInfoBar
+// every single HUD frame.
+const gameplaySongLabel = document.querySelector('.gameplay-info-label');
+const gameplayBestRow = document.getElementById('gameplay-best-score');
 let currentDockTab = 'home';
 let previousDockTabBeforeSettings = 'home';
+
 
 function t(key, fallback = key) {
   if (typeof i18n !== 'undefined' && i18n && typeof i18n.t === 'function') {
@@ -2708,13 +2714,21 @@ function getDoubleTilePos(arr0) {
 }
 
 function getSingleTilePos(arr0) {
-  const arr = [1];
-  while (arr.length < key) {
-    arr.splice(Math.floor(Math.random() * (arr.length + 1)), 0, 0);
-  }
+  const validCols = [];
   for (let i = 0; i < key; i++) {
-    if (arr[i] && arr0[i]) return null;
+    if (!arr0 || !arr0[i]) {
+      validCols.push(i);
+    }
   }
+  if (validCols.length === 0) {
+    const fallbackCol = Math.floor(Math.random() * key);
+    const arr = new Array(key).fill(0);
+    arr[fallbackCol] = 1;
+    return arr;
+  }
+  const chosenIndex = validCols[Math.floor(Math.random() * validCols.length)];
+  const arr = new Array(key).fill(0);
+  arr[chosenIndex] = 1;
   return arr;
 }
 
@@ -4632,6 +4646,9 @@ function renderTiles() {
         el.style.backgroundRepeat = 'no-repeat';
         el.style.backgroundSize = '100% 100%';
         el.style.overflow = 'visible';
+        // Fix 5: Promote each tile to its own compositor layer so top/left
+        // updates don't trigger main-thread layout for the rest of the page.
+        el.style.willChange = 'transform';
         el.innerHTML = `
         <div class="tile-image-layer tile-head"></div>
         <div class="tile-image-layer tile-light-strip"></div>
@@ -4681,34 +4698,20 @@ function renderTiles() {
         el._lastBgStyle = 'batched';
       }
 
-      [headEl, lightStripEl, lightOrbEl].forEach((child) => {
-        child.style.position = 'absolute';
-        child.style.left = '0';
-        child.style.right = '0';
-        child.style.backgroundRepeat = 'no-repeat';
-        child.style.backgroundSize = '100% 100%';
-        child.style.pointerEvents = 'none';
-        child.style.display = 'none';
-      });
+      // Fix 1: Static child styles (position/left/right/backgroundRepeat/backgroundSize/
+      // pointerEvents) are now defined by the .tile-image-layer CSS class applied at
+      // creation time. Only reset the dynamic 'display' property each frame.
+      headEl.style.display = 'none';
+      lightStripEl.style.display = 'none';
+      lightOrbEl.style.display = 'none';
 
       comboBadgeEl.classList.add('hidden');
       startLabelEl.classList.add('hidden');
       startLabelEl.classList.remove('tile-start-label-at-head');
-      startLabelEl.style.justifyContent = 'center';
-      startLabelEl.style.fontFamily = 'var(--font-game)';
-      startLabelEl.style.fontWeight = '500';
-      startLabelEl.style.fontSize = '2.8rem';
-      startLabelEl.style.color = '#ffffff';
-      startLabelEl.style.letterSpacing = '0.1em';
+      // Fix 1: justifyContent/fontFamily/fontWeight/fontSize/color/letterSpacing/
+      // position/inset/height/alignItems are in .tile-start-label CSS; only
+      // clear the dynamic display override here.
       startLabelEl.style.display = 'none';
-      startLabelEl.style.position = 'absolute';
-      startLabelEl.style.inset = '0';
-      startLabelEl.style.top = '0';
-      startLabelEl.style.right = '0';
-      startLabelEl.style.bottom = '0';
-      startLabelEl.style.left = '0';
-      startLabelEl.style.height = 'auto';
-      startLabelEl.style.alignItems = 'center';
 
       const showStartLabel = (tile.isStartTile || tile.isResumeStartTile) && !tile.played && !isStarted;
       const showStartLabelAtHead = showStartLabel && isLongTile(tile);
@@ -4726,7 +4729,10 @@ function renderTiles() {
         const startTileImageSuffix = animatedHitFrame > 0
           ? getTileFinishImage(animatedHitFrame)
           : (tile.played ? getTileFinishImage(tile.ended) : 'tile_start');
-        el.style.backgroundImage = `url("gameImage/${startTileImageSuffix}.png")`;
+        // Fix 2: Dirty-check backgroundImage before writing to avoid redundant
+        // CSS value parses every frame when the image is unchanged.
+        const _startBgImg = `url("gameImage/${startTileImageSuffix}.png")`;
+        if (el._lastBgImage !== _startBgImg) { el.style.backgroundImage = _startBgImg; el._lastBgImage = _startBgImg; }
         if (!tile.played && !isStarted) {
           startLabelEl.classList.remove('hidden');
           startLabelEl.style.display = 'flex';
@@ -4748,7 +4754,9 @@ function renderTiles() {
         const tileImageSuffix = animatedHitFrame > 0
           ? getTileFinishImage(animatedHitFrame)
           : (isPlayed ? getTileFinishImage(isEnded) : 'tile_black');
-        el.style.backgroundImage = `url("gameImage/${tileImageSuffix}.png")`;
+        // Fix 2: Dirty-check tap tile background.
+        const _tapBgImg = `url("gameImage/${tileImageSuffix}.png")`;
+        if (el._lastBgImage !== _tapBgImg) { el.style.backgroundImage = _tapBgImg; el._lastBgImage = _tapBgImg; }
         // Show START label for double tiles only if not partially hit
         const shouldShowStartLabel = isDoubleTile(tile) ? showStartLabelForDoubleTile : showStartLabel;
         if (shouldShowStartLabel) {
@@ -4757,7 +4765,9 @@ function renderTiles() {
         }
       } else if (isComboTile(tile)) {
         if (el.className !== 'tile-combo') el.className = 'tile-combo';
-        el.style.backgroundImage = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
+        // Fix 2: Dirty-check combo tile background.
+        const _comboBgImg = `url("gameImage/${tile.clicked ? getTileFinishImage(tile.ended) : 'tile_black'}.png")`;
+        if (el._lastBgImage !== _comboBgImg) { el.style.backgroundImage = _comboBgImg; el._lastBgImage = _comboBgImg; }
         comboBadgeEl.classList.remove('hidden');
         // Use nullish coalescing to correctly show 0 when all taps are done
         const badgeVal = String(tile.remainingTaps ?? 0);
@@ -4783,14 +4793,18 @@ function renderTiles() {
           progress = autoplayEnabled ? (tile.playing || 0) : getManualProgress(tile);
         }
 
-        el.style.backgroundImage = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
+        // Fix 2: Dirty-check long tile body background.
+        const _longBgImg = `url("gameImage/${ended ? 'long_finish' : 'long_tap2'}.png")`;
+        if (el._lastBgImage !== _longBgImg) { el.style.backgroundImage = _longBgImg; el._lastBgImage = _longBgImg; }
 
         if (!played) {
           headEl.style.display = 'block';
           headEl.style.bottom = '0';
           headEl.style.height = `${(1.35 / tile.hlen) * 100}%`;
           const headImage = (tile.type === 9 && tile.isAccompanimentLong) ? 'a_long_head' : 'long_head';
-          headEl.style.backgroundImage = `url("gameImage/${headImage}.png")`;
+          // Fix 2: Dirty-check head image.
+          const _headBgImg = `url("gameImage/${headImage}.png")`;
+          if (headEl._lastBgImage !== _headBgImg) { headEl.style.backgroundImage = _headBgImg; headEl._lastBgImage = _headBgImg; }
         }
 
         if (played && !ended) {
@@ -4826,19 +4840,23 @@ function renderTiles() {
           lightOrbEl.style.display = 'block';
           lightOrbEl.style.height = `${orbHeightPercent}%`;
           lightOrbEl.style.bottom = `${orbBottomPercent}%`;
-          lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")';
+          // Fix 2: long_light.png is constant — set once, never re-write.
+          if (!lightOrbEl._bgSet) { lightOrbEl.style.backgroundImage = 'url("gameImage/long_light.png")'; lightOrbEl._bgSet = true; }
 
           lightStripEl.style.display = 'block';
           lightStripEl.style.bottom = '0';
+          lightStripEl.style.top = '';
           lightStripEl.style.height = `${orbCenterBottomPercent}%`;
-          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+          // Fix 2: long_tilelight.png is constant — set once, never re-write.
+          if (!lightStripEl._bgSet) { lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")'; lightStripEl._bgSet = true; }
         }
 
         if (ended) {
           lightStripEl.style.display = 'block';
           lightStripEl.style.top = '0';
+          lightStripEl.style.bottom = '';
           lightStripEl.style.height = '100%';
-          lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")';
+          if (!lightStripEl._bgSet) { lightStripEl.style.backgroundImage = 'url("gameImage/long_tilelight.png")'; lightStripEl._bgSet = true; }
           lightStripEl.style.opacity = `${Math.max(1 - (tile.ended || 0) / 10, 0)}`;
         } else {
           lightStripEl.style.opacity = '1';
@@ -4849,7 +4867,7 @@ function renderTiles() {
           startLabelEl.classList.remove('hidden');
           startLabelEl.classList.add('tile-start-label-at-head');
           startLabelEl.style.display = 'flex';
-          startLabelEl.style.inset = 'auto';
+          // Fix 1: Only set dynamic overrides; base styles live in CSS.
           startLabelEl.style.left = '0';
           startLabelEl.style.right = '0';
           startLabelEl.style.top = 'auto';
@@ -4972,6 +4990,9 @@ function updateEngineFrame(now) {
           const longWarr = new Array(key).fill(0);
           longWarr[longColumn] = 1;
 
+          // Register accompaniment long tile so future tiles avoid its column
+          activeLongTiles.push({ col: longColumn, endHpos: hpos + currentTile.hlen + 0.5 });
+
           // Assign a unique sequence ID to this accompaniment group
           const currentSequenceId = ++accompanimentSequenceId;
 
@@ -5079,7 +5100,7 @@ function updateEngineFrame(now) {
           if (currentTile.hlen > 1 && currentTile.type !== 3 && currentTile.type !== 5) {
             const longCol = warr.indexOf(1);
             if (longCol !== -1) {
-              activeLongTiles.push({ col: longCol, endHpos: hpos + currentTile.hlen });
+              activeLongTiles.push({ col: longCol, endHpos: hpos + currentTile.hlen + 0.5 });
             }
           }
           tiles.push({
@@ -5431,9 +5452,17 @@ function updateEngineFrame(now) {
   }
 
   // Clean up tiles that have fully scrolled off the top of the screen.
-  // Uses getTileTop (visual position) so combo tiles don't linger due to large raw hlen.
-  if (tiles[0] && getTileTop(tiles[0]) > key + 1) {
-    tiles.shift();
+  // Fix 3: Remove ALL expired tiles in one batch splice instead of one shift()
+  // per frame. At high speeds multiple tiles can expire per frame; batching
+  // reduces the total O(n) array mutation work.
+  {
+    let expiredCount = 0;
+    while (expiredCount < tiles.length && getTileTop(tiles[expiredCount]) > key + 1) {
+      expiredCount++;
+    }
+    if (expiredCount > 0) {
+      tiles.splice(0, expiredCount);
+    }
   }
 
   // In classic mode, load next song when all tiles are cleared
@@ -5595,11 +5624,15 @@ function frame(now) {
 
 function updateGameplayInfoBar() {
   if (!gameplayInfoBar) return;
+  // Fix 7: Info bar is hidden during active gameplay — skip all work
+  // (including expensive localStorage reads) when the player is playing.
+  if (isStarted) return;
+
   const label = songName || (selectedSongData ? (selectedSongData.musicJson || selectedSongData.name || '') : '');
   const localizedSongName = i18n ? i18n.getSongName(label) : label;
 
-  const gameplaySongLabel = document.querySelector('.gameplay-info-label');
-  const gameplayBestRow = document.getElementById('gameplay-best-score');
+  // Fix 4: Use module-scope cached references (gameplaySongLabel, gameplayBestRow)
+  // instead of per-call document.querySelector / getElementById every HUD frame.
 
   if (gameplaySongLabel) {
     if (isChallengeMode) {
@@ -6279,8 +6312,8 @@ function startClassicMode() {
   bgLevelPosIndex = 0;
   speedLevel = 1;
   speedLevelPos = [];
-  speedLevelPosIndex = 0;
-  warr = new Array(key).fill(0);
+  starterColumn = Math.floor(Math.random() * key);
+  warr = new Array(key).fill(0).map((_, idx) => (idx === starterColumn ? 1 : 0));
 
   // Initialize classic mode
   initializeClassicMode();

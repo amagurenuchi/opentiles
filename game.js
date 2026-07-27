@@ -7619,6 +7619,19 @@ function resetAllData() {
   localStorage.setItem('opentile_revive_slowdown', String(reviveSlowdownEnabled));
   localStorage.setItem('opentile_custom_speed', String(customStartingSpeed));
   if (typeof i18n !== 'undefined' && i18n.setLanguage) i18n.setLanguage('en');
+  // Clear all in-memory caches
+  audioBufferCache.clear();
+  Object.keys(spriteCache).forEach((k) => delete spriteCache[k]);
+  tileDomCache.forEach((el) => el.remove());
+  tileDomCache.clear();
+  _runtimeSpeedCache.clear();
+  _earnedPPointsCache = null;
+  _cachedBoardRect = null;
+  cachedActiveComboTile = null;
+  // Clear browser Cache API (service worker cache)
+  if ('caches' in window) {
+    caches.keys().then((names) => names.forEach((name) => caches.delete(name)));
+  }
   refreshAfterReset();
   showResetStatus(i18n?.t('msg_reset_done_all', 'All data reset.') || 'All data reset.');
   // Show farewell screen, then force a full refresh

@@ -1287,7 +1287,6 @@ function spendLifeCost(cost) {
   }
 
   lifeCount = clampNumber(lifeCount - cost, 0, LIFE_MAX);
-  lifeLastUpdatedAt = Date.now();
   saveLifeState();
   syncTopDockData();
   updateLifeUi();

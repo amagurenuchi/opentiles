@@ -148,6 +148,7 @@ let darkModeEnabled = localStorage.getItem('opentile_dark_mode') === 'true';
 let lowPerformanceMode = localStorage.getItem('opentile_low_performance') === 'true';
 let noteDebugEnabled = localStorage.getItem('opentile_note_debug') === 'true';
 let noteDebugUnlocked = localStorage.getItem('opentile_note_debug_unlocked') === 'true';
+let tpsDisplayEnabled = localStorage.getItem('opentile_tps_display') !== 'false'; // default true
 let lastRenderTime = 0;
 let lastHudTime = 0;
 let lastTpsColorKey = '';
@@ -1756,6 +1757,12 @@ function updateSettingsUI() {
     } else {
       speedStatus.textContent = `${customStartingSpeed} t/s`;
     }
+  }
+
+  // Update TPS display pill status
+  const tpsDisplayStatus = document.getElementById('tps-display-status');
+  if (tpsDisplayStatus) {
+    tpsDisplayStatus.textContent = tpsDisplayEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
   }
 
   updateTpsDisplayColor();
@@ -4510,7 +4517,7 @@ function updateHUD() {
       ).join('');
     }
 
-    if (isGameLoaded) {
+    if (isGameLoaded && tpsDisplayEnabled) {
       tpsDisplayNormal?.classList.remove('hidden');
       if (tpsDisplayNormal) {
         const totalSongs = classCurrentData.songs.length;
@@ -4575,7 +4582,7 @@ function updateHUD() {
       ).join('');
     }
 
-    if (isGameLoaded) {
+    if (isGameLoaded && tpsDisplayEnabled) {
       tpsDisplayNormal?.classList.remove('hidden');
       if (tpsDisplayNormal && tpsDisplayNormal._lastText !== tpsText) {
         tpsDisplayNormal._lastText = tpsText;
@@ -7270,6 +7277,23 @@ document.getElementById('low-performance-pill')?.addEventListener('click', () =>
   lastHudTime = 0;
   if (lowPerformanceMode) hitEffectsEl?.replaceChildren();
   if (isGameLoaded) updateGameplayBackground();
+});
+
+document.getElementById('tps-display-pill')?.addEventListener('click', () => {
+  tpsDisplayEnabled = !tpsDisplayEnabled;
+  localStorage.setItem('opentile_tps_display', String(tpsDisplayEnabled));
+  const tpsDisplayStatus = document.getElementById('tps-display-status');
+  if (tpsDisplayStatus) {
+    tpsDisplayStatus.textContent = tpsDisplayEnabled ? (i18n?.t('status_on') || 'On') : (i18n?.t('status_off') || 'Off');
+  }
+  // Update TPS display visibility immediately if game is running
+  if (isStarted && !isChallengeMode) {
+    if (tpsDisplayEnabled) {
+      tpsDisplayNormal?.classList.remove('hidden');
+    } else {
+      tpsDisplayNormal?.classList.add('hidden');
+    }
+  }
 });
 
 document.getElementById('note-debug-pill')?.addEventListener('click', () => {

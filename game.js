@@ -680,7 +680,7 @@ function updateReviveModalProgress() {
               switch (tile.type) {
                 case 5: runningScore += 4; break;             // combo start tile
                 case 3: runningScore += Math.max(2, (tile.scores && tile.scores.length) || 2); break; // multi-tap combo
-                case 6: runningScore += Math.round(tile.hlen) + 1; break; // long hold
+                case 6: runningScore += tile.hlen < 2 ? 2 : Math.round(tile.hlen) + 1; break; // long hold
                 default: runningScore += 1; break;             // regular tap (type 2) and others
               }
             }
@@ -2538,7 +2538,7 @@ function computeSectionScoreThresholds() {
           isPlayable = true;
           break; // multi-tap combo
         case 6:
-          runningScore += Math.round(tile.hlen) + 1;
+          runningScore += tile.hlen < 2 ? 2 : Math.round(tile.hlen) + 1;
           isPlayable = true;
           break; // long hold
         case 9:
@@ -5261,7 +5261,7 @@ function updateEngineFrame(now) {
             if (tile.type === 2 && !tile.isAccompanimentSingle) currentScore += 1;
             else if (tile.type === 5) currentScore += 4;
             else if (isLongTile(tile)) {
-              const scoreAdded = Math.round(tile.hlen) + 1;
+              const scoreAdded = tile.hlen < 2 ? 2 : Math.round(tile.hlen) + 1;
               currentScore += scoreAdded;
               if (!tile.scorePopupTriggered && scoreAdded > 0) {
                 tile.scorePopupTriggered = true;
@@ -5345,7 +5345,7 @@ function updateEngineFrame(now) {
         case 6:
           if (tile.playing > tile.hlen - 1) {
             if (!tile.ended) {
-              const scoreAdded = Math.round(tile.hlen) + 1;
+              const scoreAdded = tile.hlen < 2 ? 2 : Math.round(tile.hlen) + 1;
               currentScore += scoreAdded;
               if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
               if (isClassicMode) { classicTappedTiles++; advanceClassicTilefield(); }
@@ -5396,7 +5396,7 @@ function updateEngineFrame(now) {
         tile.holdCompleted = true;
         tile.clicked = true;
         tile.ended = 1;
-        const scoreAdded = Math.round(tile.hlen) + 1;
+        const scoreAdded = tile.hlen < 2 ? 2 : Math.round(tile.hlen) + 1;
         currentScore += scoreAdded;
         if (isClassMode && !tile.classHitCounted) { tile.classHitCounted = true; incrementClassHitTiles(tile); }
         if (!tile.scorePopupTriggered && scoreAdded > 0) {

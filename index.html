@@ -103,7 +103,7 @@
       </div>
 
       <!-- Floating HUD near the top of the board (Score/TPS & Stars) -->
-      <div class="absolute top-10 left-0 right-0 flex flex-col items-center pointer-events-none z-20">
+      <div class="absolute top-[calc(2.5rem-15px)] left-0 right-0 flex flex-col items-center pointer-events-none z-20">
         <!-- Score display (shown for imported song mode) -->
         <div id="score-display"
           class="hidden font-game text-7xl font-extralight text-[#ff6b6b] tracking-tight leading-none drop-shadow">
@@ -408,6 +408,20 @@
                     Speed</span>
                 </div>
                 <span id="speed-status" class="text-base font-semibold text-gray-600">Disabled</span>
+              </button>
+
+              <!-- TPS Display Pill -->
+              <button id="tps-display-pill"
+                class="settings-pill flex items-center justify-between bg-gray-50 rounded-2xl px-6 py-5 shadow-sm">
+                <div class="flex items-center gap-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                    stroke="currentColor" class="w-6 h-6 text-lime-500">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                  </svg>
+                  <span class="text-base font-semibold text-gray-800">Show TPS Display</span>
+                </div>
+                <span id="tps-display-status" class="text-base font-semibold text-gray-600">On</span>
               </button>
 
               <!-- Language Pill -->

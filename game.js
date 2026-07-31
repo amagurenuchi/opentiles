@@ -2676,33 +2676,48 @@ async function loadSongFromData(songData) {
 
 function loadSongFromText(text, label) {
   isPlayInProgress = true; // Set play progress flag when loading from text
-  const parsed = JSON.parse(text);
-  loadSongObject(parsed, label);
-
-  // Show game interface but don't start game (wait for START tile)
-  songListScreen.classList.add('hidden');
-  startScreen.classList.add('hidden');
-  gameoverScreen.classList.add('hidden');
-  settingsScreen.classList.add('hidden');
-  homeScreen.classList.add('hidden');
-
-  // Hide dock during gameplay
-  const sharedDock = document.getElementById('shared-dock');
-  if (sharedDock) {
-    sharedDock.classList.add('hidden');
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    console.error('Failed to parse custom song JSON:', err);
+    setSongStatus(`Failed to load ${label}: Invalid JSON format - ${err.message}`);
+    isPlayInProgress = false;
+    return;
   }
 
-  // Hide shared top bar during gameplay
-  const sharedTopBar = document.getElementById('shared-top-bar');
-  if (sharedTopBar) {
-    sharedTopBar.classList.add('hidden');
+  try {
+    loadSongObject(parsed, label);
+
+    // Show game interface but don't start game (wait for START tile)
+    songListScreen.classList.add('hidden');
+    startScreen.classList.add('hidden');
+    gameoverScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
+    homeScreen.classList.add('hidden');
+
+    // Hide dock during gameplay
+    const sharedDock = document.getElementById('shared-dock');
+    if (sharedDock) {
+      sharedDock.classList.add('hidden');
+    }
+
+    // Hide shared top bar during gameplay
+    const sharedTopBar = document.getElementById('shared-top-bar');
+    if (sharedTopBar) {
+      sharedTopBar.classList.add('hidden');
+    }
+    // Show background immediately when song is loaded
+    if (gameBoardWrapper) {
+      gameBoardWrapper.classList.add('game-playing');
+      initGameplayBackground();
+    }
+    showPregameInfoBar();
+  } catch (err) {
+    console.error('Failed to load custom song:', err);
+    setSongStatus(`Failed to load ${label}: ${err.message}`);
+    isPlayInProgress = false;
   }
-  // Show background immediately when song is loaded
-  if (gameBoardWrapper) {
-    gameBoardWrapper.classList.add('game-playing');
-    initGameplayBackground();
-  }
-  showPregameInfoBar();
 }
 
 function getDoubleTilePos(arr0) {
@@ -7881,8 +7896,45 @@ document.getElementById('pause-btn')?.addEventListener('pointerup', (event) => {
   if (event.pointerType === 'touch' || event.pointerType === 'pen') {
     event.preventDefault();
     event.stopPropagation();
-    togglePause();
   }
+});
+
+// Keyboard hints toggle functionality
+let keyHintsVisible = localStorage.getItem('opentile_keyhints') !== 'false';
+
+function toggleKeyHints() {
+  keyHintsVisible = !keyHintsVisible;
+  localStorage.setItem('opentile_keyhints', String(keyHintsVisible));
+  updateKeyHintsVisibility();
+}
+
+function updateKeyHintsVisibility() {
+  const keyHintsContainer = keyHintEls[0]?.parentElement?.parentElement;
+  if (keyHintsContainer) {
+    keyHintsContainer.classList.toggle('key-hints-hidden', !keyHintsVisible);
+  }
+  const keyHintsStatus = document.getElementById('key-hints-status');
+  if (keyHintsStatus) {
+    // Update the data-i18n attribute to reflect current state
+    keyHintsStatus.setAttribute('data-i18n', keyHintsVisible ? 'status_on' : 'status_off');
+    // Update text content using i18n
+    keyHintsStatus.textContent = i18n?.t(keyHintsVisible ? 'status_on' : 'status_off') || (keyHintsVisible ? 'On' : 'Off');
+  }
+}
+
+document.getElementById('key-hints-pill')?.addEventListener('click', () => {
+  toggleKeyHints();
+});
+
+// Initialize keyboard hints visibility after i18n loads
+document.addEventListener('DOMContentLoaded', async () => {
+  await i18n?.loadTranslations();
+  updateKeyHintsVisibility();
+});
+
+// Update status text when language changes
+document.addEventListener('languageChanged', () => {
+  updateKeyHintsVisibility();
 });
 
 lifeDisplayTriggers.forEach((trigger) => {

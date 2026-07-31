@@ -1547,8 +1547,21 @@ html.dark-mode .pause-screen-title {
   display: none;
   z-index: 45;
   touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+/* Hide pause button on screens wider than 1060px */
+@media (min-width: 1061px) {
+  #pause-btn {
+    display: none !important;
+  }
+}
+
+/* Class to hide keyboard hints */
+.key-hints-hidden {
+  opacity: 0 !important;
 }
 
 #pause-btn.force-show {

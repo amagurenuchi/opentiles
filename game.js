@@ -285,18 +285,18 @@ function triggerAwardAnimation(stage) {
   const crownAnim = document.getElementById('crown-animation-display');
 
   if (stage.crowns) {
-    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-12 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.crowns);
+    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-13 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.crowns);
     crownAnim.classList.remove('hidden');
     starAnim.classList.add('hidden');
   } else {
-    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-12 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.stars) : '';
+    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-13 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.stars) : '';
     starAnim.classList.remove('hidden');
     crownAnim.classList.add('hidden');
   }
 
   awardAnimationTimeout = setTimeout(() => {
     clearAwardAnimation();
-  }, 500);
+  }, 800);
 }
 let hasStartedGameplay = false;
 
@@ -348,7 +348,7 @@ function preloadGameplayBackgrounds() {
     const img = new Image();
     img.src = GAMEPLAY_BG_IMAGES[key];
     if (img.decode) {
-      img.decode().catch(() => {});
+      img.decode().catch(() => { });
     }
   }
 }
@@ -920,11 +920,401 @@ function setBgLayerOpacities(targetIndex) {
   });
 }
 
+// Background Animation System State
+let bgAnimTimeouts = [];
+let bgAnimRafId = null;
+let bgAnimActiveTargetIndex = -1;
+let bgAnimActiveItems = []; // Objects for RAF-ticked items: floaters & snowflakes
+let intensityNoteTimestamps = [];
+
+function registerIntensityNoteHit() {
+  intensityNoteTimestamps.push(performance.now());
+}
+
+function updateBackgroundIntensityFilter(now = performance.now()) {
+  const overlay = document.getElementById('game-bg-intensity-overlay');
+  if (!overlay) return;
+
+  const isPlaying = gameBoardWrapper?.classList.contains('game-playing') || isStarted || isPlayInProgress;
+  if (!bgChangeEnabled || lowPerformanceMode || !isPlaying) {
+    intensityNoteTimestamps = [];
+    overlay.style.opacity = '0';
+    return;
+  }
+
+  // Filter note timestamps in the running 2-second period (2000 ms)
+  const cutoff = now - 2000;
+  while (intensityNoteTimestamps.length > 0 && intensityNoteTimestamps[0] < cutoff) {
+    intensityNoteTimestamps.shift();
+  }
+
+  const notesIn2Sec = intensityNoteTimestamps.length;
+
+  // Quadratic scale: ratio = (notes / threshold)^2, so low note counts ramp slowly
+  // and only dense passages push toward full brightness. 20+ notes in 2s = 1.0 peak.
+  const maxNotesThreshold = 20;
+  const linearRatio = Math.min(1.0, notesIn2Sec / maxNotesThreshold);
+  const intensityRatio = linearRatio * linearRatio; // quadratic
+
+  // Apply magenta overlay opacity (up to 0.35 max)
+  const targetOpacity = intensityRatio * 0.35;
+  overlay.style.opacity = String(targetOpacity);
+}
+
+function clearBackgroundAnimations() {
+  if (bgAnimRafId) {
+    cancelAnimationFrame(bgAnimRafId);
+    bgAnimRafId = null;
+  }
+  bgAnimTimeouts.forEach((t) => clearTimeout(t));
+  bgAnimTimeouts = [];
+
+  bgAnimActiveItems.forEach((item) => {
+    if (item.el && item.el.parentNode) {
+      item.el.parentNode.removeChild(item.el);
+    }
+  });
+  bgAnimActiveItems = [];
+  intensityNoteTimestamps = [];
+
+  const container = document.getElementById('game-bg-anim-container');
+  if (container) {
+    container.innerHTML = '';
+  }
+  const overlay = document.getElementById('game-bg-intensity-overlay');
+  if (overlay) {
+    overlay.style.opacity = '0';
+  }
+  bgAnimActiveTargetIndex = -1;
+}
+
+function updateBackgroundAnimations(targetBackgroundIndex) {
+  const container = document.getElementById('game-bg-anim-container');
+  if (!container) return;
+
+  // Conditions check: Low performance mode off, bg change on, and gameplay active
+  const isPlaying = gameBoardWrapper?.classList.contains('game-playing') || isStarted || isPlayInProgress || isPaused;
+  if (!bgChangeEnabled || lowPerformanceMode || targetBackgroundIndex <= 0 || !isPlaying) {
+    clearBackgroundAnimations();
+    return;
+  }
+
+  // If already running at this exact background index, no need to re-initialize
+  if (bgAnimActiveTargetIndex === targetBackgroundIndex) return;
+
+  // Re-initialize for new target background index
+  clearBackgroundAnimations();
+  bgAnimActiveTargetIndex = targetBackgroundIndex;
+
+  const rect = container.getBoundingClientRect();
+  const W = rect.width || container.clientWidth || 360;
+  const H = rect.height || container.clientHeight || 640;
+
+  const isDecember = (new Date().getMonth() === 11) || (typeof window !== 'undefined' && window.__FORCE_DECEMBER);
+
+  // --------------------------------------------------------------------------
+  // Feature 1: 1, 2, 3, 4 images (Starting from 1 star / 2nd background onwards)
+  // --------------------------------------------------------------------------
+  if (targetBackgroundIndex >= 2) {
+    const assets = [
+      { name: '1.png', origW: 87, origH: 86 },
+      { name: '2.png', origW: 62, origH: 61 },
+      { name: '3.png', origW: 62, origH: 62 },
+      { name: '4.png', origW: 62, origH: 62 }
+    ];
+
+    assets.forEach((asset, idx) => {
+      function spawnAsset() {
+        if (bgAnimActiveTargetIndex !== targetBackgroundIndex) return;
+
+        const img = document.createElement('img');
+        img.src = `gameImage/bgani/${asset.name}`;
+        img.className = 'bg-anim-item';
+
+        // Scale: at least 4x as large as original size (4.0x to 5.5x)
+        const scale = 4.0 + Math.random() * 1.5;
+        const width = asset.origW * scale;
+        const height = asset.origH * scale;
+
+        // Position: can spawn partially out of visible area
+        const minX = -width * 0.35;
+        const maxX = W - width * 0.65;
+        const minY = -height * 0.35;
+        const maxY = H - height * 0.65;
+
+        const posX = minX + Math.random() * (maxX - minX);
+        const posY = minY + Math.random() * (maxY - minY);
+
+        img.style.width = `${width}px`;
+        img.style.height = `${height}px`;
+        img.style.left = `${posX}px`;
+        img.style.top = `${posY}px`;
+        img.style.zIndex = '1';
+        img.style.opacity = '0';
+        img.style.transform = 'scale(0.85)';
+        img.style.transition = 'opacity 0.8s ease-in-out, transform 0.8s ease-in-out';
+
+        container.appendChild(img);
+
+        const circleItem = {
+          type: 'circle',
+          el: img,
+          startX: posX,
+          startY: posY,
+          phaseX: Math.random() * Math.PI * 2,
+          phaseY: Math.random() * Math.PI * 2,
+          ampX: 18 + Math.random() * 22,
+          ampY: 18 + Math.random() * 22,
+          freqX: 0.0008 + Math.random() * 0.0008,
+          freqY: 0.0007 + Math.random() * 0.0008,
+          spawnTime: performance.now()
+        };
+        bgAnimActiveItems.push(circleItem);
+
+        // Fade in
+        requestAnimationFrame(() => {
+          if (!img.parentNode) return;
+          img.style.opacity = String(0.75 + Math.random() * 0.2);
+          img.style.transform = 'scale(1)';
+        });
+
+        // Visible hold duration: 2.5s - 5s
+        const holdTime = 2500 + Math.random() * 2500;
+        const holdTimeout = setTimeout(() => {
+          if (!img.parentNode) return;
+          img.style.opacity = '0';
+          img.style.transform = 'scale(0.95)';
+
+          // After fade out (800ms), cleanup & schedule next spawn
+          const removeTimeout = setTimeout(() => {
+            const itemIdx = bgAnimActiveItems.indexOf(circleItem);
+            if (itemIdx !== -1) bgAnimActiveItems.splice(itemIdx, 1);
+            if (img.parentNode) img.parentNode.removeChild(img);
+
+            // Despawn delay: 1.5s - 3.5s
+            const delay = 1500 + Math.random() * 2500;
+            const nextTimeout = setTimeout(spawnAsset, delay);
+            bgAnimTimeouts.push(nextTimeout);
+          }, 800);
+          bgAnimTimeouts.push(removeTimeout);
+        }, holdTime);
+        bgAnimTimeouts.push(holdTimeout);
+      }
+
+      // Stagger initial spawn times so all 4 don't appear simultaneously
+      const initialDelay = idx * 600 + Math.random() * 800;
+      const initTimeout = setTimeout(spawnAsset, initialDelay);
+      bgAnimTimeouts.push(initTimeout);
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Feature 3 (Static part): December Static Snowflakes (1st Background)
+  // --------------------------------------------------------------------------
+  if (isDecember && targetBackgroundIndex === 1) {
+    const numSnowflakes = 14;
+    for (let i = 0; i < numSnowflakes; i++) {
+      const img = document.createElement('img');
+      img.src = 'gameImage/bgani/snowflake.png';
+      img.className = 'bg-anim-item';
+
+      const size = 20 + Math.random() * 24; // 20px - 44px
+      const posX = Math.random() * (W - size);
+      const posY = Math.random() * (H - size);
+
+      img.style.width = `${size}px`;
+      img.style.height = `${size}px`;
+      img.style.left = `${posX}px`;
+      img.style.top = `${posY}px`;
+      img.style.zIndex = '20';
+      img.style.opacity = '0';
+      img.style.transition = 'opacity 1s ease-in-out';
+
+      container.appendChild(img);
+
+      requestAnimationFrame(() => {
+        if (!img.parentNode) return;
+        img.style.opacity = String(0.35 + Math.random() * 0.45);
+      });
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Setup RAF Loop for Continuous Animations (Floaters & Falling Snowflakes)
+  // --------------------------------------------------------------------------
+  let lastSpawnFloat = 0;
+  let lastSpawnSnow = 0;
+
+  function animLoop(timestamp) {
+    if (bgAnimActiveTargetIndex !== targetBackgroundIndex) return;
+
+    updateBackgroundIntensityFilter(timestamp);
+
+    const curW = container.clientWidth || W;
+    const curH = container.clientHeight || H;
+
+    // --- Feature 2: float.png (Starting from 2 star / 3rd background) ---
+    if (targetBackgroundIndex >= 3) {
+      if (timestamp - lastSpawnFloat > (800 + Math.random() * 600)) {
+        lastSpawnFloat = timestamp;
+
+        // Max concurrent floaters
+        const currentFloaters = bgAnimActiveItems.filter((i) => i.type === 'float').length;
+        if (currentFloaters < 8) {
+          const img = document.createElement('img');
+          img.src = 'gameImage/bgani/float.png';
+          img.className = 'bg-anim-item';
+
+          const size = 28 + Math.random() * 16; // 28px - 44px
+          const startX = Math.random() * (curW - size);
+          const startY = curH + 10;
+
+          // Disappear between 35% and 50% from bottom up (i.e. top is 50% to 65% of screen height)
+          const disappearPctFromBottom = 0.35 + Math.random() * 0.15; // 0.35 to 0.50
+          const targetY = curH * (1.0 - disappearPctFromBottom);
+
+          img.style.width = `${size}px`;
+          img.style.height = `${size}px`;
+          img.style.left = '0px';
+          img.style.top = '0px';
+          img.style.zIndex = '10';
+          img.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+          img.style.opacity = '0';
+
+          container.appendChild(img);
+
+          bgAnimActiveItems.push({
+            type: 'float',
+            el: img,
+            size,
+            startX,
+            startY,
+            curY: startY,
+            targetY,
+            speed: 0.08 + Math.random() * 0.06, // px/ms
+            spawnTime: timestamp
+          });
+        }
+      }
+    }
+
+    // --- Feature 3 (Falling part): December Falling Snowflakes (2nd background onwards) ---
+    if (isDecember && targetBackgroundIndex >= 2) {
+      if (timestamp - lastSpawnSnow > (500 + Math.random() * 500)) {
+        lastSpawnSnow = timestamp;
+
+        const currentFallingSnow = bgAnimActiveItems.filter((i) => i.type === 'snow').length;
+        if (currentFallingSnow < 16) {
+          const img = document.createElement('img');
+          img.src = 'gameImage/bgani/snowflake.png';
+          img.className = 'bg-anim-item';
+
+          const size = 18 + Math.random() * 22; // 18px - 40px
+          const startX = Math.random() * (curW - size);
+          const startY = -size - 5;
+          const targetY = curH * (0.4 + Math.random() * 0.6); // Disappear between 40% height down to bottom
+
+          img.style.width = `${size}px`;
+          img.style.height = `${size}px`;
+          img.style.left = '0px';
+          img.style.top = '0px';
+          img.style.zIndex = '20';
+          img.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+          img.style.opacity = '0';
+
+          container.appendChild(img);
+
+          bgAnimActiveItems.push({
+            type: 'snow',
+            el: img,
+            size,
+            startX,
+            startY,
+            curY: startY,
+            targetY,
+            speed: 0.09 + Math.random() * 0.08,
+            swayFreq: 0.0015 + Math.random() * 0.002,
+            swayAmp: 15 + Math.random() * 25,
+            spawnTime: timestamp
+          });
+        }
+      }
+    }
+
+    // Update RAF items (circles, floaters, and falling snowflakes)
+    for (let i = bgAnimActiveItems.length - 1; i >= 0; i--) {
+      const item = bgAnimActiveItems[i];
+      const elapsed = timestamp - item.spawnTime;
+
+      if (item.type === 'circle') {
+        const driftX = Math.sin(elapsed * item.freqX + item.phaseX) * item.ampX;
+        const driftY = Math.cos(elapsed * item.freqY + item.phaseY) * item.ampY;
+        item.el.style.left = `${item.startX + driftX}px`;
+        item.el.style.top = `${item.startY + driftY}px`;
+      } else if (item.type === 'float') {
+        item.curY -= item.speed * 16.6;
+        const totalDistance = item.startY - item.targetY;
+        const traveled = item.startY - item.curY;
+        const progress = Math.min(1, Math.max(0, traveled / totalDistance));
+
+        // Fade in first 15%, fade out last 25% of travel
+        let opacity = 0.85;
+        if (progress < 0.15) {
+          opacity = (progress / 0.15) * 0.85;
+        } else if (progress > 0.75) {
+          opacity = ((1 - progress) / 0.25) * 0.85;
+        }
+
+        // Float straight up without side wobbling
+        const posX = item.startX;
+
+        item.el.style.transform = `translate3d(${posX}px, ${item.curY}px, 0)`;
+        item.el.style.opacity = String(opacity);
+
+        if (item.curY <= item.targetY || progress >= 1) {
+          if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
+          bgAnimActiveItems.splice(i, 1);
+        }
+      } else if (item.type === 'snow') {
+        item.curY += item.speed * 16.6;
+        const totalDistance = item.targetY - item.startY;
+        const traveled = item.curY - item.startY;
+        const progress = Math.min(1, Math.max(0, traveled / totalDistance));
+
+        let opacity = 0.8;
+        if (progress < 0.15) {
+          opacity = (progress / 0.15) * 0.8;
+        } else if (progress > 0.75) {
+          opacity = ((1 - progress) / 0.25) * 0.8;
+        }
+
+        const sway = Math.sin(elapsed * item.swayFreq) * item.swayAmp;
+        const posX = item.startX + sway;
+
+        item.el.style.transform = `translate3d(${posX}px, ${item.curY}px, 0)`;
+        item.el.style.opacity = String(opacity);
+
+        if (item.curY >= item.targetY || progress >= 1) {
+          if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
+          bgAnimActiveItems.splice(i, 1);
+        }
+      }
+    }
+
+    if (bgAnimActiveTargetIndex === targetBackgroundIndex) {
+      bgAnimRafId = requestAnimationFrame(animLoop);
+    }
+  }
+
+  bgAnimRafId = requestAnimationFrame(animLoop);
+}
+
 function initGameplayBackground() {
   preloadGameplayBackgrounds();
   const initialIndex = (!bgChangeEnabled || lowPerformanceMode) ? 0 : getGameplayBackgroundIndex();
   setBgLayerOpacities(initialIndex);
   currentGameplayBackgroundIndex = initialIndex;
+  updateBackgroundAnimations(initialIndex);
 }
 
 function applyGameplayBackground() {
@@ -932,10 +1322,11 @@ function applyGameplayBackground() {
     ? 0
     : getGameplayBackgroundIndex();
 
-  if (targetBackgroundIndex === currentGameplayBackgroundIndex) return;
-
-  setBgLayerOpacities(targetBackgroundIndex);
-  currentGameplayBackgroundIndex = targetBackgroundIndex;
+  if (targetBackgroundIndex !== currentGameplayBackgroundIndex) {
+    setBgLayerOpacities(targetBackgroundIndex);
+    currentGameplayBackgroundIndex = targetBackgroundIndex;
+  }
+  updateBackgroundAnimations(targetBackgroundIndex);
 }
 
 function updateGameplayBackground() {
@@ -2312,6 +2703,7 @@ function resetEngineState() {
     gameBoardWrapper.classList.remove('game-playing');
     gameBoardWrapper.classList.remove('game-bg-transition-active');
     gameBoardWrapper.classList.remove('bg-level-2', 'bg-level-3');
+    clearBackgroundAnimations();
     gameBoardWrapper.style.removeProperty('--game-bg-image-1');
     gameBoardWrapper.style.removeProperty('--game-bg-image-2');
     gameBoardWrapper.style.removeProperty('--game-bg-layer-a');
@@ -3029,6 +3421,7 @@ function getManualProgress(tile) {
 }
 
 function playTileAudioNow(tile) {
+  registerIntensityNoteHit();
   triggerPendingAwardAnimations();
   if (!tile || tile.audioPlayed) return;
   if (tile.type === 9) {
@@ -5167,7 +5560,7 @@ function updateEngineFrame(now) {
           bgLevelPos.push(hpos - 4 + key);
         }
 
-        speedLevelPos.push(hpos -1 + key);
+        speedLevelPos.push(hpos - 1 + key);
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }
@@ -7162,8 +7555,8 @@ async function initializeGame() {
   }
 
   try {
-  const loadingStatus = document.getElementById('loading-status');
-  const loadingSubstatus = document.getElementById('loading-substatus');
+    const loadingStatus = document.getElementById('loading-status');
+    const loadingSubstatus = document.getElementById('loading-substatus');
 
     if (loadingStatus) loadingStatus.textContent = t('msg_loading_database', 'Loading database...');
     if (loadingSubstatus) loadingSubstatus.textContent = t('msg_fetching_game_csv_configurations', 'Fetching game CSV configurations');

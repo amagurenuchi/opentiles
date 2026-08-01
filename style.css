@@ -3374,3 +3374,32 @@ html.dark-mode .dock-button.keyboard-tab-selected>div {
 .tile-start-label-at-head {
   inset: auto;
 }
+
+/* ─── Background Animation System Styles ─────────────────────────────────── */
+#game-bg-anim-container {
+  contain: layout style;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bg-anim-item {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  object-fit: contain;
+}
+
+/* ─── Background Intensity Filter Style ──────────────────────────────────── */
+#game-bg-intensity-overlay {
+  contain: layout style;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.8) 0%, rgba(219, 39, 119, 0.9) 65%, rgba(157, 23, 77, 0.95) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  will-change: opacity;
+}
+
+

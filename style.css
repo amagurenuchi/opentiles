@@ -208,11 +208,11 @@ html.dark-mode .class-song-list {
   color: #b7c2d3;
 }
 
-html.dark-mode .dock-button:not(.selected) > div {
+html.dark-mode .dock-button:not(.selected)>div {
   background-color: #0a0a0a;
 }
 
-html.dark-mode #shared-dock > div,
+html.dark-mode #shared-dock>div,
 html.dark-mode #welcome-actions {
   background: rgba(0, 0, 0, 0.94) !important;
 }
@@ -2130,18 +2130,22 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
     opacity: 0;
     transform: translate(-50%, -100%) scale(0.8);
   }
+
   20% {
     opacity: 1;
     transform: translate(-50%, -100%) scale(1.05);
   }
+
   35% {
     opacity: 1;
     transform: translate(-50%, -100%) scale(1);
   }
+
   75% {
     opacity: 1;
     transform: translate(-50%, -100%) scale(1);
   }
+
   100% {
     opacity: 0;
     transform: translate(-50%, -100%) scale(0.95);
@@ -2626,13 +2630,13 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
 #star-animation-display {
   color: #ffd700 !important;
   /* Yellow color for stars */
-  transform: translateY(10px) scale(1.5);
+  transform: translateY(10px);
 }
 
 #crown-animation-display {
   color: #ffd700 !important;
   /* Yellow color for crowns */
-  transform: translateY(10px) scale(1.5);
+  transform: translateY(10px);
 }
 
 /* Score digit wrapper for consistent positioning */
@@ -3401,5 +3405,3 @@ html.dark-mode .dock-button.keyboard-tab-selected>div {
   transition: opacity 0.2s ease-out;
   will-change: opacity;
 }
-
-

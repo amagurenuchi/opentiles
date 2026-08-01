@@ -285,11 +285,11 @@ function triggerAwardAnimation(stage) {
   const crownAnim = document.getElementById('crown-animation-display');
 
   if (stage.crowns) {
-    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-16 h-auto sm:w-20 mr-2 drop-shadow-md">'.repeat(stage.crowns);
+    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-12 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.crowns);
     crownAnim.classList.remove('hidden');
     starAnim.classList.add('hidden');
   } else {
-    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-16 h-auto sm:w-20 mr-2 drop-shadow-md">'.repeat(stage.stars) : '';
+    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-12 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.stars) : '';
     starAnim.classList.remove('hidden');
     crownAnim.classList.add('hidden');
   }
@@ -2050,11 +2050,11 @@ function createSongCard(song, isFavouriteView = false) {
   let progressHTML = '';
   if (stage.crowns > 0) {
     for (let i = 0; i < 3; i++) {
-      progressHTML += `<img src="gameImage/crown.png" class="w-6 h-auto mr-1 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
+      progressHTML += `<img src="gameImage/crown.png" class="w-6 h-auto mr-0.5 ${i < stage.crowns ? 'earned' : 'unearned'}">`;
     }
   } else {
     for (let i = 0; i < 3; i++) {
-      progressHTML += `<img src="gameImage/star.png" class="w-6 h-auto mr-1 ${i < stage.stars ? 'earned' : 'unearned'}">`;
+      progressHTML += `<img src="gameImage/star.png" class="w-6 h-auto ${i < stage.stars ? 'earned' : 'unearned'}">`;
     }
   }
 
@@ -5166,12 +5166,8 @@ function updateEngineFrame(now) {
         if (!isClassMode) {
           bgLevelPos.push(hpos - 4 + key);
         }
-        // Advance the normal-song award threshold one tile earlier so it can trigger
-        // at the end of the current section rather than the next section's first tile.
-        // Class mode has no star/crown awards, but it still pushes speedLevelPos so
-        // its speed follows each song section's own BPM from the CSV instead of the
-        // constant BPM of the first section of the first song.
-        speedLevelPos.push(hpos - 2 + key);
+
+        speedLevelPos.push(hpos -1 + key);
         currentSectionIndex++;
         currentSectionTileIndex = 0;
       }

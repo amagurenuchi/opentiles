@@ -2097,15 +2097,15 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
 .combo-plus-one {
   position: absolute;
   font-family: var(--font-game);
-  font-weight: 700;
-  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  font-weight: 400;
+  font-size: clamp(2.5rem, 9vw, 3.5rem);
   line-height: 1;
   color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  text-shadow: none;
   pointer-events: none;
   z-index: 12;
   transform: translate(-50%, -50%);
-  animation: combo-plus-one-float 0.35s ease-out forwards;
+  animation: combo-plus-one-float 0.6s ease-out forwards;
 }
 
 .long-tile-score-popup {
@@ -2114,8 +2114,8 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
   top: -10px;
   transform: translate(-50%, -100%);
   font-family: var(--font-game);
-  font-weight: 700;
-  font-size: clamp(2rem, 5vw, 2.8rem);
+  font-weight: 400;
+  font-size: clamp(3rem, 10vw, 4rem);
   line-height: 1;
   color: #ef4444;
   text-shadow: none;
@@ -2626,11 +2626,13 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
 #star-animation-display {
   color: #ffd700 !important;
   /* Yellow color for stars */
+  transform: translateY(10px);
 }
 
 #crown-animation-display {
   color: #ffd700 !important;
   /* Yellow color for crowns */
+  transform: translateY(10px);
 }
 
 /* Score digit wrapper for consistent positioning */
@@ -2745,13 +2747,14 @@ html.dark-mode .keyboard-nav-selected.results-dock-center {
 .song-card-progress {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 20px;
+  gap: 0px;
+  margin-top: 6px;
 }
 
 .song-card-progress img {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: auto;
+  box-shadow: none;
 }
 
 .song-card-progress .earned {

@@ -3986,10 +3986,13 @@ async function finishRun(showLibrary = false) {
             if (!selectedSongData || autoplayEnabled) return false;
             const mid = String(selectedSongData.mid || selectedSongData.id || '');
             const scoreKey = `opentile_best_score_${mid}`;
+            const tpsKey = `opentile_best_tps_${mid}`;
             const prev = parseFloat(localStorage.getItem(scoreKey) || '0');
             const isBest = numericScore > prev;
             if (isBest) {
               localStorage.setItem(scoreKey, String(numericScore));
+              const finalTps = getDisplayTps();
+              localStorage.setItem(tpsKey, String(finalTps));
             }
             return isBest;
           })();
@@ -8034,6 +8037,7 @@ function refreshAfterReset() {
 function resetScoreData() {
   removeKeysByPrefix('opentile_highscore_level_');
   removeKeysByPrefix('opentile_best_score_');
+  removeKeysByPrefix('opentile_best_tps_');
   localStorage.removeItem('opentile_highscore');
   localStorage.removeItem('opentile_song_of_the_day_streak');
   refreshAfterReset();
@@ -8431,7 +8435,10 @@ function openPlayerStatsModal() {
         const bestScore = parseInt(localStorage.getItem(`opentile_best_score_${song.mid}`) || '0', 10);
         if (!bestScore) return null;
         const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
-        const tps = computeSongFinalTps(song, bestLevel);
+        let tps = parseFloat(localStorage.getItem(`opentile_best_tps_${song.mid}`) || '0', 10);
+        if (tps === 0) {
+          tps = computeSongFinalTps(song, bestLevel);
+        }
         const songStage = getStarAndCrownState(bestLevel - 1);
         return { song, bestScore, bestLevel, tps, stage: songStage };
       })

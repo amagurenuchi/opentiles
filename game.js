@@ -961,7 +961,7 @@ function updateBackgroundIntensityFilter(now = performance.now()) {
   overlay.style.opacity = String(targetOpacity);
 }
 
-function clearBackgroundAnimations() {
+function clearBackgroundAnimations(preserveSnowflakes = false) {
   if (bgAnimRafId) {
     cancelAnimationFrame(bgAnimRafId);
     bgAnimRafId = null;
@@ -969,18 +969,19 @@ function clearBackgroundAnimations() {
   bgAnimTimeouts.forEach((t) => clearTimeout(t));
   bgAnimTimeouts = [];
 
+  const itemsToKeep = [];
   bgAnimActiveItems.forEach((item) => {
-    if (item.el && item.el.parentNode) {
-      item.el.parentNode.removeChild(item.el);
+    if (preserveSnowflakes && item.type === 'snow') {
+      itemsToKeep.push(item);
+    } else {
+      if (item.el && item.el.parentNode) {
+        item.el.parentNode.removeChild(item.el);
+      }
     }
   });
-  bgAnimActiveItems = [];
+  bgAnimActiveItems = itemsToKeep;
   intensityNoteTimestamps = [];
 
-  const container = document.getElementById('game-bg-anim-container');
-  if (container) {
-    container.innerHTML = '';
-  }
   const overlay = document.getElementById('game-bg-intensity-overlay');
   if (overlay) {
     overlay.style.opacity = '0';
@@ -1003,7 +1004,8 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
   if (bgAnimActiveTargetIndex === targetBackgroundIndex) return;
 
   // Re-initialize for new target background index
-  clearBackgroundAnimations();
+  const preserveSnowflakes = (bgAnimActiveTargetIndex >= 2 && targetBackgroundIndex >= 2);
+  clearBackgroundAnimations(preserveSnowflakes);
   bgAnimActiveTargetIndex = targetBackgroundIndex;
 
   const rect = container.getBoundingClientRect();
@@ -1047,8 +1049,9 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
 
         img.style.width = `${width}px`;
         img.style.height = `${height}px`;
-        img.style.left = `${posX}px`;
-        img.style.top = `${posY}px`;
+        img.style.left = '0px';
+        img.style.top = '0px';
+        img.style.transform = `translate3d(${posX}px, ${posY}px, 0)`;
         img.style.zIndex = '1';
         img.style.opacity = '0';
         img.style.transition = 'opacity 0.8s ease-in-out';
@@ -1110,29 +1113,31 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
   // --------------------------------------------------------------------------
   if (isDecember && targetBackgroundIndex === 1) {
     const numSnowflakes = 14;
+    // Simple PRNG for deterministic positions
+    let seed = 4242;
+    const random = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
     for (let i = 0; i < numSnowflakes; i++) {
       const img = document.createElement('img');
       img.src = 'gameImage/bgani/snowflake.png';
       img.className = 'bg-anim-item';
 
-      const size = 20 + Math.random() * 24; // 20px - 44px
-      const posX = Math.random() * (W - size);
-      const posY = Math.random() * (H - size);
+      const size = 20 + random() * 24; // 20px - 44px
+      const posX = random() * (W - size);
+      const posY = random() * (H - size);
+      const opacity = 0.35 + random() * 0.45;
 
       img.style.width = `${size}px`;
       img.style.height = `${size}px`;
       img.style.left = `${posX}px`;
       img.style.top = `${posY}px`;
       img.style.zIndex = '20';
-      img.style.opacity = '0';
-      img.style.transition = 'opacity 1s ease-in-out';
+      img.style.opacity = String(opacity);
 
       container.appendChild(img);
-
-      requestAnimationFrame(() => {
-        if (!img.parentNode) return;
-        img.style.opacity = String(0.35 + Math.random() * 0.45);
-      });
+      bgAnimActiveItems.push({ type: 'static-snow', el: img });
     }
   }
 
@@ -1141,6 +1146,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
   // --------------------------------------------------------------------------
   let lastSpawnFloat = 0;
   let lastSpawnSnow = 0;
+  let lastSpawnSnowDots = 0;
 
   function animLoop(timestamp) {
     if (bgAnimActiveTargetIndex !== targetBackgroundIndex) return;
@@ -1151,7 +1157,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
     const curH = container.clientHeight || H;
 
     // --- Feature 2: float.png (Starting from 2 star / 3rd background) ---
-    if (targetBackgroundIndex >= 3) {
+    if (targetBackgroundIndex >= 3 && !isDecember) {
       if (timestamp - lastSpawnFloat > (800 + Math.random() * 600)) {
         lastSpawnFloat = timestamp;
 
@@ -1193,6 +1199,45 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
           });
         }
       }
+
+      // --- Snow Dots ---
+      if (timestamp - lastSpawnSnowDots > 300) {
+        lastSpawnSnowDots = timestamp;
+        const currentSnowDots = bgAnimActiveItems.filter((i) => i.type === 'snowdot').length;
+        if (currentSnowDots < 30) {
+          const div = document.createElement('div');
+          div.className = 'bg-anim-item';
+          const size = 4 + Math.random() * 6; // small dots
+          const startX = Math.random() * (curW - size);
+          const startY = -size - 5;
+          const targetY = curH * 1.0 + size;
+
+          div.style.width = `${size}px`;
+          div.style.height = `${size}px`;
+          div.style.borderRadius = '50%';
+          div.style.backgroundColor = 'rgba(255,255,255,0.7)';
+          div.style.left = '0px';
+          div.style.top = '0px';
+          div.style.zIndex = '15';
+          div.style.transform = `translate3d(${startX}px, ${startY}px, 0)`;
+          div.style.opacity = '0';
+
+          container.appendChild(div);
+
+          bgAnimActiveItems.push({
+            type: 'snowdot',
+            el: div,
+            size,
+            startX,
+            startY,
+            curY: startY,
+            targetY,
+            speed: 0.12 + Math.random() * 0.05,
+            dirX: (Math.random() - 0.5) * 0.03,
+            spawnTime: timestamp
+          });
+        }
+      }
     }
 
     // --- Feature 3 (Falling part): December Falling Snowflakes (2nd background onwards) ---
@@ -1206,7 +1251,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
           img.src = 'gameImage/bgani/snowflake.png';
           img.className = 'bg-anim-item';
 
-          const size = 18 + Math.random() * 22; // 18px - 40px
+          const size = 20 + Math.random() * 40; // 20px - 60px
           const startX = Math.random() * (curW - size);
           const startY = -size - 5;
           const targetY = curH * (0.4 + Math.random() * 0.6); // Disappear between 40% height down to bottom
@@ -1229,9 +1274,8 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             startY,
             curY: startY,
             targetY,
-            speed: 0.09 + Math.random() * 0.08,
-            swayFreq: 0.0015 + Math.random() * 0.002,
-            swayAmp: 15 + Math.random() * 25,
+            speed: 0.04 + Math.random() * 0.04,
+            dirX: (Math.random() - 0.5) * 0.04,
             spawnTime: timestamp
           });
         }
@@ -1246,8 +1290,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
       if (item.type === 'circle') {
         const driftX = Math.sin(elapsed * item.freqX + item.phaseX) * item.ampX;
         const driftY = Math.cos(elapsed * item.freqY + item.phaseY) * item.ampY;
-        item.el.style.left = `${item.startX + driftX}px`;
-        item.el.style.top = `${item.startY + driftY}px`;
+        item.el.style.transform = `translate3d(${item.startX + driftX}px, ${item.startY + driftY}px, 0)`;
       } else if (item.type === 'float') {
         item.curY -= item.speed * 16.6;
         const totalDistance = item.startY - item.targetY;
@@ -1285,13 +1328,34 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
           opacity = ((1 - progress) / 0.25) * 0.8;
         }
 
-        const sway = Math.sin(elapsed * item.swayFreq) * item.swayAmp;
-        const posX = item.startX + sway;
+        const posX = item.startX + elapsed * item.dirX;
 
         item.el.style.transform = `translate3d(${posX}px, ${item.curY}px, 0)`;
         item.el.style.opacity = String(opacity);
 
         if (item.curY >= item.targetY || progress >= 1) {
+          if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
+          bgAnimActiveItems.splice(i, 1);
+        }
+      } else if (item.type === 'snowdot') {
+        item.speed *= 0.985;
+        item.curY += item.speed * 16.6;
+        const totalDistance = item.targetY - item.startY;
+        const traveled = item.curY - item.startY;
+        const progress = Math.min(1, Math.max(0, traveled / totalDistance));
+
+        let opacity = 0.8;
+        if (progress < 0.1) {
+          opacity = (progress / 0.1) * 0.8;
+        } else {
+          opacity = ((1 - progress) / 0.9) * 0.8;
+        }
+
+        const posX = item.startX + elapsed * item.dirX;
+        item.el.style.transform = `translate3d(${posX}px, ${item.curY}px, 0)`;
+        item.el.style.opacity = String(opacity);
+
+        if (item.curY >= item.targetY || progress >= 1 || item.speed < 0.005) {
           if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
           bgAnimActiveItems.splice(i, 1);
         }

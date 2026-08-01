@@ -1051,8 +1051,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         img.style.top = `${posY}px`;
         img.style.zIndex = '1';
         img.style.opacity = '0';
-        img.style.transform = 'scale(0.85)';
-        img.style.transition = 'opacity 0.8s ease-in-out, transform 0.8s ease-in-out';
+        img.style.transition = 'opacity 0.8s ease-in-out';
 
         container.appendChild(img);
 
@@ -1075,7 +1074,6 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         requestAnimationFrame(() => {
           if (!img.parentNode) return;
           img.style.opacity = String(0.75 + Math.random() * 0.2);
-          img.style.transform = 'scale(1)';
         });
 
         // Visible hold duration: 2.5s - 5s
@@ -1083,7 +1081,6 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         const holdTimeout = setTimeout(() => {
           if (!img.parentNode) return;
           img.style.opacity = '0';
-          img.style.transform = 'scale(0.95)';
 
           // After fade out (800ms), cleanup & schedule next spawn
           const removeTimeout = setTimeout(() => {
@@ -1091,8 +1088,8 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             if (itemIdx !== -1) bgAnimActiveItems.splice(itemIdx, 1);
             if (img.parentNode) img.parentNode.removeChild(img);
 
-            // Despawn delay: 1.5s - 3.5s
-            const delay = 1500 + Math.random() * 2500;
+            // Despawn delay: minimal to ensure overlap - spawn next circle during fade out
+            const delay = 100 + Math.random() * 200;
             const nextTimeout = setTimeout(spawnAsset, delay);
             bgAnimTimeouts.push(nextTimeout);
           }, 800);
@@ -1101,8 +1098,8 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         bgAnimTimeouts.push(holdTimeout);
       }
 
-      // Stagger initial spawn times so all 4 don't appear simultaneously
-      const initialDelay = idx * 600 + Math.random() * 800;
+      // Stagger initial spawn times to ensure continuous coverage
+      const initialDelay = idx * 400 + Math.random() * 400;
       const initTimeout = setTimeout(spawnAsset, initialDelay);
       bgAnimTimeouts.push(initTimeout);
     });

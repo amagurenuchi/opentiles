@@ -1,0 +1,56 @@
+{
+  "baseBpm": 75,
+  "musics": [
+    {
+      "bpm": 75,
+      "baseBeats": 0.25,
+      "scores": [
+        "V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,V,V,U,U,V,V,U,U,U,U,V,V,U,U,U,V,V,U,U,U,U,V,V,U,V,V,U,U,U,U,V,V,U,U,V,V,U,U,U,V,V,U,V,V,U,V,V,U,U,U,V,V,U,V,V,U,V,V,U,U,U,V,V,U,V,V,U,V,V,U,U,U,V,V,U,U,U,U,V,V,S,U,U,U,U,U,U,V,V,U,U,U,V,V,U,U,V,V,V,V,U,U,U,U,U,U,U,V,V,U,U,U,U,U,U,V,V,V,V,U,U,U,V,V,V,V,U,U,U,V,V,U,U,U,V,V,U,V,V,U,V,V,V,V,U,V,V,V,V,U,U,U,V;",
+        "(#g.c1.g1.g3)[M],f3[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[L],(#a1.f2.g3)[M],(g2.f3)[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[L],g3[M],f3[M],c3[L],#d3[L],f3[M],V,(#D-1.#d2)[L],#A-1[L],(#d.#a1)[M],#d2[M],(g.f2)[L],(#G-1.g2)[L],#d[L],(#g.#a2)[L],#d1[M],f2[M],(#A-1.f2)[L],f[L],(#a.g2)[L],f1[M],#d2[M],(#d.f2)[L],g[L],(#a.g2)[L],f1[L],(c.g1)[M],#d2[M],g[L],(c1.#a1)[M],#d2[M],(g1.f2)[L],(#G-1.g2)[L],#d[L],(#g.#a2)[L],#d1[M],f2[M],(#A-1.d2.f2)[L],f[L],(#a.g2)[M],f2[M],f1[L],(#d.g2)[L],g[L],(#a.g2)[M],f2[M],f1[L],(#G-1.g1)[M],#d2[M],#d[L],(#g.#d1)[M],#a1[M],(#d1.c2)[L],(#D-1.#a1)[L],#A-1[L],(#d.g2)[M],f2[M],#a[L],(#G-1.g1)[M],#d2[M],#d[L],(#g.#d1.#d2)[M],#a1[M],(#d1.c2)[L],(#D-1.#d1.#a1)[L],#A-1[L],(#d.g2)[M],f2[M],#a[L],(#G-1.c2)[M],f2[M],c[L],(f.c2.f2)[M],#d2[M],#g[L],(#A-1.d2)[L],f[L],(#a.c2)[M],d2[M],(d1.#a1)[L],(C-1.c.f1.g1.c2)[L],#A-1[L],f[L],g[M],#a1[M],(c1.e1.g1.c2)[J],(g.#a.#d1.#a1)[L],#d2[L],f2[L],#a2[L],(#g.#d1.#a1)[L],#d2[L],(#d1.f2)[M],#a1[M],#a2[L],(#a.f1.#a1)[L],#d2[L],f2[M],(f1.#a1)[M],#a2[L],(#g.#d1.f1.#a1)[L],#d2[M],#a1[M],(f1.f2)[M],#a1[M],(#g.#a2)[L],(g.#a.#d1.#a1)[L],#d2[L],(#d1.f2)[L],#a2[L],(#g.#d1.#a1)[L],#d2[L],(#d1.f2)[M],#a1[M],#a2[L],(#a.#d1.f1.#a1)[L],#d2[L],(#d1.f2)[L],#a2[L],(#a.#d1.f1.#a1)[L],#d2[M],#a1[M],(#A-2.#A-1.f2)[M],#a1[M],#a2[L],(#D-1.#d2)[L],#A-1[L],(#d.#a1)[M],#d2[M],(g.#a1.f2)[M],#a1[M],(#G-1.#a1.#d2.g2)[L],#d[L],(#g.#a1.#d2.f2.#a2)[L],(c1.#a1)[M],(#d2.f2)[M],(#A-1.d2.f2)[L],f[L],(#a.d2.f2.g2)[L],d1[M],#d2[M],(#d.f2.#a2)[L],#a[M],f2[M],(#d1.d2.f2.g2)[L],d[M],#a1[M],(c.g1)[M],(#a1.#d2)[M],g[L],(#d1.#a1)[M],#d2[M],(c1.#a1.f2)[M],#a1[M],(#G-1.#a1.#d2.g2)[L],#d[L],(#g.#a1.#d2.f2.#a2)[L],#d1[M];"
+      ],
+      "id": 1,
+      "instruments": [
+        "piano",
+        "piano"
+      ],
+      "alternatives": [
+        "",
+        ""
+      ]
+    },
+    {
+      "bpm": 75,
+      "baseBeats": 0.25,
+      "scores": [
+        "V,U,U,V,V,V,V,U,V,V,V,V,V,V,U,U,V,V,V,V,V,V,U,V,V,V,V,U,U,V,V,V,V,V,V,U,V,V,U,V,V,U,V,V,U,V,V,U,V,V,U,U,U,U,V,V,V,TUV,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,U,V,V,U,U,U,V,V,U,U,U,U,U,U,U,U,U,U,U,V,V,U,U,U,U,U,U,U,V,V,U,U,U,U,U,U,U,V,V,U,U,U,V,V,U,U,U,U,U,U,U,U,U,U,U,V,V,U,U,U,U,U,U,U,U,U,V,V,U,V,V,U,U,U,U,U,U,V,V,V,V,U,V,V,U,V,V,V,V,U,V,V,U,V,V,U,U,U,U,U,U,U,U,V,V,U,U,U,V,V,U,V,V,U,U,U;",
+        "(#d2.f2)[M],(#A-1.d2.f2)[L],f[L],(#a.d2.f2.g2)[M],f2[M],d1[M],#d2[M],(#d.g2.#a2)[L],#a[M],f2[M],(g1.f2.g2)[M],f2[M],#a[M],#a1[M],(#G-1.#d2)[L],#d[L],(c1.#d1)[M],#a1[M],(#g.c2)[M],#d1[M],(#D-1.f1.#a1)[M],g1[M],#A-1[L],(g.f2.g2)[M],f2[M],#d[M],g1[M],(#G-1.#d2)[L],#d[L],(c1.#d1.c2.#d2)[M],#a1[M],(#g.c2)[M],#d1[M],(#D-1.f1.#a1)[M],g1[M],#A-1[L],(g.f2.g2)[M],f2[M],#d[L],(#G-1.g1)[M],(c2.#d2)[M],(#d.f2)[L],(c1.f2)[M],#d2[M],(#g.#a1)[L],(#A-1.f1)[M],d2[M],f[L],(#a.f1.c2.f2)[M],d2[M],(d1.#a1)[L],(c.g1.c2.#d2)[L],f[L],(g.#a1)[L],c1[M],#a1[M],(c.f1.g1.c2)[M],(g.c1)[KLM],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(#G-2.#a1)[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(#g.#a1)[M],(c1.#d1)[M],(g1.#d2)[L],(c2.f2)[L],(#d2.#a2)[L],(#a1.f3)[M],(g3.#a3)[M],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(G-2.#a1)[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(g.#a.#a1)[M],(d1.f1)[M],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],(c1.#d2)[L],(d1.c2.f2)[L],(f1.#d2.#a2)[L],(g.#a1)[M],(#a.d1)[M],(f1.#d2)[L],(c2.f2)[L],(#d2.#a2)[L],(#G-2.#a1)[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(#g.#a1)[M],(c1.#d1)[M],(g1.#d2)[L],(c2.f2)[L],(#d2.#a2)[L],(#a1.f3)[M],(g3.#a3)[M],#d2[L],(c2.f2)[L],(#d2.#a2)[L],#a1[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(G-2.G-1.#a1)[L],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(#d.#a1)[M],(f.#a)[M],#d2[L],(c2.f2)[L],(#d2.#a2)[L],(G-1.#a1)[L],(#d.#d2)[L],(f.c2.f2)[L],(#a.#d2.#a2)[L],(G-1.#a1)[L],(#d.#d2)[L],(f.c2.f2)[M],#a1[M],(#a.#d2.#a2)[L],(#G-1.#g1)[M],(c2.#d2)[M],(#d.g2)[L],f[L],#a[L],#G-1[L],#d[L],f[L],(#a.f3)[M],g3[M],(#G-1.#a3)[M],c4[M],(#d.g3)[L],(f.f3)[M],g3[M],(#a.#a2)[L],(#G-1.#a2)[M],c3[M],(#d.c3)[M],#d3[M],(f.c3)[L],(#a.#a2)[M],g2[M],(G-1.f2)[L],#d[M],#d2[M],(f.f2)[L],(#a.g2)[L],(G-1.g2)[L],#d[L],f[L],#a[L],G-1[L],#d[L],(f.#a3)[M],(#d3.f3)[M],(#a.d3)[L],G-1[L],#d[L],(f.g2)[M],(d2.#d2)[M],(#a.#a1)[L],(#G-1.#g)[M],(c1.#d1)[M],(#d.g1)[L],f[L],#a[L];"
+      ],
+      "id": 2,
+      "instruments": [
+        "piano",
+        "piano"
+      ],
+      "alternatives": [
+        "",
+        ""
+      ]
+    },
+    {
+      "bpm": 75,
+      "baseBeats": 0.25,
+      "scores": [
+        "U,U,U,V,V,V,V,U,V,V,U,V,V,V,V,U,V,V,U,V,V,U,U,U,U,U,U,U,U,V,V,V,V,U,V,V,U,V,V,V,V,U,V,V,V,V,U,V,V,V,V,V,V,U,U,V,V,V,V,V,V,V,V,V,V,V,V,U,U,V,V,U,U,U,U,V,V,U,U,U,V,V,U,V,V,U,V,V,U,U,V,V,U,U,U,U,V,V,U,U,V,V,U,V,V,V,V,V,V,V,V,U,U,V,V,V,V,V,V,U,V,V,U,U,U,V,V,V,V,V,V,U,V,V,U,U,U,V,V,U,U,U,V,V,U,U,U,U,V,V,V,TUV,V,TV,U,V,UV,UV,V,V,UV,T,UV,V,UV,V,V,TV,U,V,V,U,UV,V,U,U,U,U,U,V,V,U,V,V,U,U,U,U,U,U,UV,V,V,V,U,U,U,U,U,T,V,V,V,U,U,UV,U,U,TV,V,V,V,U,UV,UV,V,V,SU;",
+        "#G-1[L],#d[L],f[L],(#a.f2)[M],g2[M],(#G-1.#a2)[M],c3[M],(#d.g2)[L],(f.f2.g2)[M],g2[M],(#a.#a1)[L],(#G-1.#a1)[M],c2[M],(#d.c2)[M],#d2[M],(f.c2)[L],(#a.#a1)[M],g1[M],(G-1.f1)[L],#d[M],#d1[M],(f.f1)[L],(#a.g1)[L],(G-1.g1)[L],#d[L],f[L],#a[L],G-1[L],#d[L],(f.f1)[M],g1[M],(#a.#a1)[M],c2[M],(G-1.g1)[L],(#d.#d1)[M],f1[M],(f.#a)[L],#a[M],c1[M],(F-1.#g.c1)[M],#d1[M],(#d.c1)[L],(f.#a)[M],c1[M],#d[M],(c1.#d1)[M],(F-1.c1.f1)[L],(#d.g1)[M],(c1.f1)[M],f[M],c1[M],#d[M],#a[M],(#G-1.#g.c1)[L],#d[L],f[M],#a[M],(#d.c1)[M],#d1[M],(#A-1.f.#a.f1)[M],#d1[M],f1[M],g1[M],(#A-1.#a1)[M],g1[M],(#A-2.#a1)[M],#d2[M],(C-1.c.g1.c2)[L],g[L],(#d1.#a1)[M],#d2[M],(c1.#a1.f2)[L],(#G-1.g1.#d2.g2)[L],#d[L],(#g.#a1.#d2.f2.#a2)[L],#d1[M],(#d2.f2)[M],(#A-1.f1.d2.f2)[L],f[L],(#a.g1.d2.f2.g2)[L],d1[M],#d2[M],(#D-1.d2.f2.#a2)[L],#A-1[M],f2[M],(#d.g1.#d2.f2.g2)[L],d[M],#a1[M],(c.#d1.c2.#d2)[L],g[L],(#d1.#a1)[M],#d2[M],(c1.#a1.f2)[L],(#G-1.g1.#d2.g2)[L],#d[L],(#g.#a1.#d2.f2.#a2)[L],#d1[M],(#d2.f2)[M],(#A-1.f1.d2.f2)[L],f[L],(#a.g1.g2)[M],(f1.f2)[M],d1[L],(#D-1.#a1.#a2)[M],(#d2.g2)[M],#A-1[M],f2[M],(g.g1.#d2.f2.g2)[M],(f1.f2)[M],#d[M],#a1[M],(#G-1.#d1.#a1.#d2)[L],#d[L],(c1.#d1)[M],#a1[M],(#g.c2)[M],#d1[M],(#D-1.f1.#a1)[M],g1[M],#A-1[L],(g.g1.#d2.g2)[M],(f1.f2)[M],#d[L],(#G-1.#d1.#a1.#d2)[L],#d[L],(c1.#d1.#d2)[M],#a1[M],(#g.c2)[M],#d1[M],(#D-1.f1.#a1)[M],g1[M],#A-1[L],(g.g2)[M],f2[M],#d[L],(#G-1.g1.c2.f2)[L],#d[L],(c1.g1.c2.f2)[M],(g1.c2.#d2)[M],#g[L],(#A-1.f1.#a1.d2)[L],f[L],(#a.f1.c2.f2)[M],d2[M],(d1.#a1)[L],(C-1.c.f1.g1.c2)[L],f[L],g[L],c1[M],#a1[M],(c.e1)[M],(g.c1.g1.c2)[KLM],g1[M],(#a1.#d2)[KM],#a2[L],(#g1.#d3)[M],(c2.#d2)[LM],f3[LM],#d3[M],(#a1.#d3)[M],(f2.#g2)[LM],f3[K],(#d2.g2.#a2.#a3)[LM],f3[M],(d2.f2.#a2.f3)[LM],#a2[M],(c2.#d3)[M],(#d2.g2)[KM],#a2[L],(#g1.#d3)[M],(c2.#d2)[M],g2[L],f3[LM],#d3[M],(#a1.#d3)[L],f2[L],f3[L],#a2[L],(#d2.g2.#a3)[L],#a2[M],f3[M],(d2.f2.f3)[L],#a2[M],#a2[M],(#g1.#d3)[L],#d2[L],#g2[L],(#d2.c3)[L],(#d1.#a2)[L],#a1[L],(#d2.#a2.f3)[LM],#d3[M],(#g1.c3)[M],#d3[M],#d2[L],(#g2.c3)[L],#d2[L],(#d1.g2.#a2)[L],#a1[L],(#d2.g2.#a2.f3)[K],V,(#g1.#g2.c3)[M],#d3[M],#d2[L],#g2[L],c3[LM],(#a1.d3)[L],f2[L],(#a2.f3)[KM],(c1.g2)[M],#d3[M],V,g1[L],(c2.f2.#a2)[LM],f2[LM],(c2.f2.g2)[M],g2[M],(#a2.c3)[JL];"
+      ],
+      "id": 3,
+      "instruments": [
+        "piano",
+        "piano"
+      ],
+      "alternatives": [
+        "",
+        ""
+      ]
+    }
+  ]
+}

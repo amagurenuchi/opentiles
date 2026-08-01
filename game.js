@@ -2870,9 +2870,8 @@ function renderRewardIcons(state, baseClass = 'w-6 h-auto mr-1') {
   const useCrowns = (state.crowns || 0) > 0;
   const achieved = useCrowns ? state.crowns : state.stars;
   const iconName = useCrowns ? 'crown' : 'star';
-  return Array.from({ length: 3 }, (_, i) => {
-    const earned = i < achieved;
-    return `<img src="gameImage/${iconName}.png" class="${baseClass} ${earned ? 'earned' : 'unearned'}">`;
+  return Array.from({ length: achieved }, () => {
+    return `<img src="gameImage/${iconName}.png" class="${baseClass} earned">`;
   }).join('');
 }
 
@@ -8039,11 +8038,12 @@ function openPlayerStatsModal() {
     const regularSongs = musicCsvData.filter((song) => !isChallengeSong(song));
     const plays = regularSongs
       .map((song) => {
+        const bestScore = parseInt(localStorage.getItem(`opentile_best_score_${song.mid}`) || '0', 10);
+        if (!bestScore) return null;
         const bestLevel = parseInt(localStorage.getItem(`opentile_highscore_level_${song.mid}`) || '0', 10);
-        if (!bestLevel) return null;
         const tps = computeSongFinalTps(song, bestLevel);
         const songStage = getStarAndCrownState(bestLevel - 1);
-        return { song, bestLevel, tps, stage: songStage };
+        return { song, bestScore, bestLevel, tps, stage: songStage };
       })
       .filter(Boolean)
       .sort((a, b) => b.tps - a.tps);
@@ -8060,9 +8060,12 @@ function openPlayerStatsModal() {
               <span class="text-xs font-bold text-gray-500 w-6 text-right">${p.song.id}</span>
               <span class="text-sm text-gray-800 truncate">${i18n ? i18n.getSongName(p.song.musicJson) : p.song.musicJson}</span>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              ${renderRewardIcons(p.stage, 'w-4 h-auto')}
-              <span class="text-xs font-bold text-gray-600 w-16 text-right">${p.tps.toFixed(2)} ${t('label_tiles_per_sec_full', 'tiles/sec')}</span>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              <div class="flex items-center gap-1">
+                ${renderRewardIcons(p.stage, 'w-3 h-auto')}
+                <span class="text-sm font-bold text-gray-800">${p.bestScore}</span>
+              </div>
+              <span class="text-xs font-bold text-gray-400">${p.tps.toFixed(2)} ${t('label_tps_unit', 'TPS')}</span>
             </div>
           </div>
         `

@@ -3485,6 +3485,10 @@ function getManualProgress(tile) {
 
 function playTileAudioNow(tile) {
   registerIntensityNoteHit();
+  if (tile && tile.isSectionAwardTile) {
+    const completedSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
+    checkNormalSongAwards(completedSection);
+  }
   triggerPendingAwardAnimations();
   if (!tile || tile.audioPlayed) return;
   if (tile.type === 9) {
@@ -3518,6 +3522,10 @@ function playTileAudioNow(tile) {
 // Play the note for a single combo tap immediately so rapid taps each trigger
 // their own sound instead of bunching up when input is delayed.
 function playComboTapAudio(tile) {
+  if (tile && tile.isSectionAwardTile) {
+    const completedSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
+    checkNormalSongAwards(completedSection);
+  }
   triggerPendingAwardAnimations();
   if (!tile || !isComboTile(tile)) return;
   // tap index = number of taps already made = taps - remainingTaps (before decrement)
@@ -4403,32 +4411,31 @@ function tileMatchesColumn(tile, colIdx) {
   return hitColumns.includes(colIdx);
 }
 
-function checkNormalSongAwards(reachedSection) {
+function checkNormalSongAwards(completedSection) {
   if (!isStarted || isPaused || isClassicMode || isChallengeMode || isClassMode) {
     return;
   }
 
+  if (completedSection < 0) return;
+
   const currentAwardLevel = normalSongAwardLevel || 1;
   // Maximum award level is 10 (3 crowns).
-  if (currentAwardLevel > 10) return;
+  if (currentAwardLevel >= 10) return;
 
-  // Trigger animation one tile early (when approaching the next award level)
-  // but don't increment the award level yet
-  if (reachedSection === currentAwardLevel - 1) {
-    const nextStage = getStarAndCrownState(currentAwardLevel - 1);
-    const currentStage = currentAwardLevel > 1 ? getStarAndCrownState(currentAwardLevel - 2) : { stars: 0, crowns: 0 };
+  const targetAwardLevel = Math.min(10, completedSection + 2);
+
+  if (currentAwardLevel < targetAwardLevel) {
+    const nextAwardLevel = currentAwardLevel + 1;
+    const nextStage = getStarAndCrownState(nextAwardLevel - 1);
+    const currentStage = getStarAndCrownState(currentAwardLevel - 1);
     const currentTierRank = getRewardTierRank(currentStage);
     const nextTierRank = getRewardTierRank(nextStage);
-    const shouldAnimateReward = nextTierRank > currentTierRank;
 
-    if (shouldAnimateReward) {
+    if (nextTierRank > currentTierRank) {
       pendingAwardAnimationStages.push(nextStage);
     }
-  }
 
-  // Increment award level when section is actually reached
-  if (reachedSection >= currentAwardLevel && currentAwardLevel < 10) {
-    normalSongAwardLevel = currentAwardLevel + 1;
+    normalSongAwardLevel = nextAwardLevel;
 
     // Persist the score at which this level was reached so the revive modal
     // can display the score gap to the next award tier.
@@ -4449,8 +4456,8 @@ function checkNormalSongAwards(reachedSection) {
 
     updateNormalSongAwardDisplay();
 
-    // Check recursively in case they skipped multiple sections at once
-    checkNormalSongAwards(reachedSection);
+    // Check recursively in case multiple sections completed at once
+    checkNormalSongAwards(completedSection);
   }
 }
 
@@ -5645,18 +5652,20 @@ function updateEngineFrame(now) {
     }
   }
 
-  let maxEffectiveSectionReached = -1;
+  let maxEffectiveCompletedSection = -1;
 
   tiles.forEach((tile) => {
     tile.playing = (isClassicMode && autoplayEnabled && isStarted)
       ? (classicScrollTarget - tile.hpos - (key - 1))
       : (starthpos - tile.hpos - (key - 1));
 
-    // Check section progression for normal song awards
-    if (tile.playing >= -0.5 || tile.clicked || tile.ended > 0) {
-      const effectiveSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
-      if (effectiveSection > maxEffectiveSectionReached) {
-        maxEffectiveSectionReached = effectiveSection;
+    // Check section progression for normal song awards (triggered when last tile of section is hit)
+    if (tile.clicked || tile.ended > 0 || (autoplayEnabled && tile.played)) {
+      if (tile.isSectionAwardTile) {
+        const completedSection = (tile.loopCount || 0) * sheet.length + (tile.sectionIndex || 0);
+        if (completedSection > maxEffectiveCompletedSection) {
+          maxEffectiveCompletedSection = completedSection;
+        }
       }
     }
 
@@ -5879,8 +5888,8 @@ function updateEngineFrame(now) {
     }
   });
 
-  if (maxEffectiveSectionReached >= normalSongAwardLevel) {
-    checkNormalSongAwards(maxEffectiveSectionReached);
+  if (maxEffectiveCompletedSection >= 0) {
+    checkNormalSongAwards(maxEffectiveCompletedSection);
   }
 
   if (!autoplayEnabled && !isPaused) {

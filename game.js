@@ -285,11 +285,11 @@ function triggerAwardAnimation(stage) {
   const crownAnim = document.getElementById('crown-animation-display');
 
   if (stage.crowns) {
-    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-13 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.crowns);
+    crownAnim.innerHTML = '<img src="gameImage/crown.png" class="inline-block w-12 h-auto sm:w-9 drop-shadow-md">'.repeat(stage.crowns);
     crownAnim.classList.remove('hidden');
     starAnim.classList.add('hidden');
   } else {
-    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-13 h-auto sm:w-8 drop-shadow-md">'.repeat(stage.stars) : '';
+    starAnim.innerHTML = stage.stars ? '<img src="gameImage/star.png" class="inline-block w-12 h-auto sm:w-9 drop-shadow-md">'.repeat(stage.stars) : '';
     starAnim.classList.remove('hidden');
     crownAnim.classList.add('hidden');
   }
@@ -1200,7 +1200,11 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         }
       }
 
-      // --- Snow Dots ---
+
+    }
+
+    // --- Snow Dots (3rd background onwards, only during Christmas) ---
+    if (isDecember && targetBackgroundIndex >= 3) {
       if (timestamp - lastSpawnSnowDots > 300) {
         lastSpawnSnowDots = timestamp;
         const currentSnowDots = bgAnimActiveItems.filter((i) => i.type === 'snowdot').length;
@@ -1232,14 +1236,13 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             startY,
             curY: startY,
             targetY,
-            speed: 0.12 + Math.random() * 0.05,
+            speed: 0.04 + Math.random() * 0.04,
             dirX: (Math.random() - 0.5) * 0.03,
             spawnTime: timestamp
           });
         }
       }
     }
-
     // --- Feature 3 (Falling part): December Falling Snowflakes (2nd background onwards) ---
     if (isDecember && targetBackgroundIndex >= 2) {
       if (timestamp - lastSpawnSnow > (500 + Math.random() * 500)) {
@@ -1338,7 +1341,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
           bgAnimActiveItems.splice(i, 1);
         }
       } else if (item.type === 'snowdot') {
-        item.speed *= 0.985;
+        item.speed *= 0.998;
         item.curY += item.speed * 16.6;
         const totalDistance = item.targetY - item.startY;
         const traveled = item.curY - item.startY;

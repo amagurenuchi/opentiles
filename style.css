@@ -515,7 +515,7 @@ html.dark-mode .pause-screen-title {
 @media (max-width: 767px),
 (min-width: 1061px) {
   #score-display {
-    font-size: 4rem !important;
+    font-size: 3.1rem !important;
   }
 
   /* Smaller TPS on mobile and PC; normal TPS remains smaller than score */

@@ -906,18 +906,21 @@ function getGameplayBackgroundIndex() {
 }
 
 function setBgLayerOpacities(targetIndex) {
-  const layers = {
-    1: document.getElementById('game-bg-layer-1'),
-    2: document.getElementById('game-bg-layer-2'),
-    3: document.getElementById('game-bg-layer-3'),
-    0: document.getElementById('game-bg-layer-0')
-  };
+  if (!cachedBgLayers) {
+    cachedBgLayers = {
+      1: document.getElementById('game-bg-layer-1'),
+      2: document.getElementById('game-bg-layer-2'),
+      3: document.getElementById('game-bg-layer-3'),
+      0: document.getElementById('game-bg-layer-0')
+    };
+  }
 
-  Object.keys(layers).forEach((key) => {
-    const layer = layers[key];
-    if (!layer) return;
-    layer.style.opacity = Number(key) === targetIndex ? '1' : '0';
-  });
+  for (let key = 0; key <= 3; key++) {
+    const layer = cachedBgLayers[key];
+    if (layer) {
+      layer.style.opacity = key === targetIndex ? '1' : '0';
+    }
+  }
 }
 
 // Background Animation System State
@@ -926,26 +929,61 @@ let bgAnimRafId = null;
 let bgAnimActiveTargetIndex = -1;
 let bgAnimActiveItems = []; // Objects for RAF-ticked items: floaters & snowflakes
 let intensityNoteTimestamps = [];
+let lastIntensityOverlayOpacity = -1;
+
+// Cached DOM element references & dimensions for background animation performance
+let cachedBgAnimContainer = null;
+let cachedBgIntensityOverlay = null;
+let cachedBgLayers = null;
+let cachedBgContainerWidth = 0;
+let cachedBgContainerHeight = 0;
+
+// Track active counts per item type to eliminate per-frame Array.filter() GC allocations
+let bgAnimTypeCounts = {
+  float: 0,
+  snow: 0,
+  snowdot: 0
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    if (cachedBgAnimContainer) {
+      const rect = cachedBgAnimContainer.getBoundingClientRect();
+      cachedBgContainerWidth = rect.width || cachedBgAnimContainer.clientWidth || 360;
+      cachedBgContainerHeight = rect.height || cachedBgAnimContainer.clientHeight || 640;
+    }
+  }, { passive: true });
+}
 
 function registerIntensityNoteHit() {
   intensityNoteTimestamps.push(performance.now());
 }
 
 function updateBackgroundIntensityFilter(now = performance.now()) {
-  const overlay = document.getElementById('game-bg-intensity-overlay');
+  if (!cachedBgIntensityOverlay) {
+    cachedBgIntensityOverlay = document.getElementById('game-bg-intensity-overlay');
+  }
+  const overlay = cachedBgIntensityOverlay;
   if (!overlay) return;
 
   const isPlaying = gameBoardWrapper?.classList.contains('game-playing') || isStarted || isPlayInProgress;
   if (!bgChangeEnabled || lowPerformanceMode || !isPlaying) {
-    intensityNoteTimestamps = [];
-    overlay.style.opacity = '0';
+    if (intensityNoteTimestamps.length > 0) intensityNoteTimestamps = [];
+    if (lastIntensityOverlayOpacity !== 0) {
+      overlay.style.opacity = '0';
+      lastIntensityOverlayOpacity = 0;
+    }
     return;
   }
 
-  // Filter note timestamps in the running 2-second period (2000 ms)
+  // Filter note timestamps in the running 2-second period (2000 ms) using index search instead of shift()
   const cutoff = now - 2000;
-  while (intensityNoteTimestamps.length > 0 && intensityNoteTimestamps[0] < cutoff) {
-    intensityNoteTimestamps.shift();
+  let validStartIndex = 0;
+  while (validStartIndex < intensityNoteTimestamps.length && intensityNoteTimestamps[validStartIndex] < cutoff) {
+    validStartIndex++;
+  }
+  if (validStartIndex > 0) {
+    intensityNoteTimestamps = intensityNoteTimestamps.slice(validStartIndex);
   }
 
   const notesIn2Sec = intensityNoteTimestamps.length;
@@ -958,7 +996,10 @@ function updateBackgroundIntensityFilter(now = performance.now()) {
 
   // Apply magenta overlay opacity (up to 0.35 max)
   const targetOpacity = intensityRatio * 0.35;
-  overlay.style.opacity = String(targetOpacity);
+  if (Math.abs(targetOpacity - lastIntensityOverlayOpacity) > 0.001) {
+    overlay.style.opacity = String(targetOpacity);
+    lastIntensityOverlayOpacity = targetOpacity;
+  }
 }
 
 function clearBackgroundAnimations(preserveSnowflakes = false) {
@@ -970,9 +1011,14 @@ function clearBackgroundAnimations(preserveSnowflakes = false) {
   bgAnimTimeouts = [];
 
   const itemsToKeep = [];
+  bgAnimTypeCounts.float = 0;
+  bgAnimTypeCounts.snow = 0;
+  bgAnimTypeCounts.snowdot = 0;
+
   bgAnimActiveItems.forEach((item) => {
     if (preserveSnowflakes && item.type === 'snow') {
       itemsToKeep.push(item);
+      bgAnimTypeCounts.snow++;
     } else {
       if (item.el && item.el.parentNode) {
         item.el.parentNode.removeChild(item.el);
@@ -982,15 +1028,21 @@ function clearBackgroundAnimations(preserveSnowflakes = false) {
   bgAnimActiveItems = itemsToKeep;
   intensityNoteTimestamps = [];
 
-  const overlay = document.getElementById('game-bg-intensity-overlay');
-  if (overlay) {
-    overlay.style.opacity = '0';
+  if (!cachedBgIntensityOverlay) {
+    cachedBgIntensityOverlay = document.getElementById('game-bg-intensity-overlay');
+  }
+  if (cachedBgIntensityOverlay && lastIntensityOverlayOpacity !== 0) {
+    cachedBgIntensityOverlay.style.opacity = '0';
+    lastIntensityOverlayOpacity = 0;
   }
   bgAnimActiveTargetIndex = -1;
 }
 
 function updateBackgroundAnimations(targetBackgroundIndex) {
-  const container = document.getElementById('game-bg-anim-container');
+  if (!cachedBgAnimContainer) {
+    cachedBgAnimContainer = document.getElementById('game-bg-anim-container');
+  }
+  const container = cachedBgAnimContainer;
   if (!container) return;
 
   // Conditions check: Low performance mode off, bg change on, and gameplay active
@@ -1009,8 +1061,10 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
   bgAnimActiveTargetIndex = targetBackgroundIndex;
 
   const rect = container.getBoundingClientRect();
-  const W = rect.width || container.clientWidth || 360;
-  const H = rect.height || container.clientHeight || 640;
+  cachedBgContainerWidth = rect.width || container.clientWidth || 360;
+  cachedBgContainerHeight = rect.height || container.clientHeight || 640;
+  const W = cachedBgContainerWidth;
+  const H = cachedBgContainerHeight;
 
   const isDecember = (new Date().getMonth() === 11) || (typeof window !== 'undefined' && window.__FORCE_DECEMBER);
 
@@ -1153,8 +1207,8 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
 
     updateBackgroundIntensityFilter(timestamp);
 
-    const curW = container.clientWidth || W;
-    const curH = container.clientHeight || H;
+    const curW = cachedBgContainerWidth || container.clientWidth || W;
+    const curH = cachedBgContainerHeight || container.clientHeight || H;
 
     // --- Feature 2: float.png (Starting from 2 star / 3rd background) ---
     if (targetBackgroundIndex >= 3 && !isDecember) {
@@ -1162,8 +1216,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         lastSpawnFloat = timestamp;
 
         // Max concurrent floaters
-        const currentFloaters = bgAnimActiveItems.filter((i) => i.type === 'float').length;
-        if (currentFloaters < 8) {
+        if (bgAnimTypeCounts.float < 8) {
           const img = document.createElement('img');
           img.src = 'gameImage/bgani/float.png';
           img.className = 'bg-anim-item';
@@ -1197,18 +1250,16 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             speed: 0.08 + Math.random() * 0.06, // px/ms
             spawnTime: timestamp
           });
+          bgAnimTypeCounts.float++;
         }
       }
-
-
     }
 
     // --- Snow Dots (3rd background onwards, only during Christmas) ---
     if (isDecember && targetBackgroundIndex >= 3) {
       if (timestamp - lastSpawnSnowDots > 300) {
         lastSpawnSnowDots = timestamp;
-        const currentSnowDots = bgAnimActiveItems.filter((i) => i.type === 'snowdot').length;
-        if (currentSnowDots < 30) {
+        if (bgAnimTypeCounts.snowdot < 30) {
           const div = document.createElement('div');
           div.className = 'bg-anim-item';
           const size = 4 + Math.random() * 6; // small dots
@@ -1240,16 +1291,17 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             dirX: (Math.random() - 0.5) * 0.03,
             spawnTime: timestamp
           });
+          bgAnimTypeCounts.snowdot++;
         }
       }
     }
+
     // --- Feature 3 (Falling part): December Falling Snowflakes (2nd background onwards) ---
     if (isDecember && targetBackgroundIndex >= 2) {
       if (timestamp - lastSpawnSnow > (500 + Math.random() * 500)) {
         lastSpawnSnow = timestamp;
 
-        const currentFallingSnow = bgAnimActiveItems.filter((i) => i.type === 'snow').length;
-        if (currentFallingSnow < 16) {
+        if (bgAnimTypeCounts.snow < 16) {
           const img = document.createElement('img');
           img.src = 'gameImage/bgani/snowflake.png';
           img.className = 'bg-anim-item';
@@ -1281,6 +1333,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
             dirX: (Math.random() - 0.5) * 0.04,
             spawnTime: timestamp
           });
+          bgAnimTypeCounts.snow++;
         }
       }
     }
@@ -1317,6 +1370,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         if (item.curY <= item.targetY || progress >= 1) {
           if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
           bgAnimActiveItems.splice(i, 1);
+          if (bgAnimTypeCounts.float > 0) bgAnimTypeCounts.float--;
         }
       } else if (item.type === 'snow') {
         item.curY += item.speed * 16.6;
@@ -1339,6 +1393,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         if (item.curY >= item.targetY || progress >= 1) {
           if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
           bgAnimActiveItems.splice(i, 1);
+          if (bgAnimTypeCounts.snow > 0) bgAnimTypeCounts.snow--;
         }
       } else if (item.type === 'snowdot') {
         item.speed *= 0.998;
@@ -1361,6 +1416,7 @@ function updateBackgroundAnimations(targetBackgroundIndex) {
         if (item.curY >= item.targetY || progress >= 1 || item.speed < 0.005) {
           if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
           bgAnimActiveItems.splice(i, 1);
+          if (bgAnimTypeCounts.snowdot > 0) bgAnimTypeCounts.snowdot--;
         }
       }
     }

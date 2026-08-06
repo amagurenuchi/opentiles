@@ -3381,7 +3381,7 @@ html.dark-mode .dock-button.keyboard-tab-selected>div {
 
 /* ─── Background Animation System Styles ─────────────────────────────────── */
 #game-bg-anim-container {
-  contain: layout style;
+  contain: layout style paint;
   pointer-events: none;
   overflow: hidden;
 }
@@ -3392,6 +3392,7 @@ html.dark-mode .dock-button.keyboard-tab-selected>div {
   user-select: none;
   -webkit-user-select: none;
   will-change: transform, opacity;
+  transform: translateZ(0);
   backface-visibility: hidden;
   object-fit: contain;
 }
